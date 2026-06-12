@@ -19,6 +19,19 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Setup mmdebstrap
+        run: |
+          sudo apt update
+          sudo apt install -yq curl binfmt-support qemu-user-static
+
+          curl -L -o /tmp/mmdebstrap.deb http://ftp.us.debian.org/debian/pool/main/m/mmdebstrap/mmdebstrap_1.5.7-3_all.deb
+          curl -L -o /tmp/keyring.deb http://ftp.us.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb
+
+          sudo apt install -yq /tmp/mmdebstrap.deb /tmp/keyring.deb
+
+      - name: Build Debian rootfs
+        run: ./scripts/build-debian-rootfs.sh
+
       # ndkVersion from app/build.gradle is auto-installed by AGP via
       # sdkmanager (licenses are pre-accepted on hosted runners).
       - name: Build debug APK
