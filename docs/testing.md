@@ -16,6 +16,13 @@ native libraries and the real `/system/bin/sh`.
 Polling helper: shell output is asynchronous, so assertions use a small
 `waitFor(condition, timeout)` spin instead of fixed sleeps.
 
+## CI
+
+`.github/workflows/ci.yml` runs on every push: one job builds and uploads
+the debug APK as an artifact, another runs this whole suite on an API 34
+x86_64 emulator (KVM-accelerated, animations disabled). Test reports are
+uploaded as an artifact on failure.
+
 ## Running
 
 ```sh
