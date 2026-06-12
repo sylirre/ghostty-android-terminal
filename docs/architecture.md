@@ -135,5 +135,10 @@ finishes the activity.
   `feed()` — no `AttachCurrentThread` juggling.
 - **`TERM=xterm-256color`**, not `xterm-ghostty`: Android has no terminfo
   database and the stock toybox/mksh tools only assume xterm-ish behavior.
+- **Shells spawn after the first view layout, and no-op resizes are
+  skipped.** Android's `/system/bin/sh` (mksh) reacts to SIGWINCH by wiping
+  its prompt line (`\r` + spaces) *without* reprinting it. Spawning at a
+  guessed size and resizing on layout left users staring at a blank screen
+  until the first keypress.
 - **No appcompat/material dependency.** All views are custom-drawn anyway;
   plain `android.app.Activity` keeps the dependency graph and build minimal.

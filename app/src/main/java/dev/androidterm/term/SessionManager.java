@@ -24,9 +24,14 @@ public final class SessionManager {
 
     private SessionManager() {}
 
-    public TerminalSession create(Context context, TerminalSession.Listener listener)
-            throws IOException {
-        TerminalSession s = new TerminalSession(80, 24,
+    /**
+     * Spawns a shell at the given grid size. Callers should pass the real
+     * view size: spawning at a wrong size triggers a SIGWINCH on first
+     * layout, and mksh reacts by wiping its initial prompt.
+     */
+    public TerminalSession create(Context context, int cols, int rows,
+            TerminalSession.Listener listener) throws IOException {
+        TerminalSession s = new TerminalSession(cols, rows,
                 context.getFilesDir().getAbsolutePath(),
                 context.getCacheDir().getAbsolutePath(),
                 listener);

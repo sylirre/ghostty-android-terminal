@@ -34,19 +34,20 @@ typedef struct {
     int events;
 } TermCtx;
 
-static void on_write_pty(GhosttyTerminal t, GhosttyString data, void *ud) {
+static void on_write_pty(GhosttyTerminal t, void *ud, const uint8_t *data,
+                         size_t len) {
     (void)t;
     TermCtx *c = ud;
-    if (c->out_len + data.len > c->out_cap) {
+    if (c->out_len + len > c->out_cap) {
         size_t cap = c->out_cap ? c->out_cap * 2 : 256;
-        while (cap < c->out_len + data.len) cap *= 2;
+        while (cap < c->out_len + len) cap *= 2;
         uint8_t *p = realloc(c->out, cap);
         if (!p) return; /* drop response on OOM; terminal state stays valid */
         c->out = p;
         c->out_cap = cap;
     }
-    memcpy(c->out + c->out_len, data.ptr, data.len);
-    c->out_len += data.len;
+    memcpy(c->out + c->out_len, data, len);
+    c->out_len += len;
 }
 
 static void on_bell(GhosttyTerminal t, void *ud) {
@@ -54,10 +55,16 @@ static void on_bell(GhosttyTerminal t, void *ud) {
     ((TermCtx *)ud)->events |= EVENT_BELL;
 }
 
-static void on_title(GhosttyTerminal t, GhosttyString title, void *ud) {
-    (void)t; (void)title;
+static void on_title(GhosttyTerminal t, void *ud) {
+    (void)t;
     ((TermCtx *)ud)->events |= EVENT_TITLE;
 }
+
+/* Typed assignments so a callback signature drift fails to compile instead
+ * of corrupting the stack at runtime (ghostty_terminal_set takes void*). */
+static const GhosttyTerminalWritePtyFn write_pty_fn = on_write_pty;
+static const GhosttyTerminalBellFn bell_fn = on_bell;
+static const GhosttyTerminalTitleChangedFn title_fn = on_title;
 
 JNIEXPORT jlong JNICALL
 Java_dev_androidterm_term_TerminalNative_terminalNew(
@@ -84,9 +91,9 @@ Java_dev_androidterm_term_TerminalNative_terminalNew(
     if (ghostty_key_event_new(NULL, &c->kev) != GHOSTTY_SUCCESS) goto fail;
 
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_USERDATA, c);
-    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY, on_write_pty);
-    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_BELL, on_bell);
-    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, on_title);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY, write_pty_fn);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_BELL, bell_fn);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, title_fn);
     return (jlong)(intptr_t)c;
 
 fail:

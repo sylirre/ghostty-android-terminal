@@ -124,6 +124,15 @@ public class TerminalView extends View {
         return session;
     }
 
+    /** Grid size implied by the current view bounds (80x24 until laid out). */
+    public int gridCols() {
+        return cols;
+    }
+
+    public int gridRows() {
+        return rows;
+    }
+
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         updateGridSize(w, h);

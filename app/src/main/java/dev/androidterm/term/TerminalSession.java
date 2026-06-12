@@ -43,6 +43,7 @@ public final class TerminalSession {
     private final int pid;
     private final ParcelFileDescriptor masterFd;
     private final OutputStream toPty;
+    private int lastCols, lastRows;
     private volatile boolean closed;
     private volatile String title;
     private volatile Integer exitCode;
@@ -71,6 +72,8 @@ public final class TerminalSession {
         int[] pidOut = new int[1];
         int fd = TerminalNative.ptyCreate("/system/bin/sh",
                 new String[] {"sh"}, env, homeDir, cols, rows, pidOut);
+        lastCols = cols;
+        lastRows = rows;
         this.pid = pidOut[0];
         this.masterFd = ParcelFileDescriptor.adoptFd(fd);
         this.toPty = new FileOutputStream(masterFd.getFileDescriptor());
@@ -178,6 +181,12 @@ public final class TerminalSession {
 
     public void resize(int cols, int rows, int cellWidthPx, int cellHeightPx) {
         if (closed || cols <= 0 || rows <= 0) return;
+        // Skip no-op resizes: a spurious SIGWINCH makes mksh wipe its
+        // current prompt line without reprinting it (observed on Android's
+        // /system/bin/sh), leaving the screen blank.
+        if (cols == lastCols && rows == lastRows) return;
+        lastCols = cols;
+        lastRows = rows;
         emulator.resize(cols, rows, cellWidthPx, cellHeightPx);
         TerminalNative.ptySetSize(masterFd.getFd(), cols, rows);
     }

@@ -76,7 +76,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             s.setListener(this);
         }
         if (sessions.isEmpty()) {
-            createSession();
+            // Spawn the first shell only once the view is laid out so the
+            // PTY starts at its real size (see SessionManager.create).
+            terminal.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(View v, int l, int t, int r, int b,
+                        int ol, int ot, int or, int ob) {
+                    terminal.removeOnLayoutChangeListener(this);
+                    if (sessions.isEmpty()) createSession();
+                }
+            });
         } else {
             switchTo(sessions.sessions().get(0));
         }
@@ -84,7 +93,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     private void createSession() {
         try {
-            TerminalSession s = sessions.create(this, this);
+            TerminalSession s = sessions.create(this,
+                    terminal.gridCols(), terminal.gridRows(), this);
             switchTo(s);
         } catch (IOException e) {
             Toast.makeText(this, "Failed to start shell: " + e.getMessage(),
