@@ -31,6 +31,9 @@ Notes:
 - The emulator needs KVM (`/dev/kvm` writable).
 - Tests assume an Android image where `/system/bin/sh` exists — i.e. any
   Android image; the suite does not require root.
-- `EmulatorVtTest` drives the emulator object directly (no shell), so VT
-  assertions are deterministic; only `ShellSessionTest`/`TerminalUiTest`
+- `EmulatorVtTest` drives the `TerminalEmulator` directly (no shell), so
+  its assertions are deterministic; only `ShellSessionTest`/`TerminalUiTest`
   depend on shell timing, via the polling helper.
+- Espresso needs device animations off for reliable clicks:
+  `adb shell settings put global window_animation_scale 0` (and the
+  `transition_animation_scale`/`animator_duration_scale` equivalents).

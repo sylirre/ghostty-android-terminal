@@ -4,6 +4,9 @@ Terminal emulator for Android backed by the
 [Ghostty](https://github.com/ghostty-org/ghostty) VT engine
 (`libghostty-vt`). Runs the system shell — no bundled userland.
 
+<img src="docs/screenshot.png" width="280" alt="AndroidTerm running ls /system">
+
+
 - Shell: `/system/bin/sh` with `PATH=/system/bin`
 - Multiple sessions in tabs
 - Special-key toolbar (ESC, CTRL, ALT, TAB, arrows, …) above the touch

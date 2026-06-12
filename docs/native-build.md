@@ -29,8 +29,9 @@ scripts/build-ghostty-vt.sh               # build arm64-v8a + x86_64, copy
 Both scripts read these environment variables (defaults in parentheses):
 
 - `ZIG` — zig executable (`zig`)
-- `ANDROID_NDK` — NDK root (`$HOME/android-tools/android-ndk-r28c`)
-- `GHOSTTY_SRC` — checkout location (`$HOME/android-tools/ghostty-src`)
+- `ANDROID_NDK` — NDK root (falls back to `ANDROID_NDK_HOME`, then the
+  newest NDK under `~/Android/Sdk/ndk/`)
+- `GHOSTTY_SRC` — checkout location (`third_party/ghostty`, gitignored)
 
 The pinned Ghostty commit lives at the top of `scripts/fetch-ghostty.sh`.
 To upgrade: change the hash, rerun both scripts, run the integration tests,
