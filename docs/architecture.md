@@ -74,7 +74,7 @@ reader thread feeds bytes, the UI thread takes snapshots.
 | `ScreenSnapshot` | Reusable flat-array copy of the viewport + cursor for rendering |
 | `TerminalSession` | PTY fd + shell pid + reader thread; writes input; reports exit |
 | `SessionManager` | Process-wide session list; survives Activity recreation |
-| `TerminalView` | Canvas grid renderer, IME connection, scroll gestures |
+| `TerminalView` | Canvas grid renderer, IME connection, scroll + pinch-zoom gestures |
 | `ExtraKeysView` | ESC/CTRL/ALT/TAB/arrows… toolbar; CTRL/ALT are sticky modifiers |
 | `TabStripView` | Horizontal session tabs + new-tab button |
 | `MainActivity` | Wires the above, handles window insets |

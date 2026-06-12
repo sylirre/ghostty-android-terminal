@@ -9,6 +9,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 import static dev.androidterm.TestUtil.waitFor;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import android.view.View;
 
@@ -121,12 +122,21 @@ public class TerminalUiTest {
         waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
         // The "/" and "─" keys live at the right end of the scrollable
         // toolbar; bring them on screen so Espresso can click them.
-        scenario.onActivity(a -> ((android.widget.HorizontalScrollView)
-                a.findViewById(R.id.extra_keys)).fullScroll(View.FOCUS_RIGHT));
+        scenario.onActivity(a -> {
+            android.widget.HorizontalScrollView strip = a.findViewById(R.id.extra_keys);
+            // Instant jump: a smooth scroll can still be animating when
+            // Espresso clicks, landing the tap on the wrong key.
+            strip.setSmoothScrollingEnabled(false);
+            strip.fullScroll(View.FOCUS_RIGHT);
+        });
         onView(withText("/")).perform(click());
         onView(withText("─")).perform(click()); // sends "-"
+        // Run the typed "/-" instead of asserting on the edit line: mksh
+        // may cosmetically wipe the line on a late IME resize (SIGWINCH),
+        // but the command error output ("/-: ... not found") persists.
+        dispatchText("\n");
         waitFor("toolbar chars echoed", TIMEOUT_MS,
-                () -> currentScreen().contains("/-"));
+                () -> currentScreen().contains("/-"), this::diagnose);
     }
 
     @Test
@@ -159,6 +169,37 @@ public class TerminalUiTest {
         });
         waitFor("tab 1 has no marker", TIMEOUT_MS,
                 () -> !currentScreen().contains("marker-tab2"));
+    }
+
+    @Test
+    public void fontSizeChangeReflowsGridAndSession() {
+        // Drives the same path as pinch-zoom (ScaleGestureDetector ends in
+        // setFontSizeSp); the gesture math itself is framework code.
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        float[] origSp = new float[1];
+        int[] colsBefore = new int[1];
+        scenario.onActivity(a -> {
+            TerminalView v = a.findViewById(R.id.terminal);
+            origSp[0] = v.fontSizeSp();
+            colsBefore[0] = v.gridCols();
+            v.setFontSizeSp(origSp[0] * 2);
+        });
+        try {
+            int[] after = new int[2];
+            scenario.onActivity(a -> {
+                TerminalView v = a.findViewById(R.id.terminal);
+                after[0] = v.gridCols();
+                ScreenSnapshot snap = new ScreenSnapshot();
+                v.session().emulator.snapshot(snap);
+                after[1] = snap.cols;
+            });
+            assertTrue("columns shrink when the font grows", after[0] < colsBefore[0]);
+            assertEquals("session follows the view grid", after[0], after[1]);
+        } finally {
+            // Font size persists in SharedPreferences; restore for other tests.
+            scenario.onActivity(a -> ((TerminalView) a.findViewById(R.id.terminal))
+                    .setFontSizeSp(origSp[0]));
+        }
     }
 
     @Test

@@ -54,6 +54,8 @@ adb install app/build/outputs/apk/debug/app-debug.apk
   the current one. Closing the last tab exits the app.
 - **Scrollback**: drag vertically on the terminal. Any key press snaps back
   to the bottom.
+- **Font size**: pinch to zoom (8–40 sp, persisted across restarts); the
+  shell grid reflows to the new cell size.
 - **Lifecycle**: sessions survive rotation but not process death; there is
   no background service keeping shells alive once the app is killed.
 

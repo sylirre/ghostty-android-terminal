@@ -8,6 +8,7 @@ import android.util.AttributeSet;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
@@ -58,8 +59,16 @@ public class TerminalView extends View {
     private int baseline;
     private int cols = 80, rows = 24;
 
+    private static final float MIN_FONT_SP = 8f;
+    private static final float MAX_FONT_SP = 40f;
+    private static final float DEFAULT_FONT_SP = 14f;
+    private static final String PREFS = "terminal";
+    private static final String PREF_FONT_SP = "font_size_sp";
+
     private final GestureDetector gestures;
+    private final ScaleGestureDetector scaleGestures;
     private float scrollRemainder;
+    private float fontSizeSp;
 
     public TerminalView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -67,7 +76,23 @@ public class TerminalView extends View {
         setFocusableInTouchMode(true);
 
         textPaint.setTypeface(Typeface.MONOSPACE);
-        setTextSizePx(14 * getResources().getDisplayMetrics().scaledDensity);
+        fontSizeSp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getFloat(PREF_FONT_SP, DEFAULT_FONT_SP);
+        setTextSizePx(spToPx(fontSizeSp));
+
+        scaleGestures = new ScaleGestureDetector(context,
+                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(ScaleGestureDetector d) {
+                applyFontSize(fontSizeSp * d.getScaleFactor());
+                return true; // consume so the factor stays incremental
+            }
+
+            @Override
+            public void onScaleEnd(ScaleGestureDetector d) {
+                persistFontSize(); // once per gesture, not per frame
+            }
+        });
 
         gestures = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
             @Override
@@ -105,6 +130,36 @@ public class TerminalView extends View {
         cellWidth = textPaint.measureText("M");
         cellHeight = fm.descent - fm.ascent;
         baseline = -fm.ascent;
+    }
+
+    private float spToPx(float sp) {
+        return sp * getResources().getDisplayMetrics().scaledDensity;
+    }
+
+    /** Sets the font size (clamped) and persists it; reflows the grid. */
+    public void setFontSizeSp(float sp) {
+        applyFontSize(sp);
+        persistFontSize();
+    }
+
+    public float fontSizeSp() {
+        return fontSizeSp;
+    }
+
+    private void applyFontSize(float sp) {
+        sp = Math.max(MIN_FONT_SP, Math.min(MAX_FONT_SP, sp));
+        if (sp == fontSizeSp) return;
+        fontSizeSp = sp;
+        setTextSizePx(spToPx(sp));
+        if (getWidth() > 0) {
+            updateGridSize(getWidth(), getHeight());
+        }
+        invalidate();
+    }
+
+    private void persistFontSize() {
+        getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putFloat(PREF_FONT_SP, fontSizeSp).apply();
     }
 
     public void setStickyModifiers(StickyModifiers mods) {
@@ -148,7 +203,12 @@ public class TerminalView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        gestures.onTouchEvent(event);
+        scaleGestures.onTouchEvent(event);
+        // Suppress scrolling (and taps) while a pinch is in progress so the
+        // viewport doesn't jump around during zoom.
+        if (!scaleGestures.isInProgress()) {
+            gestures.onTouchEvent(event);
+        }
         return true;
     }
 
