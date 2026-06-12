@@ -28,13 +28,18 @@ public final class SessionManager {
      * Spawns a shell at the given grid size. Callers should pass the real
      * view size: spawning at a wrong size triggers a SIGWINCH on first
      * layout, and mksh reacts by wiping its initial prompt.
+     *
+     * @param debian Debian login shell under PRoot (rootfs must be
+     *               installed) instead of /system/bin/sh.
      */
     public TerminalSession create(Context context, int cols, int rows,
-            TerminalSession.Listener listener) throws IOException {
-        TerminalSession s = new TerminalSession(cols, rows,
-                context.getFilesDir().getAbsolutePath(),
-                context.getCacheDir().getAbsolutePath(),
-                listener);
+            boolean debian, TerminalSession.Listener listener) throws IOException {
+        SessionCommand command = debian
+                ? DebianRootfs.command(context)
+                : SessionCommand.androidShell(
+                        context.getFilesDir().getAbsolutePath(),
+                        context.getCacheDir().getAbsolutePath());
+        TerminalSession s = new TerminalSession(cols, rows, command, listener);
         sessions.add(s);
         return s;
     }

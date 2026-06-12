@@ -21,6 +21,8 @@ public class TabStripView extends HorizontalScrollView {
         void onTabSelected(int index);
         void onTabClosed(int index);
         void onNewTab();
+        /** Long-press on +: a tab of the non-default session type. */
+        void onNewTabLongPress();
     }
 
     private static final int BG = 0xFF14141A;
@@ -60,6 +62,10 @@ public class TabStripView extends HorizontalScrollView {
         TextView add = makeButton("+", false);
         add.setContentDescription("new tab");
         add.setOnClickListener(v -> listener.onNewTab());
+        add.setOnLongClickListener(v -> {
+            listener.onNewTabLongPress();
+            return true;
+        });
         row.addView(add);
     }
 

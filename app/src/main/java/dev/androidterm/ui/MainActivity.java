@@ -5,6 +5,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowInsets;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import dev.androidterm.R;
+import dev.androidterm.term.DebianRootfs;
 import dev.androidterm.term.SessionManager;
 import dev.androidterm.term.TerminalSession;
 
@@ -22,13 +24,26 @@ import dev.androidterm.term.TerminalSession;
  * binds the current one to the view and re-attaches after recreation.
  * The root insets listener keeps the toolbar riding directly above the
  * IME (the window is edge-to-edge on targetSdk 36+).
+ *
+ * New tabs default to a Debian-under-PRoot login shell once the rootfs is
+ * installed (extracted from an optional APK asset on first launch);
+ * long-pressing + opens the other session type. Builds without the rootfs
+ * asset behave as before: plain /system/bin/sh.
  */
 public class MainActivity extends Activity implements TerminalSession.Listener {
+
+    /**
+     * Test seam: forces the plain Android shell as the default session type
+     * so UI tests are deterministic whether or not a rootfs is bundled.
+     */
+    public static final String EXTRA_FORCE_SHELL = "dev.androidterm.FORCE_SHELL";
 
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
     private TabStripView tabs;
+    private TextView installStatus;
     private TerminalSession current;
+    private boolean forceShell;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +52,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
         terminal = findViewById(R.id.terminal);
         tabs = findViewById(R.id.tabs);
+        installStatus = findViewById(R.id.install_status);
+        forceShell = getIntent().getBooleanExtra(EXTRA_FORCE_SHELL, false);
         ExtraKeysView extraKeys = findViewById(R.id.extra_keys);
         extraKeys.attachTerminal(terminal);
 
@@ -68,7 +85,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
             @Override
             public void onNewTab() {
-                createSession();
+                createSession(debianByDefault());
+            }
+
+            @Override
+            public void onNewTabLongPress() {
+                if (!DebianRootfs.isInstalled(MainActivity.this)
+                        && DebianRootfs.assetAvailable(MainActivity.this)) {
+                    installDebianThenCreateSession();
+                } else {
+                    createSession(!debianByDefault());
+                }
             }
         });
 
@@ -83,7 +110,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 public void onLayoutChange(View v, int l, int t, int r, int b,
                         int ol, int ot, int or, int ob) {
                     terminal.removeOnLayoutChangeListener(this);
-                    if (sessions.isEmpty()) createSession();
+                    if (sessions.isEmpty()) createFirstSession();
                 }
             });
         } else {
@@ -91,16 +118,63 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
-    private void createSession() {
+    private boolean debianByDefault() {
+        return !forceShell && DebianRootfs.isInstalled(this);
+    }
+
+    /** First tab: Debian when installed, install flow when only bundled. */
+    private void createFirstSession() {
+        if (debianByDefault()) {
+            createSession(true);
+        } else if (!forceShell && DebianRootfs.assetAvailable(this)) {
+            installDebianThenCreateSession();
+        } else {
+            createSession(false);
+        }
+    }
+
+    private void createSession(boolean debian) {
         try {
             TerminalSession s = sessions.create(this,
-                    terminal.gridCols(), terminal.gridRows(), this);
+                    terminal.gridCols(), terminal.gridRows(), debian, this);
             switchTo(s);
         } catch (IOException e) {
             Toast.makeText(this, "Failed to start shell: " + e.getMessage(),
                     Toast.LENGTH_LONG).show();
             if (sessions.isEmpty()) finish();
         }
+    }
+
+    /**
+     * One-time rootfs extraction on a background thread; the overlay shows
+     * progress. Install is idempotent/synchronized, so a racing second
+     * activity instance at worst waits and then finds it installed.
+     */
+    private void installDebianThenCreateSession() {
+        installStatus.setText("Installing Debian…");
+        installStatus.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            IOException failure = null;
+            try {
+                DebianRootfs.install(getApplicationContext(), bytes ->
+                        runOnUiThread(() -> installStatus.setText(
+                                "Installing Debian… " + (bytes >> 20) + " MB")));
+            } catch (IOException e) {
+                failure = e;
+            }
+            final IOException error = failure;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                installStatus.setVisibility(View.GONE);
+                if (error == null) {
+                    createSession(true);
+                } else {
+                    Toast.makeText(this, "Debian install failed: "
+                            + error.getMessage(), Toast.LENGTH_LONG).show();
+                    if (sessions.isEmpty()) createSession(false);
+                }
+            });
+        }, "debian-install").start();
     }
 
     private void switchTo(TerminalSession s) {
@@ -127,7 +201,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         List<TerminalSession> all = sessions.sessions();
         for (int i = 0; i < all.size(); i++) {
             String t = all.get(i).title();
-            titles.add(t == null || t.isEmpty() ? "sh:" + (i + 1) : t);
+            titles.add(t == null || t.isEmpty()
+                    ? all.get(i).label() + ":" + (i + 1) : t);
         }
         tabs.update(titles, sessions.indexOf(current));
     }

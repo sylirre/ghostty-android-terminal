@@ -11,9 +11,11 @@ import static dev.androidterm.TestUtil.waitFor;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.content.Intent;
 import android.view.View;
 
 import androidx.test.core.app.ActivityScenario;
+import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.junit.After;
@@ -44,7 +46,12 @@ public class TerminalUiTest {
 
     @Before
     public void launch() {
-        scenario = ActivityScenario.launch(MainActivity.class);
+        // Force the plain Android shell: these tests assert sh-specific
+        // behavior and tab titles, and must not depend on whether a Debian
+        // rootfs is bundled/installed (DebianSessionTest covers PRoot).
+        Intent intent = new Intent(ApplicationProvider.getApplicationContext(),
+                MainActivity.class).putExtra(MainActivity.EXTRA_FORCE_SHELL, true);
+        scenario = ActivityScenario.launch(intent);
         waitFor("first session", TIMEOUT_MS, () -> !SessionManager.get().isEmpty());
     }
 

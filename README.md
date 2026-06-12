@@ -2,13 +2,19 @@
 
 Terminal emulator for Android backed by the
 [Ghostty](https://github.com/ghostty-org/ghostty) VT engine
-(`libghostty-vt`). Runs the system shell — no bundled userland.
+(`libghostty-vt`). Runs a full **Debian userland under
+[PRoot](https://proot-me.github.io/)** (bash, apt, dpkg — no root
+required) when a rootfs is bundled, and the stock `/system/bin/sh`
+otherwise.
 
 <img src="docs/screenshot.png" width="280" alt="AndroidTerm running ls /system">
 
 
-- Shell: `/system/bin/sh` with `PATH=/system/bin`
-- Multiple sessions in tabs
+- Debian login shell (fake root, working apt/dpkg) via PRoot, which is
+  linked into the JNI library and traced entirely in-process — see
+  [docs/architecture.md](docs/architecture.md)
+- Android shell: `/system/bin/sh` with `PATH=/system/bin`
+- Multiple sessions in tabs (both kinds side by side)
 - Special-key toolbar (ESC, CTRL, ALT, TAB, arrows, …) above the touch
   keyboard
 - VT emulation, key encoding and scrollback come from Ghostty's terminal
@@ -43,6 +49,22 @@ If the NDK is not installed inside the SDK, set `ndkPath` via
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### Bundling the Debian userland
+
+Place rootfs tarballs in `DebianRootfs/` at the repo root before building
+(the directory is gitignored — the tarballs are never committed):
+
+```
+DebianRootfs/debian_trixie_aarch64_rootfs.tar.xz
+DebianRootfs/debian_trixie_x86_64_rootfs.tar.xz
+```
+
+When present they ship as APK assets and the app extracts the one matching
+the device ABI on first launch (a few seconds, with on-screen progress).
+Without them the app builds and runs as a plain Android-shell terminal.
+The tarballs must contain a Debian root directory tree made of regular
+files, directories and links only (e.g. produced by debootstrap).
+
 ## Usage
 
 - **Typing**: tap the terminal to open the keyboard. Text goes straight to
@@ -50,8 +72,12 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 - **Toolbar**: `CTRL` and `ALT` are sticky — tap `CTRL`, then `c` to send
   Ctrl-C. Other keys (ESC, TAB, arrows, HOME/END, PGUP/PGDN) send
   immediately.
-- **Tabs**: `+` opens a new shell session; tap a tab to switch; `×` closes
-  the current one. Closing the last tab exits the app.
+- **Tabs**: `+` opens a new session (Debian when installed, Android shell
+  otherwise); **long-press `+`** opens the other kind. Tap a tab to
+  switch; `×` closes the current one. Closing the last tab exits the app.
+- **Debian**: you are (fake) root; `apt update && apt install …` works.
+  Networking uses the app's permissions; everything actually runs as the
+  app's unprivileged uid.
 - **Scrollback**: drag vertically on the terminal. Any key press snaps back
   to the bottom.
 - **Font size**: pinch to zoom (8–40 sp, persisted across restarts); the

@@ -3,6 +3,12 @@
  *
  * Java owns the master fd (via ParcelFileDescriptor) for I/O; this file only
  * covers what Java can't: openpt/fork/exec, TIOCSWINSZ, waitpid, kill.
+ *
+ * Two spawn flavors share the PTY/fork setup: execve() for Android shells,
+ * and proot_main() for Debian sessions. PRoot is linked into libterm.so and
+ * entered directly in the fork()ed child because Android's W^X policy
+ * (targetSdk >= 29) forbids execve() of anything under app data, so there
+ * is no proot binary to exec (see native/proot/ANDROID.md).
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -14,6 +20,11 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+
+extern char **environ;
+
+/* PRoot's main(), renamed under PROOT_JNI (native/proot/src/cli/cli.c). */
+extern int proot_main(int argc, char *const argv[]);
 
 static int throw_errno(JNIEnv *env, const char *what) {
     char msg[256];
@@ -36,12 +47,14 @@ static char **to_cstr_array(JNIEnv *env, jobjectArray arr) {
     return out;
 }
 
-JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_ptyCreate(
-    JNIEnv *env, jclass clazz, jstring jcmd, jobjectArray jargs,
-    jobjectArray jenv, jstring jcwd, jint cols, jint rows, jintArray jpid) {
-    (void)clazz;
-
+/*
+ * Opens a PTY and forks a child on it. If cmd is non-NULL the child
+ * execve()s it; otherwise the child enters proot_main(argv) in-process.
+ * Returns the master fd, or throws and returns -1.
+ */
+static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
+                         jobjectArray jenv, jstring jcwd, jint cols, jint rows,
+                         jintArray jpid) {
     int master = open("/dev/ptmx", O_RDWR | O_CLOEXEC);
     if (master < 0) return throw_errno(env, "open /dev/ptmx");
 
@@ -56,7 +69,7 @@ Java_dev_androidterm_term_TerminalNative_ptyCreate(
                          .ws_col = (unsigned short)cols};
     ioctl(master, TIOCSWINSZ, &ws);
 
-    const char *cmd = (*env)->GetStringUTFChars(env, jcmd, NULL);
+    const char *cmd = jcmd ? (*env)->GetStringUTFChars(env, jcmd, NULL) : NULL;
     const char *cwd = jcwd ? (*env)->GetStringUTFChars(env, jcwd, NULL) : NULL;
     char **argv = to_cstr_array(env, jargs);
     char **envp = to_cstr_array(env, jenv);
@@ -76,7 +89,19 @@ Java_dev_androidterm_term_TerminalNative_ptyCreate(
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
         if (cwd) chdir(cwd);
-        execve(cmd, argv, envp);
+        /* fork() copies the calling (ART) thread's signal mask and execve()
+         * does not reset it; both the shell and PRoot expect a clear one. */
+        sigset_t mask;
+        sigemptyset(&mask);
+        sigprocmask(SIG_SETMASK, &mask, NULL);
+        if (cmd) {
+            execve(cmd, argv, envp);
+        } else {
+            int argc = 0;
+            while (argv[argc] != NULL) argc++;
+            environ = envp; /* proot_main reads PROOT_* via getenv */
+            proot_main(argc, argv); /* never returns: _exit()s */
+        }
         _exit(127);
     }
 
@@ -84,12 +109,28 @@ Java_dev_androidterm_term_TerminalNative_ptyCreate(
     for (char **p = envp; *p; p++) free(*p);
     free(argv);
     free(envp);
-    (*env)->ReleaseStringUTFChars(env, jcmd, cmd);
+    if (cmd) (*env)->ReleaseStringUTFChars(env, jcmd, cmd);
     if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
 
     jint pid_out = (jint)pid;
     (*env)->SetIntArrayRegion(env, jpid, 0, 1, &pid_out);
     return master;
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_androidterm_term_TerminalNative_ptyCreate(
+    JNIEnv *env, jclass clazz, jstring jcmd, jobjectArray jargs,
+    jobjectArray jenv, jstring jcwd, jint cols, jint rows, jintArray jpid) {
+    (void)clazz;
+    return spawn_on_pty(env, jcmd, jargs, jenv, jcwd, cols, rows, jpid);
+}
+
+JNIEXPORT jint JNICALL
+Java_dev_androidterm_term_TerminalNative_ptyCreateProot(
+    JNIEnv *env, jclass clazz, jobjectArray jargs, jobjectArray jenv,
+    jstring jcwd, jint cols, jint rows, jintArray jpid) {
+    (void)clazz;
+    return spawn_on_pty(env, NULL, jargs, jenv, jcwd, cols, rows, jpid);
 }
 
 JNIEXPORT void JNICALL

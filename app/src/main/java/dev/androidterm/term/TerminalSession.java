@@ -48,30 +48,27 @@ public final class TerminalSession {
     private volatile String title;
     private volatile Integer exitCode;
 
-    /**
-     * Spawns /system/bin/sh with PATH=/system/bin on a new PTY.
-     *
-     * @param homeDir HOME and initial working directory (app files dir —
-     *                the only generally writable place).
-     * @param tmpDir  TMPDIR (app cache dir).
-     */
+    private final String label;
+
+    /** Spawns /system/bin/sh; see {@link SessionCommand#androidShell}. */
     public TerminalSession(int cols, int rows, String homeDir, String tmpDir,
             Listener listener) throws IOException {
+        this(cols, rows, SessionCommand.androidShell(homeDir, tmpDir), listener);
+    }
+
+    /** Spawns the given command (Android shell or Debian-under-PRoot). */
+    public TerminalSession(int cols, int rows, SessionCommand command,
+            Listener listener) throws IOException {
         this.listener = listener;
+        this.label = command.label;
         this.emulator = new TerminalEmulator(cols, rows, SCROLLBACK_ROWS);
 
-        String[] env = {
-                "PATH=/system/bin",
-                "HOME=" + homeDir,
-                "TMPDIR=" + tmpDir,
-                "TERM=xterm-256color",
-                "LANG=en_US.UTF-8",
-                "ANDROID_ROOT=/system",
-                "ANDROID_DATA=/data",
-        };
         int[] pidOut = new int[1];
-        int fd = TerminalNative.ptyCreate("/system/bin/sh",
-                new String[] {"sh"}, env, homeDir, cols, rows, pidOut);
+        int fd = command.cmd != null
+                ? TerminalNative.ptyCreate(command.cmd, command.argv,
+                        command.env, command.cwd, cols, rows, pidOut)
+                : TerminalNative.ptyCreateProot(command.argv, command.env,
+                        command.cwd, cols, rows, pidOut);
         lastCols = cols;
         lastRows = rows;
         this.pid = pidOut[0];
@@ -144,6 +141,11 @@ public final class TerminalSession {
     /** Title from OSC 0/2, or null. */
     public String title() {
         return title;
+    }
+
+    /** Static tab-title prefix for sessions that never set a title. */
+    public String label() {
+        return label;
     }
 
     /** Exit status, or null while the shell is running. */

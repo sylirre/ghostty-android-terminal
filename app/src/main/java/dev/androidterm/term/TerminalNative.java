@@ -46,6 +46,15 @@ public final class TerminalNative {
     public static native int ptyCreate(String cmd, String[] args, String[] env,
             String cwd, int cols, int rows, int[] pidOut) throws java.io.IOException;
 
+    /**
+     * Opens a PTY and forks a child that enters PRoot's main() in-process
+     * (libterm.so links PRoot; nothing is exec'd except, later, the tracee's
+     * loader — see native/proot/ANDROID.md). args is the full proot argv
+     * including argv[0]; env must carry PROOT_LOADER and PROOT_TMP_DIR.
+     */
+    public static native int ptyCreateProot(String[] args, String[] env,
+            String cwd, int cols, int rows, int[] pidOut) throws java.io.IOException;
+
     public static native void ptySetSize(int fd, int cols, int rows);
 
     /** Blocks until pid exits; returns exit code or -signal. */

@@ -5,9 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Android terminal emulator backed by Ghostty's VT engine (`libghostty-vt`).
-Runs `/system/bin/sh` with `PATH=/system/bin`; session tabs; extra-keys
-toolbar above the soft keyboard. minSdk 29, targetSdk 36, ABIs
-arm64-v8a + x86_64.
+Runs a Debian userland under PRoot (rootfs bundled as an optional,
+gitignored APK asset from `DebianRootfs/`) and/or `/system/bin/sh` with
+`PATH=/system/bin`; session tabs; extra-keys toolbar above the soft
+keyboard. minSdk 29, targetSdk 36, ABIs arm64-v8a + x86_64.
 
 Docs: [docs/architecture.md](docs/architecture.md) (design, data flow, key
 decisions), [docs/native-build.md](docs/native-build.md) (Ghostty
@@ -57,13 +58,19 @@ Java  app/src/main/java/dev/androidterm/
   term/  TerminalNative (JNI surface + shared constants)
          TerminalEmulator (owns the native handle, all calls synchronized)
          TerminalSession (PTY + shell pid + reader thread)
+         SessionCommand (execve command or PRoot argv + env + tab label)
+         DebianRootfs (rootfs asset → tar.xz install → PRoot command line)
          SessionManager (process singleton: sessions survive Activity recreation)
          ScreenSnapshot (flat viewport arrays for rendering)
   ui/    TerminalView (Canvas grid renderer + TYPE_NULL InputConnection)
          ExtraKeysView, TabStripView, MainActivity
 JNI   app/src/main/cpp/   → libterm.so (CMake, NDK)
-  pty_jni.c       openpt/fork/exec, TIOCSWINSZ, waitpid/kill
+  pty_jni.c       openpt/fork + execve(sh) or proot_main(), TIOCSWINSZ, waitpid/kill
   terminal_jni.c  libghostty-vt bindings, snapshot flattening, key encoding
+C     native/proot/       → PRoot (Termux fork) linked into libterm.so,
+                            plus the libproot-loader.so executable
+      native/talloc/      → talloc (PRoot dependency); local mods in
+                            native/proot/ANDROID.md
 Zig   native/ghostty-vt/  → libghostty-vt.a prebuilt per ABI + vendored headers
 ```
 
@@ -94,6 +101,17 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   UTF-8; special keys and ctrl/alt combos go through Ghostty's key encoder,
   which honors terminal modes (e.g. DECCKM arrow encoding). The Android
   keycode → GhosttyKey mapping lives in C (`map_keycode`).
+- **Nothing proot-shaped is ever exec'd.** W^X (targetSdk ≥ 29) forbids
+  exec under app data, so PRoot is linked into libterm.so and entered via
+  `proot_main()` in the fork()ed PTY child; only its loader — a static
+  executable packaged as `libproot-loader.so` so it lands in
+  nativeLibraryDir — is execve'd (path via `PROOT_LOADER`). Consequences:
+  `useLegacyPackaging true` must stay; `--sysvipc` must stay unused (its
+  helper re-execs /proc/self/exe = the Android runtime); PRoot exits via
+  `_exit()` (see native/proot/ANDROID.md).
+- **The loader links with `--image-base`, not upstream's `-Ttext`.** The
+  NDK adds `--no-rosegment`; combined with `-Ttext` lld emits a file
+  spanning the ~128 GiB to the loader address (this filled a disk once).
 
 ### Behavior constraints discovered the hard way
 
@@ -104,12 +122,17 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 - **minSdk must stay ≥ 29**: the Zig-built archive uses ELF TLS, which
   bionic supports only from API 29.
 - `TERM=xterm-256color` (not `xterm-ghostty`): Android has no terminfo.
+- **Apps can't hard-link or create device nodes**: the rootfs installer
+  copies tar hard-link entries and skips device nodes; at runtime PRoot
+  runs with `--link2symlink` and binds the host /dev, /proc, /sys.
 
 ## Test conventions
 
 - Suites: `EmulatorVtTest` (deterministic VT/encoder through JNI, no
-  shell), `ShellSessionTest` (real `sh` over a PTY), `TerminalUiTest`
-  (ActivityScenario + Espresso).
+  shell), `ShellSessionTest` (real `sh` over a PTY), `DebianSessionTest`
+  (bash under PRoot; skips itself when no rootfs asset is bundled),
+  `TerminalUiTest` (ActivityScenario + Espresso; launches with
+  `MainActivity.EXTRA_FORCE_SHELL` so it always tests plain sh).
 - Shell output is asynchronous: poll with `TestUtil.waitFor`, never fixed
   sleeps. Pass the optional diagnostic supplier so timeouts dump the screen.
 - Write escape sequences as `\u001b` string escapes, never raw control
@@ -125,4 +148,6 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 `.github/workflows/ci.yml`: a build job uploads the debug APK artifact; an
 emulator job (KVM, animations off) runs the full instrumented suite and
 uploads test reports on failure. Zig is not needed in CI — the Ghostty
-prebuilts are committed.
+prebuilts are committed. The Debian rootfs tarballs are NOT in the repo,
+so CI builds without Debian assets and `DebianSessionTest` is skipped;
+run it locally with the tarballs in `DebianRootfs/` (docs/testing.md).

@@ -32,9 +32,36 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    packaging {
+        jniLibs {
+            // Extract native libs to nativeLibraryDir: the PRoot loader
+            // (an executable named lib*.so to ride this pipeline) must be
+            // a real on-disk file for execve(); W^X forbids exec anywhere
+            // under app data.
+            useLegacyPackaging true
+        }
+    }
+
+    androidResources {
+        // The rootfs assets are already xz; don't deflate them again.
+        noCompress 'xz'
+    }
+}
+
+// Debian rootfs tarballs are bundled as assets when present (they are
+// never committed; see .gitignore). Without them the app still builds and
+// runs — Debian sessions are simply unavailable.
+def debianRootfs = rootProject.file("DebianRootfs")
+if (debianRootfs.isDirectory()) {
+    android.sourceSets.main.assets.srcDirs += debianRootfs
 }
 
 dependencies {
+    // Pure-Java XZ decoder for the rootfs installer (tar parsing is local
+    // code: the rootfs tarballs only need files/dirs/links).
+    implementation "org.tukaani:xz:1.10"
+
     androidTestImplementation "androidx.test:core:1.6.1"
     androidTestImplementation "androidx.test:runner:1.6.2"
     androidTestImplementation "androidx.test:rules:1.6.1"

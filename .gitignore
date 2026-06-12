@@ -8,3 +8,5 @@ captures/
 .externalNativeBuild/
 .claude/
 third_party/
+# Debian rootfs tarballs (bundled as APK assets when present; never committed)
+DebianRootfs/
