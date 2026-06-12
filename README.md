@@ -16,7 +16,8 @@ Terminal emulator for Android backed by the
 - Android SDK (platform 36, build-tools) and NDK r27+
 - JDK 17–21 to run Gradle
 - Host `cmake` ≥ 3.22 and `ninja` (or install the SDK cmake package)
-- Device/emulator with API 26+
+- Device/emulator with API 29+ (the Zig-built Ghostty library needs
+  bionic ELF TLS support)
 
 Zig is **not** required to build the app; it is only needed to regenerate
 the prebuilt Ghostty library (see [docs/native-build.md](docs/native-build.md)).
