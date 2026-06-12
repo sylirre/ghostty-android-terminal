@@ -34,7 +34,9 @@ public final class TerminalSession {
     private static final int SCROLLBACK_ROWS = 10_000;
 
     public final TerminalEmulator emulator;
-    private final Listener listener;
+    // Volatile, not final: the Activity that listens is recreated on config
+    // changes while sessions live on in SessionManager.
+    private volatile Listener listener;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean updatePending = new AtomicBoolean();
 
@@ -99,25 +101,39 @@ public final class TerminalSession {
         emulator.close();
     }
 
+    public void setListener(Listener l) {
+        listener = l;
+    }
+
     private void waitLoop() {
         int code = TerminalNative.processWaitFor(pid);
         exitCode = code;
-        mainHandler.post(() -> listener.onExited(this, code));
+        mainHandler.post(() -> {
+            Listener l = listener;
+            if (l != null) l.onExited(this, code);
+        });
     }
 
     private void dispatchEvents() {
         int events = emulator.events();
         if ((events & TerminalNative.EVENT_TITLE) != 0) {
             title = emulator.title();
-            mainHandler.post(() -> listener.onTitleChanged(this));
+            mainHandler.post(() -> {
+                Listener l = listener;
+                if (l != null) l.onTitleChanged(this);
+            });
         }
         if ((events & TerminalNative.EVENT_BELL) != 0) {
-            mainHandler.post(() -> listener.onBell(this));
+            mainHandler.post(() -> {
+                Listener l = listener;
+                if (l != null) l.onBell(this);
+            });
         }
         if (updatePending.compareAndSet(false, true)) {
             mainHandler.post(() -> {
                 updatePending.set(false);
-                listener.onUpdate(this);
+                Listener l = listener;
+                if (l != null) l.onUpdate(this);
             });
         }
     }
