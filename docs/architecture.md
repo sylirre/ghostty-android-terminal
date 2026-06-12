@@ -151,6 +151,34 @@ calls. Cell size derives from font metrics; on layout the view computes
 cols/rows and resizes the PTY + terminal. Wide (CJK) glyphs occupy two cells
 (the trailing spacer cell has codepoint 0 and is skipped).
 
+### Selection and clipboard
+
+Long-press selects the word under the finger (Ghostty's
+`ghostty_terminal_select_word`; a blank cell falls back to selecting just
+that cell so the gesture always yields a paste anchor). The selection is
+installed as the *terminal's* active selection
+(`GHOSTTY_TERMINAL_OPT_SELECTION`), where Ghostty converts it to tracked
+grid refs — so it stays glued to its text across scrolling, new output,
+and resize/reflow with no Java-side bookkeeping. The snapshot reports
+selected cells with fg/bg swapped (inverse video, Ghostty's default
+selection style — the Java renderer needed zero changes) and the
+forward-ordered endpoint viewport coordinates in `meta[9..13]` for handle
+placement.
+
+`TerminalView` draws the system `textSelectHandleLeft/Right` drawables
+under the endpoints and shows a floating `ActionMode` toolbar: Copy
+always, Paste only when the clipboard advertises text (checked via
+`ClipDescription` so the button itself doesn't trigger Android's
+clipboard-access toast). Dragging a handle first reorders the selection so
+the grabbed endpoint is the logical end (`terminalSelectionAnchor`), then
+moves only that end (`terminalSelectionDrag`) — dragging across the other
+endpoint flips the selection naturally, and dragging past the top/bottom
+edge scrolls the viewport. Copy extracts text with
+`ghostty_terminal_selection_format_alloc` (unwrapped, trimmed); Paste runs
+the clip through `ghostty_paste_encode`, which strips unsafe control bytes
+and applies bracketed-paste markers (mode 2004) or newline→CR. Typing, a
+tap outside the handles, or switching sessions dismisses the selection.
+
 ### Keyboard and extra keys
 
 The view's `InputConnection` uses `TYPE_NULL` so soft keyboards deliver

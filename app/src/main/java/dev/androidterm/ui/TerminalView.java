@@ -1,12 +1,23 @@
 package dev.androidterm.ui;
 
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
+import android.view.ActionMode;
 import android.view.GestureDetector;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
@@ -70,6 +81,21 @@ public class TerminalView extends View {
     private float scrollRemainder;
     private float fontSizeSp;
 
+    // --- Selection. The emulator owns the selection itself (it tracks its
+    // text across scrolling and new output); this view only mirrors it:
+    // `selecting` spans the ActionMode lifecycle, the handle rects are
+    // recomputed from each snapshot in onDraw and hit-tested on touch.
+    private boolean selecting;
+    private int draggingHandle = -1; // -1 none, 0 top-left, 1 bottom-right
+    private float dragOffsetX, dragOffsetY; // grabbed cell center − touch point
+    private ActionMode actionMode;
+    private final Drawable handleLeft, handleRight;
+    private final RectF startHandleRect = new RectF();
+    private final RectF endHandleRect = new RectF();
+
+    private static final int MENU_COPY = 1;
+    private static final int MENU_PASTE = 2;
+
     public TerminalView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setFocusable(true);
@@ -94,13 +120,29 @@ public class TerminalView extends View {
             }
         });
 
+        TypedArray handles = context.obtainStyledAttributes(new int[] {
+                android.R.attr.textSelectHandleLeft,
+                android.R.attr.textSelectHandleRight});
+        handleLeft = handles.getDrawable(0);
+        handleRight = handles.getDrawable(1);
+        handles.recycle();
+
         gestures = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
+                if (selecting) {
+                    finishSelection();
+                    return true;
+                }
                 requestFocus();
                 InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
                 imm.showSoftInput(TerminalView.this, 0);
                 return true;
+            }
+
+            @Override
+            public void onLongPress(MotionEvent e) {
+                startSelection(e.getX(), e.getY());
             }
 
             @Override
@@ -168,6 +210,7 @@ public class TerminalView extends View {
 
     /** Binds a session; pass null to detach. Resizes it to fit this view. */
     public void attachSession(TerminalSession s) {
+        if (s != session) finishSelection(); // also clears the old session's selection
         session = s;
         if (s != null && getWidth() > 0) {
             updateGridSize(getWidth(), getHeight());
@@ -203,6 +246,9 @@ public class TerminalView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        // Handle drags own the whole gesture; everything else (scroll, tap,
+        // long-press, pinch) still works while a selection is showing.
+        if (selecting && selectionHandleTouch(event)) return true;
         scaleGestures.onTouchEvent(event);
         // Suppress scrolling (and taps) while a pinch is in progress so the
         // viewport doesn't jump around during zoom.
@@ -211,6 +257,177 @@ public class TerminalView extends View {
         }
         return true;
     }
+
+    // --- Selection ---
+
+    private void startSelection(float px, float py) {
+        if (session == null || selecting) return;
+        int cx = clampToGrid(px / cellWidth, cols);
+        int cy = clampToGrid(py / (float) cellHeight, rows);
+        if (!session.emulator.selectWord(cx, cy)) return;
+        selecting = true;
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        actionMode = startActionMode(selectionActions, ActionMode.TYPE_FLOATING);
+        invalidate();
+    }
+
+    /** Ends selection mode and clears the emulator's selection. Idempotent. */
+    public void finishSelection() {
+        if (actionMode != null) {
+            actionMode.finish(); // onDestroyActionMode resets the state
+        } else if (selecting) {
+            selecting = false;
+            if (session != null) session.emulator.selectionClear();
+            invalidate();
+        }
+    }
+
+    private boolean selectionHandleTouch(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                for (int which = 0; which < 2; which++) {
+                    RectF r = which == 0 ? startHandleRect : endHandleRect;
+                    if (r.isEmpty() || !r.contains(event.getX(), event.getY())) {
+                        continue;
+                    }
+                    draggingHandle = which;
+                    // Drag relative to the grabbed endpoint's cell so the
+                    // selection doesn't jump under the finger.
+                    int hx = which == 0 ? snapshot.selectionStartX() : snapshot.selectionEndX();
+                    int hy = which == 0 ? snapshot.selectionStartY() : snapshot.selectionEndY();
+                    dragOffsetX = (hx + 0.5f) * cellWidth - event.getX();
+                    dragOffsetY = (hy + 0.5f) * cellHeight - event.getY();
+                    if (session != null) session.emulator.selectionAnchor(which);
+                    return true;
+                }
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if (draggingHandle < 0) return false;
+                dragSelectionTo(event.getX() + dragOffsetX, event.getY() + dragOffsetY);
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (draggingHandle < 0) return false;
+                draggingHandle = -1;
+                if (actionMode != null) actionMode.invalidateContentRect();
+                return true;
+            default:
+                return draggingHandle >= 0;
+        }
+    }
+
+    private void dragSelectionTo(float px, float py) {
+        if (session == null) return;
+        // Dragging past the edge scrolls a row per move event; the tracked
+        // selection stays glued to its text while the viewport moves.
+        if (py < 0) {
+            session.emulator.scrollBy(-1);
+        } else if (py >= rows * cellHeight) {
+            session.emulator.scrollBy(1);
+        }
+        session.emulator.selectionDrag(
+                clampToGrid(px / cellWidth, cols),
+                clampToGrid(py / (float) cellHeight, rows));
+        if (actionMode != null) actionMode.hide(ActionMode.DEFAULT_HIDE_DURATION);
+        invalidate();
+    }
+
+    private static int clampToGrid(float cell, int count) {
+        return Math.max(0, Math.min((int) cell, count - 1));
+    }
+
+    /**
+     * Metadata-only check (no clip data read) so showing the Paste button
+     * doesn't trigger Android's "app accessed the clipboard" toast.
+     */
+    private boolean clipboardHasText() {
+        ClipboardManager cm = getContext().getSystemService(ClipboardManager.class);
+        if (cm == null || !cm.hasPrimaryClip()) return false;
+        ClipDescription d = cm.getPrimaryClipDescription();
+        return d != null && d.hasMimeType("text/*");
+    }
+
+    private String clipboardText() {
+        ClipboardManager cm = getContext().getSystemService(ClipboardManager.class);
+        ClipData clip = cm == null ? null : cm.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return null;
+        CharSequence text = clip.getItemAt(0).coerceToText(getContext());
+        return text == null || text.length() == 0 ? null : text.toString();
+    }
+
+    private void copySelection() {
+        String text = session == null ? null : session.emulator.selectionText();
+        if (text == null || text.isEmpty()) return;
+        ClipboardManager cm = getContext().getSystemService(ClipboardManager.class);
+        if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("terminal", text));
+    }
+
+    private void pasteClipboard() {
+        String text = clipboardText();
+        if (text == null || session == null) return;
+        byte[] encoded = session.emulator.encodePaste(text);
+        if (encoded == null) return;
+        session.emulator.scrollToBottom();
+        session.writeBytes(encoded);
+        invalidate();
+    }
+
+    private final ActionMode.Callback2 selectionActions = new ActionMode.Callback2() {
+        @Override
+        public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+            menu.add(Menu.NONE, MENU_COPY, 0, android.R.string.copy);
+            if (clipboardHasText()) {
+                menu.add(Menu.NONE, MENU_PASTE, 1, android.R.string.paste);
+            }
+            return true;
+        }
+
+        @Override
+        public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
+            return false;
+        }
+
+        @Override
+        public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+            if (item.getItemId() == MENU_COPY) {
+                copySelection();
+            } else if (item.getItemId() == MENU_PASTE) {
+                pasteClipboard();
+            }
+            mode.finish();
+            return true;
+        }
+
+        @Override
+        public void onDestroyActionMode(ActionMode mode) {
+            // Single reset path: reached from finishSelection() and from
+            // system-initiated dismissals alike.
+            actionMode = null;
+            selecting = false;
+            draggingHandle = -1;
+            if (session != null) session.emulator.selectionClear();
+            invalidate();
+        }
+
+        @Override
+        public void onGetContentRect(ActionMode mode, View view, Rect outRect) {
+            // Float the toolbar around the visible part of the selection,
+            // leaving room for the handles below it.
+            int top = snapshot.selectionStartVisible()
+                    ? snapshot.selectionStartY() * cellHeight : 0;
+            int bottom = snapshot.selectionEndVisible()
+                    ? (snapshot.selectionEndY() + 1) * cellHeight
+                            + (handleRight != null ? handleRight.getIntrinsicHeight() : 0)
+                    : getHeight();
+            int left = 0, right = getWidth();
+            if (snapshot.selectionStartVisible() && snapshot.selectionEndVisible()
+                    && snapshot.selectionStartY() == snapshot.selectionEndY()) {
+                left = (int) (snapshot.selectionStartX() * cellWidth);
+                right = (int) ((snapshot.selectionEndX() + 1) * cellWidth);
+            }
+            outRect.set(left, top, right, bottom);
+        }
+    };
 
     @Override
     protected void onDraw(Canvas canvas) {
@@ -242,6 +459,45 @@ public class TerminalView extends View {
         for (int y = 0; y < sr; y++) {
             drawRowText(canvas, y, sc);
         }
+        drawSelectionHandles(canvas);
+        if (selecting && !snapshot.hasSelection()) {
+            // The selected text scrolled out of existence (scrollback
+            // pruning, screen switch); retire the UI outside of draw.
+            post(this::finishSelection);
+        }
+    }
+
+    private void drawSelectionHandles(Canvas canvas) {
+        startHandleRect.setEmpty();
+        endHandleRect.setEmpty();
+        if (!selecting || !snapshot.hasSelection()) return;
+        if (snapshot.selectionStartVisible() && handleLeft != null) {
+            placeHandle(handleLeft, startHandleRect, true,
+                    snapshot.selectionStartX() * cellWidth,
+                    (snapshot.selectionStartY() + 1) * cellHeight);
+            handleLeft.draw(canvas);
+        }
+        if (snapshot.selectionEndVisible() && handleRight != null) {
+            placeHandle(handleRight, endHandleRect, false,
+                    (snapshot.selectionEndX() + 1) * cellWidth,
+                    (snapshot.selectionEndY() + 1) * cellHeight);
+            handleRight.draw(canvas);
+        }
+    }
+
+    /**
+     * Anchors a handle drawable's pointer tip at (anchorX, anchorY) — the
+     * hotspot sits at 3/4 of the width for the left handle and 1/4 for the
+     * right, like TextView's — and records an enlarged touch target.
+     */
+    private void placeHandle(Drawable d, RectF touchRect, boolean left,
+            float anchorX, float anchorY) {
+        int w = d.getIntrinsicWidth(), h = d.getIntrinsicHeight();
+        int x = (int) (anchorX - (left ? w * 3 / 4f : w / 4f));
+        int y = (int) anchorY;
+        d.setBounds(x, y, x + w, y + h);
+        touchRect.set(x, y, x + w, y + h);
+        touchRect.inset(-w / 4f, -h / 4f);
     }
 
     private final StringBuilder runText = new StringBuilder(128);
@@ -335,6 +591,7 @@ public class TerminalView extends View {
     /** Sends printable text, applying any sticky CTRL/ALT to single chars. */
     public void dispatchText(String text) {
         if (session == null || text.isEmpty()) return;
+        if (selecting) finishSelection();
         int mods = sticky.consume();
         if (mods == 0 || text.codePointCount(0, text.length()) > 1) {
             session.emulator.scrollToBottom();
@@ -358,6 +615,7 @@ public class TerminalView extends View {
     /** Sends a non-printable key (arrows, ESC, …) through the VT encoder. */
     public void dispatchKey(int androidKeyCode) {
         if (session == null) return;
+        if (selecting) finishSelection();
         session.sendKey(androidKeyCode, sticky.consume(), null, 0);
         invalidate();
     }
@@ -404,6 +662,7 @@ public class TerminalView extends View {
             return super.onKeyDown(keyCode, event);
         }
         if (event.isSystem()) return super.onKeyDown(keyCode, event);
+        if (selecting) finishSelection();
 
         int mods = sticky.consume();
         if (event.isCtrlPressed()) mods |= TerminalNative.MOD_CTRL;

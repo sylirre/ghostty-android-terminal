@@ -89,10 +89,15 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   `ghostty_terminal_vt_write` and consumed by Java right after `feed()`.
   There are deliberately no native→Java upcalls.
 - **Java is a dumb renderer.** The snapshot resolves colors to final ARGB
-  natively (defaults, inverse, faint, invisible, palette lookups). The
-  `meta[]` layout is defined in `terminal_jni.c` and mirrored by
-  `ScreenSnapshot` accessors; `ATTR_*`/`EVENT_*`/`MOD_*` constants must stay
-  in sync between `terminal_jni.c` and `TerminalNative`.
+  natively (defaults, inverse, faint, invisible, selection highlight,
+  palette lookups). The `meta[]` layout is defined in `terminal_jni.c` and
+  mirrored by `ScreenSnapshot` accessors; `ATTR_*`/`EVENT_*`/`MOD_*`/`SEL_*`
+  constants must stay in sync between `terminal_jni.c` and `TerminalNative`.
+- **The selection lives in the terminal, not the view.** Long-press installs
+  it via `GHOSTTY_TERMINAL_OPT_SELECTION` (tracked grid refs), so it follows
+  its text across scroll/output/reflow; `TerminalView` only draws handles at
+  the endpoint coordinates the snapshot reports and never stores cell
+  positions (docs/architecture.md, "Selection and clipboard").
 - **Ghostty C callbacks must be assigned through their typedefs** (see
   `write_pty_fn` etc. in terminal_jni.c). `ghostty_terminal_set` takes
   `void*`, so a signature mismatch compiles silently and SIGSEGVs at

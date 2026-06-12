@@ -16,7 +16,7 @@ public final class ScreenSnapshot {
     public int[] bg = new int[0];
     public byte[] attrs = new byte[0];
     /** See terminal_jni.c terminalSnapshot for the layout. */
-    public final int[] meta = new int[9];
+    public final int[] meta = new int[14];
 
     public boolean cursorInViewport() { return meta[0] != 0; }
     public int cursorX() { return meta[1]; }
@@ -26,6 +26,26 @@ public final class ScreenSnapshot {
     public boolean cursorBlinking() { return meta[5] != 0; }
     public int defaultBg() { return meta[7]; }
     public int defaultFg() { return meta[8]; }
+
+    /**
+     * Selection endpoints are viewport cells ordered top-left to
+     * bottom-right (both inclusive); each coordinate pair is only
+     * meaningful while its visibility flag is set — an endpoint scrolled
+     * out of the viewport keeps the selection alive but has no position.
+     */
+    public boolean hasSelection() {
+        return (meta[9] & TerminalNative.SEL_ACTIVE) != 0;
+    }
+    public boolean selectionStartVisible() {
+        return (meta[9] & TerminalNative.SEL_START_VISIBLE) != 0;
+    }
+    public boolean selectionEndVisible() {
+        return (meta[9] & TerminalNative.SEL_END_VISIBLE) != 0;
+    }
+    public int selectionStartX() { return meta[10]; }
+    public int selectionStartY() { return meta[11]; }
+    public int selectionEndX() { return meta[12]; }
+    public int selectionEndY() { return meta[13]; }
 
     void ensureCapacity(int cells) {
         if (codepoints.length >= cells) return;

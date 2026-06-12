@@ -227,13 +227,23 @@ static jint pack_rgb(GhosttyColorRgb c) {
 #define ATTR_STRIKE 8
 #define ATTR_WIDE 16
 
+/* Selection flag bits in meta[9], mirrored in ScreenSnapshot. */
+#define SEL_ACTIVE 1
+#define SEL_START_VISIBLE 2
+#define SEL_END_VISIBLE 4
+
 /*
  * Copies the current viewport into flat per-cell arrays (row-major).
- * Colors are resolved to ARGB here — including defaults, inverse, and
- * invisible — so the Java renderer just draws what it's given.
+ * Colors are resolved to ARGB here — including defaults, inverse,
+ * invisible, and the active selection (drawn as inverse video) — so the
+ * Java renderer just draws what it's given.
  *
  * meta layout: [0] cursor-in-viewport, [1] x, [2] y, [3] style,
- * [4] visible, [5] blinking, [6] wide-tail, [7] default bg, [8] default fg.
+ * [4] visible, [5] blinking, [6] wide-tail, [7] default bg, [8] default fg,
+ * [9] SEL_* flags, [10] sel start x, [11] sel start y, [12] sel end x,
+ * [13] sel end y. Selection endpoints are viewport coordinates ordered
+ * top-left to bottom-right; each is only valid when its visibility bit is
+ * set (an endpoint can sit above or below the viewport).
  *
  * Returns (cols << 16) | rows. If the arrays are smaller than cols*rows
  * only meta is written; the caller must re-allocate and retry.
@@ -257,7 +267,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
     ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_COLOR_FOREGROUND,
                              &fg_default);
 
-    jint meta[9] = {0};
+    jint meta[14] = {0};
     bool b = false;
     ghostty_render_state_get(
         c->rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &b);
@@ -287,7 +297,36 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
     }
     meta[7] = pack_rgb(bg_default);
     meta[8] = pack_rgb(fg_default);
-    (*env)->SetIntArrayRegion(env, jmeta, 0, 9, meta);
+
+    /* Selection endpoints, ordered top-left → bottom-right for handle
+     * placement. The untracked refs are valid here because nothing below
+     * mutates the terminal. */
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SELECTION, &sel) ==
+        GHOSTTY_SUCCESS) {
+        GhosttySelection fwd = GHOSTTY_INIT_SIZED(GhosttySelection);
+        if (ghostty_terminal_selection_ordered(
+                c->term, &sel, GHOSTTY_SELECTION_ORDER_FORWARD, &fwd) ==
+            GHOSTTY_SUCCESS) {
+            meta[9] = SEL_ACTIVE;
+            GhosttyPointCoordinate pc = {0};
+            if (ghostty_terminal_point_from_grid_ref(
+                    c->term, &fwd.start, GHOSTTY_POINT_TAG_VIEWPORT, &pc) ==
+                GHOSTTY_SUCCESS) {
+                meta[9] |= SEL_START_VISIBLE;
+                meta[10] = pc.x;
+                meta[11] = (jint)pc.y;
+            }
+            if (ghostty_terminal_point_from_grid_ref(
+                    c->term, &fwd.end, GHOSTTY_POINT_TAG_VIEWPORT, &pc) ==
+                GHOSTTY_SUCCESS) {
+                meta[9] |= SEL_END_VISIBLE;
+                meta[12] = pc.x;
+                meta[13] = (jint)pc.y;
+            }
+        }
+    }
+    (*env)->SetIntArrayRegion(env, jmeta, 0, 14, meta);
 
     jint ret = ((jint)cols << 16) | rows;
     size_t ncells = (size_t)cols * rows;
@@ -306,6 +345,12 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
     while (ghostty_render_state_row_iterator_next(c->row_iter) && y < rows) {
         ghostty_render_state_row_get(
             c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &c->cells);
+        GhosttyRenderStateRowSelection rsel =
+            GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
+        bool row_selected =
+            ghostty_render_state_row_get(
+                c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &rsel) ==
+            GHOSTTY_SUCCESS;
         int x = 0;
         while (ghostty_render_state_row_cells_next(c->cells) && x < cols) {
             GhosttyCell cell = 0;
@@ -351,6 +396,11 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
             if (style.faint)
                 fg = (jint)((0xFF000000u) | (((fg >> 16 & 0xFF) / 2) << 16) |
                             (((fg >> 8 & 0xFF) / 2) << 8) | ((fg & 0xFF) / 2));
+            if (row_selected && x >= rsel.start_x && x <= rsel.end_x) {
+                jint tmp = fg;
+                fg = bg;
+                bg = tmp;
+            }
 
             jbyte attr = 0;
             if (style.bold) attr |= ATTR_BOLD;
@@ -366,9 +416,10 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
             x++;
         }
         for (; x < cols; x++) {
+            bool selected = row_selected && x >= rsel.start_x && x <= rsel.end_x;
             row_cp[x] = 0;
-            row_fg[x] = meta[8];
-            row_bg[x] = meta[7];
+            row_fg[x] = selected ? meta[7] : meta[8];
+            row_bg[x] = selected ? meta[8] : meta[7];
             row_attr[x] = 0;
         }
         jsize off = (jsize)y * cols;
@@ -470,5 +521,177 @@ Java_dev_androidterm_term_TerminalNative_terminalEncodeKey(
 
     jbyteArray out = (*env)->NewByteArray(env, (jsize)len);
     (*env)->SetByteArrayRegion(env, out, 0, (jsize)len, (const jbyte *)buf);
+    return out;
+}
+
+/*
+ * Selection.
+ *
+ * The selection lives in the terminal (GHOSTTY_TERMINAL_OPT_SELECTION):
+ * Ghostty converts the installed snapshot to tracked grid refs, so it
+ * stays glued to its text across scrolling, new output, and reflow.
+ * The untracked refs handled below are always produced and consumed
+ * within one JNI call with no terminal mutation in between, which
+ * satisfies their lifetime rules.
+ */
+
+/* Resolves a viewport cell to a grid ref; false if out of bounds. */
+static bool viewport_ref(TermCtx *c, jint x, jint y, GhosttyGridRef *out) {
+    GhosttyPoint p = {
+        .tag = GHOSTTY_POINT_TAG_VIEWPORT,
+        .value.coordinate = {.x = (uint16_t)x, .y = (uint32_t)y},
+    };
+    *out = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    return ghostty_terminal_grid_ref(c->term, p, out) == GHOSTTY_SUCCESS;
+}
+
+/*
+ * Selects the word under viewport cell (x, y) and installs it as the
+ * terminal's active selection. A blank cell (no word) selects just that
+ * cell so the UI still gets handles and a paste anchor. Returns false
+ * only when the coordinates don't resolve.
+ */
+JNIEXPORT jboolean JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalSelectWord(
+    JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttyGridRef ref;
+    if (!viewport_ref(c, x, y, &ref)) return JNI_FALSE;
+
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    GhosttyTerminalSelectWordOptions opts =
+        GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
+    opts.ref = ref;
+    if (ghostty_terminal_select_word(c->term, &opts, &sel) != GHOSTTY_SUCCESS) {
+        sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+        sel.start = ref;
+        sel.end = ref;
+    }
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+    return JNI_TRUE;
+}
+
+/*
+ * Prepares a handle drag: reorders the active selection so the grabbed
+ * visual endpoint (which: 0 = top-left, 1 = bottom-right) becomes the
+ * logical end, which is what terminalSelectionDrag moves. The other
+ * endpoint stays anchored for the whole drag, and dragging across it
+ * flips the selection naturally.
+ */
+JNIEXPORT void JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalSelectionAnchor(
+    JNIEnv *env, jclass clazz, jlong h, jint which) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SELECTION, &sel) !=
+        GHOSTTY_SUCCESS)
+        return;
+    GhosttySelection ordered = GHOSTTY_INIT_SIZED(GhosttySelection);
+    GhosttySelectionOrder want = which == 0 ? GHOSTTY_SELECTION_ORDER_REVERSE
+                                            : GHOSTTY_SELECTION_ORDER_FORWARD;
+    if (ghostty_terminal_selection_ordered(c->term, &sel, want, &ordered) !=
+        GHOSTTY_SUCCESS)
+        return;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, &ordered);
+}
+
+/* Moves the active selection's logical end to viewport cell (x, y). */
+JNIEXPORT void JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalSelectionDrag(
+    JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SELECTION, &sel) !=
+        GHOSTTY_SUCCESS)
+        return;
+    GhosttyGridRef ref;
+    if (!viewport_ref(c, x, y, &ref)) return;
+    sel.end = ref;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+}
+
+JNIEXPORT void JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalSelectionClear(
+    JNIEnv *env, jclass clazz, jlong h) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
+}
+
+/*
+ * Returns the active selection as UTF-8 bytes (soft wraps unwrapped,
+ * trailing whitespace trimmed — Ghostty's clipboard semantics), or null
+ * when there is no selection. Bytes, not a jstring: NewStringUTF wants
+ * modified UTF-8 and would mangle non-BMP characters.
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalSelectionText(
+    JNIEnv *env, jclass clazz, jlong h) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttyTerminalSelectionFormatOptions opts =
+        GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
+    opts.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+    opts.unwrap = true;
+    opts.trim = true;
+
+    uint8_t *buf = NULL;
+    size_t len = 0;
+    if (ghostty_terminal_selection_format_alloc(c->term, NULL, opts, &buf,
+                                                &len) != GHOSTTY_SUCCESS)
+        return NULL;
+    jbyteArray out = (*env)->NewByteArray(env, (jsize)len);
+    if (out)
+        (*env)->SetByteArrayRegion(env, out, 0, (jsize)len, (const jbyte *)buf);
+    ghostty_free(NULL, buf, len);
+    return out;
+}
+
+/*
+ * Encodes clipboard text for the PTY per current terminal state: strips
+ * unsafe control bytes, wraps in bracketed-paste markers when mode 2004
+ * is set, otherwise converts newlines to carriage returns.
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalEncodePaste(
+    JNIEnv *env, jclass clazz, jlong h, jbyteArray data) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    bool bracketed = false;
+    ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_BRACKETED_PASTE,
+                              &bracketed);
+
+    jsize len = (*env)->GetArrayLength(env, data);
+    /* ghostty_paste_encode scrubs the input in place; work on a copy. */
+    char *in = malloc(len ? (size_t)len : 1);
+    if (!in) return NULL;
+    (*env)->GetByteArrayRegion(env, data, 0, len, (jbyte *)in);
+
+    size_t cap = (size_t)len + 16; /* room for the bracket markers */
+    char *enc = malloc(cap);
+    size_t written = 0;
+    GhosttyResult res = enc
+        ? ghostty_paste_encode(in, (size_t)len, bracketed, enc, cap, &written)
+        : GHOSTTY_OUT_OF_MEMORY;
+    if (res == GHOSTTY_OUT_OF_SPACE) {
+        char *bigger = realloc(enc, written);
+        if (bigger) {
+            enc = bigger;
+            res = ghostty_paste_encode(in, (size_t)len, bracketed, enc,
+                                       written, &written);
+        }
+    }
+    free(in);
+    jbyteArray out = NULL;
+    if (res == GHOSTTY_SUCCESS && written > 0) {
+        out = (*env)->NewByteArray(env, (jsize)written);
+        if (out)
+            (*env)->SetByteArrayRegion(env, out, 0, (jsize)written,
+                                       (const jbyte *)enc);
+    }
+    free(enc);
     return out;
 }

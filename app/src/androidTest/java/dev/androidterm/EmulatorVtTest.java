@@ -4,6 +4,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -234,5 +235,106 @@ public class EmulatorVtTest {
                 term.encodeKey(KeyEvent.KEYCODE_ESCAPE, 0, null, 0));
         assertArrayEquals(new byte[] {0x0d},
                 term.encodeKey(KeyEvent.KEYCODE_ENTER, 0, null, 0));
+    }
+
+    @Test
+    public void selectWordHighlightsAndExtractsText() {
+        feed("hello world");
+        assertTrue(term.selectWord(1, 0));
+        assertEquals("hello", term.selectionText());
+
+        ScreenSnapshot s = snapshot();
+        assertTrue(s.hasSelection());
+        assertTrue(s.selectionStartVisible());
+        assertTrue(s.selectionEndVisible());
+        assertEquals(0, s.selectionStartX());
+        assertEquals(0, s.selectionStartY());
+        assertEquals(4, s.selectionEndX());
+        assertEquals(0, s.selectionEndY());
+        // Selected cells render as inverse video; unselected ones don't.
+        assertEquals(s.defaultBg(), s.fg[cell(0, 0)]);
+        assertEquals(s.defaultFg(), s.bg[cell(0, 0)]);
+        assertEquals(s.defaultFg(), s.fg[cell(6, 0)]);
+        assertEquals(s.defaultBg(), s.bg[cell(6, 0)]);
+    }
+
+    @Test
+    public void selectionDragMovesGrabbedEndpoint() {
+        feed("hello world");
+        term.selectWord(1, 0); // "hello"
+        term.selectionAnchor(1); // grab the bottom-right handle
+        term.selectionDrag(8, 0);
+        assertEquals("hello wor", term.selectionText());
+
+        term.selectionAnchor(0); // grab the top-left handle instead
+        term.selectionDrag(6, 0);
+        assertEquals("wor", term.selectionText());
+    }
+
+    @Test
+    public void selectionDragAcrossAnchorFlips() {
+        feed("hello world");
+        term.selectWord(7, 0); // "world" (cols 6..10)
+        term.selectionAnchor(1); // anchor at the start, drag the end
+        term.selectionDrag(2, 0); // cross the anchor leftwards
+        assertEquals("llo w", term.selectionText());
+
+        ScreenSnapshot s = snapshot();
+        assertEquals(2, s.selectionStartX()); // endpoints report reordered
+        assertEquals(6, s.selectionEndX());
+    }
+
+    @Test
+    public void selectWordOnBlankCellSelectsThatCell() {
+        feed("a b");
+        assertTrue(term.selectWord(1, 0)); // the space between the words
+        ScreenSnapshot s = snapshot();
+        assertTrue(s.hasSelection());
+        assertEquals(1, s.selectionStartX());
+        assertEquals(1, s.selectionEndX());
+    }
+
+    @Test
+    public void selectionTracksTextIntoScrollback() {
+        feed("alpha\r\n");
+        term.selectWord(0, 0);
+        assertEquals("alpha", term.selectionText());
+
+        for (int i = 0; i < 8; i++) {
+            feed("filler" + i + "\r\n");
+        }
+        // "alpha" scrolled into history; the tracked selection followed it
+        // and its endpoints are no longer in the viewport.
+        assertEquals("alpha", term.selectionText());
+        ScreenSnapshot s = snapshot();
+        assertTrue(s.hasSelection());
+        assertFalse(s.selectionStartVisible());
+
+        term.scrollBy(-100); // clamp to top; the selection comes back on screen
+        s = snapshot();
+        assertTrue(s.selectionStartVisible());
+        assertEquals(0, s.selectionStartY());
+        assertEquals(s.defaultBg(), s.fg[cell(0, 0)]);
+    }
+
+    @Test
+    public void selectionClearRemovesSelection() {
+        feed("hello");
+        term.selectWord(0, 0);
+        term.selectionClear();
+        assertNull(term.selectionText());
+        assertFalse(snapshot().hasSelection());
+    }
+
+    @Test
+    public void pasteEncodingHonorsBracketedMode() {
+        // Plain mode: newlines become carriage returns.
+        assertArrayEquals("ab\rcd".getBytes(StandardCharsets.US_ASCII),
+                term.encodePaste("ab\ncd"));
+
+        feed("\u001b[?2004h"); // app enables bracketed paste
+        assertArrayEquals(
+                "\u001b[200~ab\u001b[201~".getBytes(StandardCharsets.US_ASCII),
+                term.encodePaste("ab"));
     }
 }

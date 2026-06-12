@@ -74,6 +74,44 @@ public final class TerminalEmulator implements AutoCloseable {
                 handle, androidKeyCode, mods, utf8, unshiftedCodepoint);
     }
 
+    // --- Selection. The terminal owns it (tracked refs), so it follows its
+    // text across scrolling, new output, and reflow; the snapshot reports
+    // highlighted cells and endpoint positions for the UI. ---
+
+    /** Selects the word (or blank cell) at viewport (x, y); false if out of range. */
+    public synchronized boolean selectWord(int x, int y) {
+        return handle != 0 && TerminalNative.terminalSelectWord(handle, x, y);
+    }
+
+    /** Pins the endpoint opposite the grabbed handle (0 = top-left, 1 = bottom-right). */
+    public synchronized void selectionAnchor(int which) {
+        if (handle != 0) TerminalNative.terminalSelectionAnchor(handle, which);
+    }
+
+    /** Drags the grabbed selection endpoint to viewport (x, y). */
+    public synchronized void selectionDrag(int x, int y) {
+        if (handle != 0) TerminalNative.terminalSelectionDrag(handle, x, y);
+    }
+
+    public synchronized void selectionClear() {
+        if (handle != 0) TerminalNative.terminalSelectionClear(handle);
+    }
+
+    /** Selected text (unwrapped, trimmed), or null when nothing is selected. */
+    public synchronized String selectionText() {
+        if (handle == 0) return null;
+        byte[] utf8 = TerminalNative.terminalSelectionText(handle);
+        return utf8 == null ? null
+                : new String(utf8, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** Encodes paste text per terminal modes (bracketed paste etc.), or null. */
+    public synchronized byte[] encodePaste(String text) {
+        if (handle == 0) return null;
+        return TerminalNative.terminalEncodePaste(
+                handle, text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     @Override
     public synchronized void close() {
         if (handle != 0) {

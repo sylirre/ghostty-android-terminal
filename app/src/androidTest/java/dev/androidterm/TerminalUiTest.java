@@ -3,7 +3,9 @@ package dev.androidterm;
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.RootMatchers.isPlatformPopup;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
+import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
 
 import static dev.androidterm.TestUtil.waitFor;
@@ -11,11 +13,19 @@ import static dev.androidterm.TestUtil.waitFor;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
+import android.view.InputDevice;
+import android.view.MotionEvent;
 import android.view.View;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
+import androidx.test.espresso.ViewAction;
+import androidx.test.espresso.action.GeneralClickAction;
+import androidx.test.espresso.action.Press;
+import androidx.test.espresso.action.Tap;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.junit.After;
@@ -25,6 +35,8 @@ import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import dev.androidterm.term.ScreenSnapshot;
@@ -207,6 +219,114 @@ public class TerminalUiTest {
             scenario.onActivity(a -> ((TerminalView) a.findViewById(R.id.terminal))
                     .setFontSizeSp(origSp[0]));
         }
+    }
+
+    // --- Selection ---
+
+    /** Long-presses the center of terminal cell (cx, cy). */
+    private static ViewAction longPressAtCell(final int cx, final int cy) {
+        return new GeneralClickAction(Tap.LONG, view -> {
+            TerminalView tv = (TerminalView) view;
+            int[] xy = new int[2];
+            view.getLocationOnScreen(xy);
+            // width/cols slightly overestimates the cell width; exact
+            // enough for the small coordinates these tests use.
+            float cw = view.getWidth() / (float) tv.gridCols();
+            float ch = view.getHeight() / (float) tv.gridRows();
+            return new float[] {xy[0] + (cx + 0.5f) * cw, xy[1] + (cy + 0.5f) * ch};
+        }, Press.FINGER, InputDevice.SOURCE_TOUCHSCREEN, MotionEvent.BUTTON_PRIMARY);
+    }
+
+    /** First screen row whose trimmed text equals exactly the given line. */
+    private int screenRowWith(String exact) {
+        AtomicInteger row = new AtomicInteger(-1);
+        scenario.onActivity(a -> {
+            TerminalView v = a.findViewById(R.id.terminal);
+            if (v.session() == null) return;
+            ScreenSnapshot snap = new ScreenSnapshot();
+            v.session().emulator.snapshot(snap);
+            for (int y = 0; y < snap.rows; y++) {
+                if (snap.rowText(y).equals(exact)) {
+                    row.set(y);
+                    break;
+                }
+            }
+        });
+        return row.get();
+    }
+
+    private String selectionText() {
+        AtomicReference<String> out = new AtomicReference<>();
+        scenario.onActivity(a -> {
+            TerminalView v = a.findViewById(R.id.terminal);
+            if (v.session() != null) out.set(v.session().emulator.selectionText());
+        });
+        return out.get();
+    }
+
+    private boolean selectionActive() {
+        AtomicBoolean active = new AtomicBoolean();
+        scenario.onActivity(a -> {
+            TerminalView v = a.findViewById(R.id.terminal);
+            if (v.session() != null) {
+                ScreenSnapshot snap = new ScreenSnapshot();
+                v.session().emulator.snapshot(snap);
+                active.set(snap.hasSelection());
+            }
+        });
+        return active.get();
+    }
+
+    private String clipboardText() {
+        AtomicReference<String> out = new AtomicReference<>();
+        scenario.onActivity(a -> {
+            ClipboardManager cm = a.getSystemService(ClipboardManager.class);
+            ClipData clip = cm.getPrimaryClip();
+            if (clip != null && clip.getItemCount() > 0) {
+                CharSequence t = clip.getItemAt(0).getText();
+                out.set(t == null ? null : t.toString());
+            }
+        });
+        return out.get();
+    }
+
+    @Test
+    public void longPressSelectsWordAndCopyFillsClipboard() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        dispatchText("echo selectme123\n");
+        waitFor("echoed output line", TIMEOUT_MS,
+                () -> screenRowWith("selectme123") >= 0, this::diagnose);
+
+        int row = screenRowWith("selectme123");
+        onView(withId(R.id.terminal)).perform(longPressAtCell(3, row));
+        waitFor("word selected", TIMEOUT_MS,
+                () -> "selectme123".equals(selectionText()), this::diagnose);
+
+        // Copy lives on the floating selection toolbar (a popup window).
+        onView(withText("Copy")).inRoot(isPlatformPopup()).perform(click());
+        waitFor("clipboard filled", TIMEOUT_MS,
+                () -> "selectme123".equals(clipboardText()));
+        waitFor("selection dismissed", TIMEOUT_MS, () -> !selectionActive());
+    }
+
+    @Test
+    public void pasteButtonTypesClipboardIntoShell() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        scenario.onActivity(a -> a.getSystemService(ClipboardManager.class)
+                .setPrimaryClip(ClipData.newPlainText("test", "pasted-xyz")));
+
+        // Long-pressing a blank area still enters selection mode (a
+        // single-cell selection), which is the paste affordance.
+        onView(withId(R.id.terminal)).perform(longPressAtCell(2, 2));
+        waitFor("selection active", TIMEOUT_MS, this::selectionActive,
+                this::diagnose);
+
+        onView(withText("Paste")).inRoot(isPlatformPopup()).perform(click());
+        // The pasted text is echoed on the shell's input line; it may
+        // soft-wrap mid-word, so compare without line breaks.
+        waitFor("clipboard text reaches the shell", TIMEOUT_MS,
+                () -> currentScreen().replace("\n", "").contains("pasted-xyz"),
+                this::diagnose);
     }
 
     @Test

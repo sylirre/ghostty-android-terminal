@@ -37,6 +37,11 @@ public final class TerminalNative {
     public static final int CURSOR_UNDERLINE = 2;
     public static final int CURSOR_BLOCK_HOLLOW = 3;
 
+    /** Selection flag bits in snapshot meta[9]. */
+    public static final int SEL_ACTIVE = 1;
+    public static final int SEL_START_VISIBLE = 2;
+    public static final int SEL_END_VISIBLE = 4;
+
     // --- PTY / process ---
 
     /**
@@ -106,4 +111,34 @@ public final class TerminalNative {
      */
     public static native byte[] terminalEncodeKey(long handle, int androidKeyCode,
             int mods, String utf8, int unshiftedCodepoint);
+
+    // --- Selection (state lives in the terminal; survives scroll/reflow) ---
+
+    /**
+     * Selects the word under viewport cell (x, y) — or just that cell when
+     * it holds no word — and makes it the active selection. Returns false
+     * if the coordinates don't resolve to a cell.
+     */
+    public static native boolean terminalSelectWord(long handle, int x, int y);
+
+    /**
+     * Reorders the active selection so the grabbed visual endpoint
+     * (0 = top-left, 1 = bottom-right) is the one {@link #terminalSelectionDrag}
+     * moves; the other endpoint stays anchored for the drag.
+     */
+    public static native void terminalSelectionAnchor(long handle, int which);
+
+    /** Moves the dragged selection endpoint to viewport cell (x, y). */
+    public static native void terminalSelectionDrag(long handle, int x, int y);
+
+    public static native void terminalSelectionClear(long handle);
+
+    /** Selected text as UTF-8 (unwrapped, trimmed), or null if no selection. */
+    public static native byte[] terminalSelectionText(long handle);
+
+    /**
+     * Encodes paste text for the PTY: strips unsafe control bytes and
+     * applies bracketed-paste markers or newline→CR per terminal modes.
+     */
+    public static native byte[] terminalEncodePaste(long handle, byte[] utf8);
 }
