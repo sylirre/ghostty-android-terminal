@@ -29,6 +29,7 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.OverScroller;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -115,6 +116,20 @@ public class TerminalView extends View {
     private float scrollRemainder;
     private float fontSizeSp;
 
+    // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
+    // to an OverScroller, whose decelerating position is sampled once per
+    // animation frame and converted to whole-row scrollBy() calls (the engine
+    // scrolls in integer rows). flingRemainder carries the sub-row fraction
+    // between frames; flingScrollbar holds the [total, offset, len] probe used
+    // to stop the moment the viewport pins against the edge it is heading for.
+    private final OverScroller scroller;
+    private int lastFlingY;
+    private float flingRemainder;
+    private final int[] flingScrollbar = new int[3];
+    // Cap peak fling speed so a hard flick on a device reporting a huge
+    // velocity can't leap across the whole scrollback in a couple of frames.
+    private static final float MAX_FLING_ROWS_PER_SEC = 600f;
+
     // --- Selection. The emulator owns the selection itself (it tracks its
     // text across scrolling and new output); this view only mirrors it:
     // `selecting` spans the ActionMode lifecycle, the handle rects are
@@ -143,6 +158,8 @@ public class TerminalView extends View {
         fontSizeSp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getFloat(PREF_FONT_SP, DEFAULT_FONT_SP);
         setTextSizePx(spToPx(fontSizeSp));
+
+        scroller = new OverScroller(context);
 
         scaleGestures = new ScaleGestureDetector(context,
                 new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -209,12 +226,65 @@ public class TerminalView extends View {
             }
 
             @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
+                if (session == null || snapshot.altScreen()) return false;
+                // No scrollback on the alt screen; the per-row swipe→arrow-key
+                // translation in onScroll stays the only motion there.
+                scroller.forceFinished(true);
+                lastFlingY = 0;
+                flingRemainder = 0;
+                // onScroll accumulates distanceY (finger-up is positive); a
+                // fling's velocityY is the opposite sign, so negate it to keep
+                // the coast going the same way the drag did.
+                float max = MAX_FLING_ROWS_PER_SEC * cellHeight;
+                int v = (int) Math.max(-max, Math.min(max, -vy));
+                scroller.fling(0, 0, 0, v, 0, 0, Integer.MIN_VALUE, Integer.MAX_VALUE);
+                postOnAnimation(flingStep);
+                return true;
+            }
+
+            @Override
             public boolean onDown(MotionEvent e) {
+                scroller.forceFinished(true); // a touch catches an in-flight fling
                 scrollRemainder = 0;
                 return true;
             }
         });
     }
+
+    /**
+     * One animation frame of an in-progress fling: samples the scroller's
+     * decelerating position, scrolls the viewport by the whole rows crossed
+     * since the last frame, and reschedules itself until the scroller finishes
+     * or the viewport pins against the edge it is heading for.
+     */
+    private final Runnable flingStep = new Runnable() {
+        @Override
+        public void run() {
+            if (session == null || !scroller.computeScrollOffset()) return;
+            int y = scroller.getCurrY();
+            flingRemainder += (y - lastFlingY) / (float) cellHeight;
+            lastFlingY = y;
+            int lines = (int) flingRemainder;
+            if (lines != 0) {
+                flingRemainder -= lines;
+                session.emulator.scrollBy(lines);
+                invalidate();
+                // scrollBy clamps silently at the ends; stop coasting once the
+                // viewport is pinned against the edge we're moving toward
+                // (lines > 0 reveals lower content, lines < 0 goes into history).
+                session.emulator.scrollbar(flingScrollbar);
+                int offset = flingScrollbar[1];
+                boolean atTop = offset <= 0;
+                boolean atBottom = offset + flingScrollbar[2] >= flingScrollbar[0];
+                if ((lines < 0 && atTop) || (lines > 0 && atBottom)) {
+                    scroller.forceFinished(true);
+                    return;
+                }
+            }
+            postOnAnimation(this);
+        }
+    };
 
     private void setTextSizePx(float px) {
         textPaint.setTextSize(px);
@@ -265,6 +335,7 @@ public class TerminalView extends View {
             clearImageCache(); // image ids belong to the old terminal
             gfxCount = 0;
             resetRichInput(); // the mirror belonged to the old session's line
+            scroller.forceFinished(true); // don't coast into the new session
         }
         session = s;
         if (s != null && getWidth() > 0) {
