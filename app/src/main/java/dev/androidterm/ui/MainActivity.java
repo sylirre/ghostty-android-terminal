@@ -110,7 +110,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 public void onLayoutChange(View v, int l, int t, int r, int b,
                         int ol, int ot, int or, int ob) {
                     terminal.removeOnLayoutChangeListener(this);
-                    if (sessions.isEmpty()) createFirstSession();
+                    // Defer past the current layout traversal: createFirstSession
+                    // may make the install_status overlay VISIBLE, and a
+                    // requestLayout() issued from inside layout() is dropped until
+                    // the next traversal — which otherwise only arrives on the
+                    // first touch, so the message appeared only after a tap.
+                    terminal.post(() -> {
+                        if (sessions.isEmpty()) createFirstSession();
+                    });
                 }
             });
         } else {
