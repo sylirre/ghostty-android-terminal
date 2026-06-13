@@ -10,10 +10,34 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <dev.androidterm.ui.TabStripView
-            android:id="@+id/tabs"
+        <!-- Top bar: scrolling tab strip plus a fixed settings button. -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#FF14141A">
+
+            <dev.androidterm.ui.TabStripView
+                android:id="@+id/tabs"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/settings_button"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="⚙"
+                android:textColor="#FF9999A6"
+                android:textSize="18sp"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:contentDescription="settings"
+                android:clickable="true"
+                android:focusable="true" />
+
+        </LinearLayout>
 
         <dev.androidterm.ui.TerminalView
             android:id="@+id/terminal"

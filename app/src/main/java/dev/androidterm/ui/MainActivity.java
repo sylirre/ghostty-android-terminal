@@ -13,8 +13,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -52,11 +56,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private static final int REQ_POST_NOTIFICATIONS = 1;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
 
+    private static final int MENU_KEEP_SCREEN_ON = 1;
+
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
     private TabStripView tabs;
     private TextView installStatus;
     private TerminalSession current;
+    private AppSettings settings;
     private boolean forceShell;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
@@ -79,6 +86,10 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         forceShell = getIntent().getBooleanExtra(EXTRA_FORCE_SHELL, false);
         ExtraKeysView extraKeys = findViewById(R.id.extra_keys);
         extraKeys.attachTerminal(terminal);
+
+        settings = new AppSettings(this);
+        applyKeepScreenOn(settings.keepScreenOn());
+        findViewById(R.id.settings_button).setOnClickListener(this::showSettingsMenu);
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -273,6 +284,34 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     Uri.parse("package:" + getPackageName())));
         } catch (android.content.ActivityNotFoundException ignored) {
             // No battery-optimization UI on this device.
+        }
+    }
+
+    /** Opens the settings menu anchored to the gear button in the top bar. */
+    private void showSettingsMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        MenuItem keepScreenOn = menu.getMenu().add(
+                Menu.NONE, MENU_KEEP_SCREEN_ON, Menu.NONE, "Keep screen on");
+        keepScreenOn.setCheckable(true);
+        keepScreenOn.setChecked(settings.keepScreenOn());
+        menu.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == MENU_KEEP_SCREEN_ON) {
+                boolean enabled = !settings.keepScreenOn();
+                settings.setKeepScreenOn(enabled);
+                applyKeepScreenOn(enabled);
+                return true;
+            }
+            return false;
+        });
+        menu.show();
+    }
+
+    /** Holds the display on (or releases it) via the activity window flag. */
+    private void applyKeepScreenOn(boolean enabled) {
+        if (enabled) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
 

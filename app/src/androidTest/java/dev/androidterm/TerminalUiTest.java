@@ -11,6 +11,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 import static dev.androidterm.TestUtil.waitFor;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.content.ClipData;
@@ -20,6 +21,7 @@ import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.WindowManager;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
@@ -223,6 +225,30 @@ public class TerminalUiTest {
             scenario.onActivity(a -> ((TerminalView) a.findViewById(R.id.terminal))
                     .setFontSizeSp(origSp[0]));
         }
+    }
+
+    @Test
+    public void settingsMenuTogglesKeepScreenOn() {
+        // Off by default: the window flag is clear at launch.
+        assertFalse("keep-screen-on starts off", keepScreenOnFlag());
+
+        // Open the settings menu (gear in the top bar) and enable the toggle.
+        onView(withId(R.id.settings_button)).perform(click());
+        onView(withText("Keep screen on")).inRoot(isPlatformPopup()).perform(click());
+        assertTrue("flag set after enabling", keepScreenOnFlag());
+
+        // Reopen and disable it, leaving the shared preference clean for
+        // other tests (the setting persists across activity instances).
+        onView(withId(R.id.settings_button)).perform(click());
+        onView(withText("Keep screen on")).inRoot(isPlatformPopup()).perform(click());
+        assertFalse("flag cleared after disabling", keepScreenOnFlag());
+    }
+
+    private boolean keepScreenOnFlag() {
+        AtomicBoolean on = new AtomicBoolean();
+        scenario.onActivity(a -> on.set((a.getWindow().getAttributes().flags
+                & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0));
+        return on.get();
     }
 
     // --- Selection ---
