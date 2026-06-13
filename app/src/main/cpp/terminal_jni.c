@@ -38,7 +38,9 @@ typedef struct {
     /* Reused across frames; re-populated from storage on each terminalGraphics
      * call. NULL when iterator allocation failed (image readback disabled). */
     GhosttyKittyGraphicsPlacementIterator graphics_iter;
-    /* Last cell pixel size from resize; needed for virtual-placement layout. */
+    /* Current grid and cell pixel size, kept in sync on resize. Feeds the
+     * virtual-placement layout and the XTWINOPS (CSI 14/16/18 t) replies. */
+    uint16_t cols, rows;
     uint32_t cell_w, cell_h;
 
     /* Bytes the terminal wants written back to the PTY (query responses),
@@ -75,11 +77,25 @@ static void on_title(GhosttyTerminal t, void *ud) {
     ((TermCtx *)ud)->events |= EVENT_TITLE;
 }
 
+/* Answers XTWINOPS size queries (CSI 14/16/18 t); ghostty encodes the reply
+ * and sends it via the write-pty callback. cell_w/cell_h are 0 until the
+ * first resize, which always lands before any program runs. */
+static bool on_size(GhosttyTerminal t, void *ud, GhosttySizeReportSize *out) {
+    (void)t;
+    TermCtx *c = ud;
+    out->rows = c->rows;
+    out->columns = c->cols;
+    out->cell_width = c->cell_w;
+    out->cell_height = c->cell_h;
+    return true;
+}
+
 /* Typed assignments so a callback signature drift fails to compile instead
  * of corrupting the stack at runtime (ghostty_terminal_set takes void*). */
 static const GhosttyTerminalWritePtyFn write_pty_fn = on_write_pty;
 static const GhosttyTerminalBellFn bell_fn = on_bell;
 static const GhosttyTerminalTitleChangedFn title_fn = on_title;
+static const GhosttyTerminalSizeFn size_fn = on_size;
 static const GhosttySysDecodePngFn decode_png_fn = androidterm_decode_png;
 
 JNIEXPORT jlong JNICALL
@@ -106,10 +122,14 @@ Java_dev_androidterm_term_TerminalNative_terminalNew(
         goto fail;
     if (ghostty_key_event_new(NULL, &c->kev) != GHOSTTY_SUCCESS) goto fail;
 
+    c->cols = (uint16_t)cols;
+    c->rows = (uint16_t)rows;
+
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_USERDATA, c);
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY, write_pty_fn);
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_BELL, bell_fn);
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, title_fn);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SIZE, size_fn);
 
     /* Kitty graphics: enable PNG payloads (process-global, idempotent) and
      * image storage on this terminal, then pre-allocate the placement
@@ -208,6 +228,8 @@ Java_dev_androidterm_term_TerminalNative_terminalResize(
     jint cell_h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
+    c->cols = (uint16_t)cols;
+    c->rows = (uint16_t)rows;
     c->cell_w = (uint32_t)cell_w;
     c->cell_h = (uint32_t)cell_h;
     ghostty_terminal_resize(c->term, (uint16_t)cols, (uint16_t)rows,

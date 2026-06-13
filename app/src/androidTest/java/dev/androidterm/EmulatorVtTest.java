@@ -48,6 +48,14 @@ public class EmulatorVtTest {
         term.feed(b, b.length);
     }
 
+    /** Feeds a query and returns the terminal's pty response as a string. */
+    private String query(String seq) {
+        byte[] b = seq.getBytes(StandardCharsets.UTF_8);
+        byte[] resp = term.feed(b, b.length);
+        assertNotNull("no response for query: " + seq, resp);
+        return new String(resp, StandardCharsets.UTF_8);
+    }
+
     private ScreenSnapshot snapshot() {
         assertTrue(term.snapshot(snap));
         return snap;
@@ -359,6 +367,17 @@ public class EmulatorVtTest {
         assertEquals(1, wh[1]);
         // The RGB source gains an opaque alpha channel on read-back.
         assertArrayEquals(new byte[] {(byte) 0xff, 0, 0, (byte) 0xff}, rgba);
+    }
+
+    @Test
+    public void xtwinopsSizeReports() {
+        term.resize(20, 5, 10, 20); // cell 10x20 -> text area 200x100 px
+        // CSI 18 t: text area in cells -> CSI 8 ; rows ; cols t.
+        assertEquals("\u001b[8;5;20t", query("\u001b[18t"));
+        // CSI 14 t: text area in pixels -> CSI 4 ; height ; width t.
+        assertEquals("\u001b[4;100;200t", query("\u001b[14t"));
+        // CSI 16 t: cell size in pixels -> CSI 6 ; height ; width t.
+        assertEquals("\u001b[6;20;10t", query("\u001b[16t"));
     }
 
     @Test
