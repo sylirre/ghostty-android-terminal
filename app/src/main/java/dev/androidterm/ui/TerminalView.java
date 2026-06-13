@@ -164,7 +164,10 @@ public class TerminalView extends View {
         setTextSizePx(spToPx(fontSizeSp));
 
         scroller = new OverScroller(context);
-        setVerticalScrollBarEnabled(true);
+        // The vertical scrollbar is declared in the layout (android:scrollbars)
+        // so the base View constructor builds the scrollbar drawable — enabling
+        // it programmatically here would not, leaving awakenScrollBars() a
+        // no-op. It fades by default; the scroll paths awaken it to flash it.
         setScrollbarFadingEnabled(true);
 
         scaleGestures = new ScaleGestureDetector(context,
