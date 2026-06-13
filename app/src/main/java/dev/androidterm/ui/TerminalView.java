@@ -380,7 +380,7 @@ public class TerminalView extends View {
             case MotionEvent.ACTION_CANCEL:
                 if (draggingHandle < 0) return false;
                 draggingHandle = -1;
-                if (actionMode != null) actionMode.invalidateContentRect();
+                reshowToolbar();
                 return true;
             default:
                 return draggingHandle >= 0;
@@ -402,11 +402,27 @@ public class TerminalView extends View {
                 longPressDragging = false;
                 // Re-show the toolbar (dragSelectionTo hid it) above the
                 // final selection.
-                if (actionMode != null) actionMode.invalidateContentRect();
+                reshowToolbar();
                 return true;
             default:
                 return true;
         }
+    }
+
+    /**
+     * Repositions the floating toolbar over the current selection and cancels
+     * any pending hide scheduled by {@link #dragSelectionTo}, so it reappears
+     * immediately when a drag ends. invalidateContentRect() alone only
+     * repositions: it leaves the framework's hide-requested flag set, which
+     * otherwise keeps the toolbar hidden for the ~2s ActionMode hide duration
+     * (the source of the "toolbar appears seconds late" delay). hide(0) runs
+     * the reshow now.
+     */
+    private void reshowToolbar() {
+        if (actionMode == null) return;
+        toolbarSelGeom = selectionGeometryKey();
+        actionMode.invalidateContentRect();
+        actionMode.hide(0);
     }
 
     private void dragSelectionTo(float px, float py) {
