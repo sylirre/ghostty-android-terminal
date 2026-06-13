@@ -104,11 +104,15 @@ public class TerminalView extends View {
     // recomputed from each snapshot in onDraw and hit-tested on touch.
     private boolean selecting;
     private int draggingHandle = -1; // -1 none, 0 top-left, 1 bottom-right
+    private boolean longPressDragging; // extending the selection from a long-press
     private float dragOffsetX, dragOffsetY; // grabbed cell center − touch point
     private ActionMode actionMode;
     private final Drawable handleLeft, handleRight;
     private final RectF startHandleRect = new RectF();
     private final RectF endHandleRect = new RectF();
+    // Selection geometry the floating toolbar was last positioned for; lets
+    // onDraw reposition it (invalidateContentRect) only when it actually moves.
+    private long toolbarSelGeom = Long.MIN_VALUE;
 
     private static final int MENU_COPY = 1;
     private static final int MENU_PASTE = 2;
@@ -285,6 +289,10 @@ public class TerminalView extends View {
         // Handle drags own the whole gesture; everything else (scroll, tap,
         // long-press, pinch) still works while a selection is showing.
         if (selecting && selectionHandleTouch(event)) return true;
+        // While the long-press finger is still down, dragging extends the
+        // selection (we own these events so they never reach the detectors —
+        // which also keeps the release from being read as a dismissing tap).
+        if (longPressDragging && longPressDragTouch(event)) return true;
         scaleGestures.onTouchEvent(event);
         // Suppress scrolling (and taps) while a pinch is in progress so the
         // viewport doesn't jump around during zoom.
@@ -302,9 +310,35 @@ public class TerminalView extends View {
         int cy = clampToGrid(py / (float) cellHeight, rows);
         if (!session.emulator.selectWord(cx, cy)) return;
         selecting = true;
+        // Keep dragging from the long-press to extend: pin the start so the
+        // drag moves the end (crossing back over the start flips naturally).
+        session.emulator.selectionAnchor(1);
+        longPressDragging = true;
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        // Refresh the mirror so the toolbar's first (synchronous)
+        // onGetContentRect sees the new selection and anchors above the word
+        // instead of falling back to a whole-view rect.
+        session.emulator.snapshot(snapshot);
+        toolbarSelGeom = selectionGeometryKey();
         actionMode = startActionMode(selectionActions, ActionMode.TYPE_FLOATING);
         invalidate();
+    }
+
+    /**
+     * Packs the visible selection endpoints + visibility flags into a key so
+     * onDraw can detect when the toolbar needs repositioning. Each coordinate
+     * gets 12 bits (terminal dimensions never approach 4096); returns a
+     * sentinel when there is no selection.
+     */
+    private long selectionGeometryKey() {
+        if (!snapshot.hasSelection()) return Long.MIN_VALUE;
+        long flags = (snapshot.selectionStartVisible() ? 1 : 0)
+                | (snapshot.selectionEndVisible() ? 2 : 0);
+        return (flags << 48)
+                | ((long) (snapshot.selectionStartX() & 0xFFF) << 36)
+                | ((long) (snapshot.selectionStartY() & 0xFFF) << 24)
+                | ((long) (snapshot.selectionEndX() & 0xFFF) << 12)
+                | (snapshot.selectionEndY() & 0xFFF);
     }
 
     /** Ends selection mode and clears the emulator's selection. Idempotent. */
@@ -313,6 +347,7 @@ public class TerminalView extends View {
             actionMode.finish(); // onDestroyActionMode resets the state
         } else if (selecting) {
             selecting = false;
+            longPressDragging = false;
             if (session != null) session.emulator.selectionClear();
             invalidate();
         }
@@ -349,6 +384,28 @@ public class TerminalView extends View {
                 return true;
             default:
                 return draggingHandle >= 0;
+        }
+    }
+
+    /**
+     * Extends the selection while the long-press finger stays down. Returns
+     * true once it has consumed the gesture's MOVE/UP so they bypass the
+     * gesture detectors. A long-press with no movement just selects the word.
+     */
+    private boolean longPressDragTouch(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_MOVE:
+                dragSelectionTo(event.getX(), event.getY());
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                longPressDragging = false;
+                // Re-show the toolbar (dragSelectionTo hid it) above the
+                // final selection.
+                if (actionMode != null) actionMode.invalidateContentRect();
+                return true;
+            default:
+                return true;
         }
     }
 
@@ -441,6 +498,8 @@ public class TerminalView extends View {
             actionMode = null;
             selecting = false;
             draggingHandle = -1;
+            longPressDragging = false;
+            toolbarSelGeom = Long.MIN_VALUE;
             if (session != null) session.emulator.selectionClear();
             invalidate();
         }
@@ -503,6 +562,19 @@ public class TerminalView extends View {
             // The selected text scrolled out of existence (scrollback
             // pruning, screen switch); retire the UI outside of draw.
             post(this::finishSelection);
+        } else if (selecting && actionMode != null
+                && draggingHandle < 0 && !longPressDragging) {
+            // The selection moved under the toolbar (new output, scroll);
+            // reposition it to stay above the selection. Gated on a geometry
+            // change so this is idle most frames, and skipped mid-drag where
+            // dragSelectionTo deliberately hides the toolbar.
+            long geom = selectionGeometryKey();
+            if (geom != toolbarSelGeom) {
+                toolbarSelGeom = geom;
+                post(() -> {
+                    if (actionMode != null) actionMode.invalidateContentRect();
+                });
+            }
         }
     }
 
@@ -617,12 +689,15 @@ public class TerminalView extends View {
     /**
      * Anchors a handle drawable's pointer tip at (anchorX, anchorY) — the
      * hotspot sits at 3/4 of the width for the left handle and 1/4 for the
-     * right, like TextView's — and records an enlarged touch target.
+     * right, like TextView's — and records an enlarged touch target. The x
+     * position is clamped to the view so a handle at column 0 or the last
+     * column (e.g. a full-line selection) stays fully on-screen and grabbable.
      */
     private void placeHandle(Drawable d, RectF touchRect, boolean left,
             float anchorX, float anchorY) {
         int w = d.getIntrinsicWidth(), h = d.getIntrinsicHeight();
         int x = (int) (anchorX - (left ? w * 3 / 4f : w / 4f));
+        x = Math.max(0, Math.min(x, getWidth() - w));
         int y = (int) anchorY;
         d.setBounds(x, y, x + w, y + h);
         touchRect.set(x, y, x + w, y + h);

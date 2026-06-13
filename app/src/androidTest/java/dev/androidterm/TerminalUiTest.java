@@ -19,15 +19,19 @@ import android.content.Intent;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.core.app.ApplicationProvider;
+import androidx.test.espresso.UiController;
 import androidx.test.espresso.ViewAction;
 import androidx.test.espresso.action.GeneralClickAction;
+import androidx.test.espresso.action.MotionEvents;
 import androidx.test.espresso.action.Press;
 import androidx.test.espresso.action.Tap;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
+import org.hamcrest.Matcher;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -225,16 +229,62 @@ public class TerminalUiTest {
 
     /** Long-presses the center of terminal cell (cx, cy). */
     private static ViewAction longPressAtCell(final int cx, final int cy) {
-        return new GeneralClickAction(Tap.LONG, view -> {
-            TerminalView tv = (TerminalView) view;
-            int[] xy = new int[2];
-            view.getLocationOnScreen(xy);
-            // width/cols slightly overestimates the cell width; exact
-            // enough for the small coordinates these tests use.
-            float cw = view.getWidth() / (float) tv.gridCols();
-            float ch = view.getHeight() / (float) tv.gridRows();
-            return new float[] {xy[0] + (cx + 0.5f) * cw, xy[1] + (cy + 0.5f) * ch};
-        }, Press.FINGER, InputDevice.SOURCE_TOUCHSCREEN, MotionEvent.BUTTON_PRIMARY);
+        return new GeneralClickAction(Tap.LONG,
+                view -> cellCenterOnScreen(view, cx, cy),
+                Press.FINGER, InputDevice.SOURCE_TOUCHSCREEN, MotionEvent.BUTTON_PRIMARY);
+    }
+
+    /** Screen coordinates of the center of terminal cell (cx, cy). */
+    private static float[] cellCenterOnScreen(View view, float cx, float cy) {
+        TerminalView tv = (TerminalView) view;
+        int[] xy = new int[2];
+        view.getLocationOnScreen(xy);
+        // width/cols slightly overestimates the cell width; exact enough for
+        // the small coordinates these tests use (and it never undershoots).
+        float cw = view.getWidth() / (float) tv.gridCols();
+        float ch = view.getHeight() / (float) tv.gridRows();
+        return new float[] {xy[0] + (cx + 0.5f) * cw, xy[1] + (cy + 0.5f) * ch};
+    }
+
+    /**
+     * Presses cell (cx0,cy0), holds past the long-press timeout, then drags to
+     * cell (cx1,cy1) before releasing — the long-press-and-extend gesture in a
+     * single motion.
+     */
+    private static ViewAction longPressDragCells(
+            final int cx0, final int cy0, final int cx1, final int cy1) {
+        return new ViewAction() {
+            @Override
+            public Matcher<View> getConstraints() {
+                return isDisplayed();
+            }
+
+            @Override
+            public String getDescription() {
+                return "long-press then drag across cells";
+            }
+
+            @Override
+            public void perform(UiController uc, View view) {
+                float[] precision = Press.FINGER.describePrecision();
+                float[] start = cellCenterOnScreen(view, cx0, cy0);
+                float[] end = cellCenterOnScreen(view, cx1, cy1);
+                MotionEvents.DownResultHolder down =
+                        MotionEvents.sendDown(uc, start, precision);
+                // Hold still so the gesture detector reports a long press.
+                uc.loopMainThreadForAtLeast(ViewConfiguration.getLongPressTimeout()
+                        + ViewConfiguration.getTapTimeout() + 300);
+                int steps = 12;
+                for (int i = 1; i <= steps; i++) {
+                    float[] p = {
+                            start[0] + (end[0] - start[0]) * i / steps,
+                            start[1] + (end[1] - start[1]) * i / steps};
+                    MotionEvents.sendMovement(uc, down.down, p);
+                    uc.loopMainThreadForAtLeast(16);
+                }
+                MotionEvents.sendUp(uc, down.down, end);
+            }
+        };
     }
 
     /** First screen row whose trimmed text equals exactly the given line. */
@@ -307,6 +357,25 @@ public class TerminalUiTest {
         waitFor("clipboard filled", TIMEOUT_MS,
                 () -> "selectme123".equals(clipboardText()));
         waitFor("selection dismissed", TIMEOUT_MS, () -> !selectionActive());
+    }
+
+    @Test
+    public void longPressDragExtendsSelection() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        dispatchText("echo aa bbbbbbbbbb\n");
+        waitFor("echoed output line", TIMEOUT_MS,
+                () -> screenRowWith("aa bbbbbbbbbb") >= 0, this::diagnose);
+
+        int row = screenRowWith("aa bbbbbbbbbb");
+        // Long-press "aa", then drag the end past "bbbbbbbbbb" without lifting.
+        // The drag target overshoots the text so it covers every 'b'; trailing
+        // blanks are trimmed back out of the copied range.
+        onView(withId(R.id.terminal)).perform(longPressDragCells(0, row, 16, row));
+        waitFor("selection extended across the drag", TIMEOUT_MS,
+                () -> {
+                    String s = selectionText();
+                    return s != null && s.startsWith("aa bbbbbbbbbb");
+                }, this::diagnose);
     }
 
     @Test
