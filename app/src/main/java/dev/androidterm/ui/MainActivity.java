@@ -1,8 +1,18 @@
 package dev.androidterm.ui;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowInsets;
 import android.widget.TextView;
@@ -15,6 +25,7 @@ import java.util.List;
 import dev.androidterm.R;
 import dev.androidterm.term.DebianRootfs;
 import dev.androidterm.term.SessionManager;
+import dev.androidterm.term.SessionService;
 import dev.androidterm.term.TerminalSession;
 
 /**
@@ -38,12 +49,24 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
      */
     public static final String EXTRA_FORCE_SHELL = "dev.androidterm.FORCE_SHELL";
 
+    private static final int REQ_POST_NOTIFICATIONS = 1;
+    private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
+
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
     private TabStripView tabs;
     private TextView installStatus;
     private TerminalSession current;
     private boolean forceShell;
+
+    /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
+    private final BroadcastReceiver exitReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Sessions are already torn down by the service; just drop the UI.
+            finishAndRemoveTask();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,6 +146,27 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         } else {
             switchTo(sessions.sessions().get(0));
         }
+
+        IntentFilter filter = new IntentFilter(SessionService.ACTION_EXITED);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(exitReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(exitReceiver, filter);
+        }
+        // Needed (33+) for the foreground-service notification to be visible;
+        // the service still runs if denied. Skipped under the test seam so
+        // the system dialog never lands on top of Espresso.
+        if (!forceShell && Build.VERSION.SDK_INT >= 33 && checkSelfPermission(
+                Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    REQ_POST_NOTIFICATIONS);
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(exitReceiver);
     }
 
     private boolean debianByDefault() {
@@ -146,6 +190,10 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(), debian, this);
             switchTo(s);
+            // Promote the process to foreground priority so the shell
+            // survives backgrounding; refresh updates the session count.
+            SessionService.refresh(this);
+            maybePromptBatteryOptimization();
         } catch (IOException e) {
             Toast.makeText(this, "Failed to start shell: " + e.getMessage(),
                     Toast.LENGTH_LONG).show();
@@ -194,13 +242,37 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private void closeTab(TerminalSession s) {
         sessions.close(s);
         if (sessions.isEmpty()) {
+            SessionService.stop(this);
             finish();
             return;
         }
+        SessionService.refresh(this); // reflect the new count in the notification
         if (s == current) {
             switchTo(sessions.sessions().get(sessions.sessions().size() - 1));
         } else {
             updateTabs();
+        }
+    }
+
+    /**
+     * Asks once (ever) to exempt the app from Doze battery optimization, so
+     * shells keep getting CPU during long idle periods. Silently skipped if
+     * already exempt or if the device has no such settings screen.
+     */
+    private void maybePromptBatteryOptimization() {
+        // The test seam must never trigger a system dialog over Espresso.
+        if (forceShell) return;
+        SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        if (prefs.getBoolean(PREF_ASKED_BATTERY_OPT, false)) return;
+        prefs.edit().putBoolean(PREF_ASKED_BATTERY_OPT, true).apply();
+        PowerManager pm = getSystemService(PowerManager.class);
+        if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+        try {
+            startActivity(new Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (android.content.ActivityNotFoundException ignored) {
+            // No battery-optimization UI on this device.
         }
     }
 

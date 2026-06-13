@@ -4,6 +4,16 @@
     <!-- apt/curl/… inside the Debian guest run as the app's uid. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Keep the process alive (and shells running) while backgrounded. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Persistent notification for the foreground service (runtime on 33+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Optional CPU wake lock so background jobs keep running with the screen off. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- One-time prompt to exempt the app from Doze battery optimization. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:label="AndroidTerm"
         android:icon="@mipmap/ic_launcher"
@@ -20,6 +30,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Holds the process at foreground priority while shells run.
+             stopWithTask=false keeps it (and the shells) alive when the
+             task is swiped from Recents. -->
+        <service
+            android:name=".term.SessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps interactive terminal shells and their child processes running while the app is in the background." />
+        </service>
     </application>
 
 </manifest>

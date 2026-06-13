@@ -59,6 +59,19 @@ public final class SessionManager {
         sessions.remove(s);
     }
 
+    /**
+     * Kills every shell and empties the list. Used by the "Exit" action in
+     * the foreground-service notification, which can fire while no Activity
+     * is alive — so it must leave no dead sessions behind for a later
+     * relaunch to re-attach to.
+     */
+    public void closeAll() {
+        for (TerminalSession s : sessions) {
+            s.close();
+        }
+        sessions.clear();
+    }
+
     public boolean isEmpty() {
         return sessions.isEmpty();
     }
