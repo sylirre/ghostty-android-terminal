@@ -61,7 +61,7 @@ public class DebianSessionTest {
         // One-time per device state: extracts the rootfs on the first test
         // of the run, no-ops afterwards (marker file).
         DebianRootfs.install(ctx, null);
-        session = new TerminalSession(80, 24, DebianRootfs.command(ctx), listener);
+        session = new TerminalSession(80, 24, 8, 16, DebianRootfs.command(ctx), listener);
         waitForOnScreen("~#"); // root login prompt: "root@host:~#"
     }
 

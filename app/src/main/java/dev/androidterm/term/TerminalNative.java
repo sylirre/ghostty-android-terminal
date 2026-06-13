@@ -71,7 +71,8 @@ public final class TerminalNative {
      * pid is written to pidOut[0].
      */
     public static native int ptyCreate(String cmd, String[] args, String[] env,
-            String cwd, int cols, int rows, int[] pidOut) throws java.io.IOException;
+            String cwd, int cols, int rows, int cellWidthPx, int cellHeightPx,
+            int[] pidOut) throws java.io.IOException;
 
     /**
      * Opens a PTY and forks a child that enters PRoot's main() in-process
@@ -80,9 +81,11 @@ public final class TerminalNative {
      * including argv[0]; env must carry PROOT_LOADER and PROOT_TMP_DIR.
      */
     public static native int ptyCreateProot(String[] args, String[] env,
-            String cwd, int cols, int rows, int[] pidOut) throws java.io.IOException;
+            String cwd, int cols, int rows, int cellWidthPx, int cellHeightPx,
+            int[] pidOut) throws java.io.IOException;
 
-    public static native void ptySetSize(int fd, int cols, int rows);
+    public static native void ptySetSize(int fd, int cols, int rows,
+            int cellWidthPx, int cellHeightPx);
 
     /** Blocks until pid exits; returns exit code or -signal. */
     public static native int processWaitFor(int pid);

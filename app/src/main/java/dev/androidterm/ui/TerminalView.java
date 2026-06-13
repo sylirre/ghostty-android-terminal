@@ -252,6 +252,15 @@ public class TerminalView extends View {
         return rows;
     }
 
+    /** Cell pixel size, for seeding the PTY winsize's pixel fields. */
+    public int cellWidthPx() {
+        return (int) cellWidth;
+    }
+
+    public int cellHeightPx() {
+        return cellHeight;
+    }
+
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         updateGridSize(w, h);

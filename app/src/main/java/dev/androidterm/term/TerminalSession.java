@@ -51,14 +51,19 @@ public final class TerminalSession {
     private final String label;
 
     /** Spawns /system/bin/sh; see {@link SessionCommand#androidShell}. */
-    public TerminalSession(int cols, int rows, String homeDir, String tmpDir,
-            Listener listener) throws IOException {
-        this(cols, rows, SessionCommand.androidShell(homeDir, tmpDir), listener);
+    public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
+            String homeDir, String tmpDir, Listener listener) throws IOException {
+        this(cols, rows, cellWidthPx, cellHeightPx,
+                SessionCommand.androidShell(homeDir, tmpDir), listener);
     }
 
-    /** Spawns the given command (Android shell or Debian-under-PRoot). */
-    public TerminalSession(int cols, int rows, SessionCommand command,
-            Listener listener) throws IOException {
+    /**
+     * Spawns the given command (Android shell or Debian-under-PRoot). The cell
+     * pixel size seeds the PTY winsize so the spawn size is final — including
+     * the pixel fields some programs (e.g. Kitty's icat) read to size images.
+     */
+    public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
+            SessionCommand command, Listener listener) throws IOException {
         this.listener = listener;
         this.label = command.label;
         this.emulator = new TerminalEmulator(cols, rows, SCROLLBACK_ROWS);
@@ -66,9 +71,11 @@ public final class TerminalSession {
         int[] pidOut = new int[1];
         int fd = command.cmd != null
                 ? TerminalNative.ptyCreate(command.cmd, command.argv,
-                        command.env, command.cwd, cols, rows, pidOut)
+                        command.env, command.cwd, cols, rows, cellWidthPx,
+                        cellHeightPx, pidOut)
                 : TerminalNative.ptyCreateProot(command.argv, command.env,
-                        command.cwd, cols, rows, pidOut);
+                        command.cwd, cols, rows, cellWidthPx, cellHeightPx,
+                        pidOut);
         lastCols = cols;
         lastRows = rows;
         this.pid = pidOut[0];
@@ -190,7 +197,8 @@ public final class TerminalSession {
         lastCols = cols;
         lastRows = rows;
         emulator.resize(cols, rows, cellWidthPx, cellHeightPx);
-        TerminalNative.ptySetSize(masterFd.getFd(), cols, rows);
+        TerminalNative.ptySetSize(masterFd.getFd(), cols, rows, cellWidthPx,
+                cellHeightPx);
     }
 
     /** Kills the shell and releases the PTY. Idempotent. */

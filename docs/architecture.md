@@ -155,7 +155,12 @@ cols/rows and resizes the PTY + terminal. Wide (CJK) glyphs occupy two cells
 
 libghostty-vt parses and stores images and placements for the [Kitty
 graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/); the
-app supplies only enablement, a PNG decoder, and compositing. `terminalNew`
+app supplies only enablement, a PNG decoder, and compositing. Image tools
+also need the terminal's pixel size: the PTY winsize carries `ws_xpixel`/
+`ws_ypixel` (cols/rows × cell size) so programs like Kitty's `icat` can read
+them via `TIOCGWINSZ`. They are seeded into the initial winsize at spawn
+because the session starts at its final grid size and never resizes.
+`terminalNew`
 sets a non-zero `GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT` (zero would
 keep the protocol off) and installs a process-global PNG decode callback —
 vendored stb_image, in its own `pngdec` target so the third-party header

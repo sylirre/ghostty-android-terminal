@@ -33,13 +33,15 @@ public final class SessionManager {
      *               installed) instead of /system/bin/sh.
      */
     public TerminalSession create(Context context, int cols, int rows,
-            boolean debian, TerminalSession.Listener listener) throws IOException {
+            int cellWidthPx, int cellHeightPx, boolean debian,
+            TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
                 ? DebianRootfs.command(context)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());
-        TerminalSession s = new TerminalSession(cols, rows, command, listener);
+        TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
+                cellHeightPx, command, listener);
         sessions.add(s);
         return s;
     }

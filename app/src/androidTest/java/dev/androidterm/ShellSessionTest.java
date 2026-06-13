@@ -50,7 +50,7 @@ public class ShellSessionTest {
     @Before
     public void setUp() throws IOException {
         Context ctx = ApplicationProvider.getApplicationContext();
-        session = new TerminalSession(80, 24,
+        session = new TerminalSession(80, 24, 8, 16,
                 ctx.getFilesDir().getAbsolutePath(),
                 ctx.getCacheDir().getAbsolutePath(),
                 listener);

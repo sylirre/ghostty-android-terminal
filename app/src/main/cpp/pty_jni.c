@@ -54,7 +54,7 @@ static char **to_cstr_array(JNIEnv *env, jobjectArray arr) {
  */
 static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
                          jobjectArray jenv, jstring jcwd, jint cols, jint rows,
-                         jintArray jpid) {
+                         jint cell_w, jint cell_h, jintArray jpid) {
     int master = open("/dev/ptmx", O_RDWR | O_CLOEXEC);
     if (master < 0) return throw_errno(env, "open /dev/ptmx");
 
@@ -65,8 +65,14 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
         return throw_errno(env, "ptsname");
     }
 
+    /* Pixel fields too: programs like Kitty's icat read them via TIOCGWINSZ
+     * to size images, and otherwise give up reporting "screen sizes in
+     * pixels". They must be in the initial winsize because the session spawns
+     * at its final grid size and never resizes (see TerminalSession.resize). */
     struct winsize ws = {.ws_row = (unsigned short)rows,
-                         .ws_col = (unsigned short)cols};
+                         .ws_col = (unsigned short)cols,
+                         .ws_xpixel = (unsigned short)(cols * cell_w),
+                         .ws_ypixel = (unsigned short)(rows * cell_h)};
     ioctl(master, TIOCSWINSZ, &ws);
 
     const char *cmd = jcmd ? (*env)->GetStringUTFChars(env, jcmd, NULL) : NULL;
@@ -120,25 +126,32 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
 JNIEXPORT jint JNICALL
 Java_dev_androidterm_term_TerminalNative_ptyCreate(
     JNIEnv *env, jclass clazz, jstring jcmd, jobjectArray jargs,
-    jobjectArray jenv, jstring jcwd, jint cols, jint rows, jintArray jpid) {
+    jobjectArray jenv, jstring jcwd, jint cols, jint rows, jint cell_w,
+    jint cell_h, jintArray jpid) {
     (void)clazz;
-    return spawn_on_pty(env, jcmd, jargs, jenv, jcwd, cols, rows, jpid);
+    return spawn_on_pty(env, jcmd, jargs, jenv, jcwd, cols, rows, cell_w, cell_h,
+                        jpid);
 }
 
 JNIEXPORT jint JNICALL
 Java_dev_androidterm_term_TerminalNative_ptyCreateProot(
     JNIEnv *env, jclass clazz, jobjectArray jargs, jobjectArray jenv,
-    jstring jcwd, jint cols, jint rows, jintArray jpid) {
+    jstring jcwd, jint cols, jint rows, jint cell_w, jint cell_h,
+    jintArray jpid) {
     (void)clazz;
-    return spawn_on_pty(env, NULL, jargs, jenv, jcwd, cols, rows, jpid);
+    return spawn_on_pty(env, NULL, jargs, jenv, jcwd, cols, rows, cell_w, cell_h,
+                        jpid);
 }
 
 JNIEXPORT void JNICALL
 Java_dev_androidterm_term_TerminalNative_ptySetSize(
-    JNIEnv *env, jclass clazz, jint fd, jint cols, jint rows) {
+    JNIEnv *env, jclass clazz, jint fd, jint cols, jint rows, jint cell_w,
+    jint cell_h) {
     (void)env; (void)clazz;
     struct winsize ws = {.ws_row = (unsigned short)rows,
-                         .ws_col = (unsigned short)cols};
+                         .ws_col = (unsigned short)cols,
+                         .ws_xpixel = (unsigned short)(cols * cell_w),
+                         .ws_ypixel = (unsigned short)(rows * cell_h)};
     ioctl(fd, TIOCSWINSZ, &ws);
 }
 

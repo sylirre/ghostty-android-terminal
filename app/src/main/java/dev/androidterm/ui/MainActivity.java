@@ -143,7 +143,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private void createSession(boolean debian) {
         try {
             TerminalSession s = sessions.create(this,
-                    terminal.gridCols(), terminal.gridRows(), debian, this);
+                    terminal.gridCols(), terminal.gridRows(),
+                    terminal.cellWidthPx(), terminal.cellHeightPx(), debian, this);
             switchTo(s);
         } catch (IOException e) {
             Toast.makeText(this, "Failed to start shell: " + e.getMessage(),
