@@ -5,6 +5,7 @@ import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
@@ -25,6 +26,11 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+
+import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 import dev.androidterm.term.ScreenSnapshot;
 import dev.androidterm.term.TerminalNative;
@@ -69,6 +75,17 @@ public class TerminalView extends View {
     private int cellHeight;
     private int baseline;
     private int cols = 80, rows = 24;
+
+    // --- Kitty graphics. Placement geometry is re-read every frame into gfx
+    // (GFX_STRIDE ints each); decoded bitmaps are cached by image id and
+    // re-fetched only when an id is new or its dimensions changed. ---
+    private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private int[] gfx = new int[TerminalNative.GFX_STRIDE * 4];
+    private int gfxCount;
+    private final Map<Integer, Bitmap> imageCache = new HashMap<>();
+    private final int[] imageWh = new int[2];
+    private final Rect imgSrc = new Rect();
+    private final RectF imgDst = new RectF();
 
     private static final float MIN_FONT_SP = 8f;
     private static final float MAX_FONT_SP = 40f;
@@ -210,7 +227,11 @@ public class TerminalView extends View {
 
     /** Binds a session; pass null to detach. Resizes it to fit this view. */
     public void attachSession(TerminalSession s) {
-        if (s != session) finishSelection(); // also clears the old session's selection
+        if (s != session) {
+            finishSelection(); // also clears the old session's selection
+            clearImageCache(); // image ids belong to the old terminal
+            gfxCount = 0;
+        }
         session = s;
         if (s != null && getWidth() > 0) {
             updateGridSize(getWidth(), getHeight());
@@ -234,6 +255,12 @@ public class TerminalView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         updateGridSize(w, h);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        clearImageCache(); // release decoded bitmaps; rebuilt on next draw
     }
 
     private void updateGridSize(int w, int h) {
@@ -455,16 +482,105 @@ public class TerminalView extends View {
                 }
             }
         }
+        updateGraphics();
+        drawImages(canvas, true); // z < 0: above background, below text
         drawCursor(canvas);
         for (int y = 0; y < sr; y++) {
             drawRowText(canvas, y, sc);
         }
+        drawImages(canvas, false); // z >= 0: above text (the Kitty default)
         drawSelectionHandles(canvas);
         if (selecting && !snapshot.hasSelection()) {
             // The selected text scrolled out of existence (scrollback
             // pruning, screen switch); retire the UI outside of draw.
             post(this::finishSelection);
         }
+    }
+
+    /**
+     * Re-reads visible Kitty placements into {@link #gfx}, then refreshes the
+     * bitmap cache: decode any image id that is new or whose source size
+     * changed, and recycle cached bitmaps whose id is no longer on screen.
+     */
+    private void updateGraphics() {
+        gfxCount = session.emulator.graphics(gfx);
+        if (gfxCount * TerminalNative.GFX_STRIDE > gfx.length) {
+            gfx = new int[gfxCount * TerminalNative.GFX_STRIDE];
+            gfxCount = session.emulator.graphics(gfx);
+        }
+        if (gfxCount == 0) {
+            clearImageCache();
+            return;
+        }
+        for (int p = 0; p < gfxCount; p++) {
+            int base = p * TerminalNative.GFX_STRIDE;
+            int id = gfx[base + TerminalNative.GFX_IMAGE_ID];
+            int iw = gfx[base + TerminalNative.GFX_IMAGE_W];
+            int ih = gfx[base + TerminalNative.GFX_IMAGE_H];
+            Bitmap bmp = imageCache.get(id);
+            if (bmp == null || bmp.getWidth() != iw || bmp.getHeight() != ih) {
+                if (bmp != null) bmp.recycle();
+                bmp = fetchBitmap(id);
+                if (bmp != null) imageCache.put(id, bmp);
+                else imageCache.remove(id);
+            }
+        }
+        for (Iterator<Map.Entry<Integer, Bitmap>> it =
+                imageCache.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Integer, Bitmap> e = it.next();
+            if (!placed(e.getKey())) {
+                e.getValue().recycle();
+                it.remove();
+            }
+        }
+    }
+
+    private boolean placed(int id) {
+        for (int p = 0; p < gfxCount; p++) {
+            if (gfx[p * TerminalNative.GFX_STRIDE + TerminalNative.GFX_IMAGE_ID] == id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Bitmap fetchBitmap(int id) {
+        byte[] rgba = session.emulator.imagePixels(id, imageWh);
+        int w = imageWh[0], h = imageWh[1];
+        if (rgba == null || w <= 0 || h <= 0 || rgba.length < w * h * 4) return null;
+        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        bmp.copyPixelsFromBuffer(ByteBuffer.wrap(rgba));
+        return bmp;
+    }
+
+    /** Draws the cached placements for one z-band; see onDraw for ordering. */
+    private void drawImages(Canvas canvas, boolean belowText) {
+        for (int p = 0; p < gfxCount; p++) {
+            int base = p * TerminalNative.GFX_STRIDE;
+            if ((gfx[base + TerminalNative.GFX_Z] < 0) != belowText) continue;
+            Bitmap bmp = imageCache.get(gfx[base + TerminalNative.GFX_IMAGE_ID]);
+            if (bmp == null) continue;
+            int pw = gfx[base + TerminalNative.GFX_PIXEL_W];
+            int ph = gfx[base + TerminalNative.GFX_PIXEL_H];
+            int sw = gfx[base + TerminalNative.GFX_SRC_W];
+            int sh = gfx[base + TerminalNative.GFX_SRC_H];
+            if (pw <= 0 || ph <= 0 || sw <= 0 || sh <= 0) continue;
+            int sx = gfx[base + TerminalNative.GFX_SRC_X];
+            int sy = gfx[base + TerminalNative.GFX_SRC_Y];
+            imgSrc.set(sx, sy, sx + sw, sy + sh);
+            // col/row go negative when an image is scrolled off the top/left;
+            // the canvas is clipped to the view, so partial images clip for free.
+            float left = gfx[base + TerminalNative.GFX_COL] * cellWidth;
+            float top = gfx[base + TerminalNative.GFX_ROW] * cellHeight;
+            imgDst.set(left, top, left + pw, top + ph);
+            canvas.drawBitmap(bmp, imgSrc, imgDst, imagePaint);
+        }
+    }
+
+    private void clearImageCache() {
+        if (imageCache.isEmpty()) return;
+        for (Bitmap b : imageCache.values()) b.recycle();
+        imageCache.clear();
     }
 
     private void drawSelectionHandles(Canvas canvas) {

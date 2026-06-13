@@ -151,6 +151,33 @@ calls. Cell size derives from font metrics; on layout the view computes
 cols/rows and resizes the PTY + terminal. Wide (CJK) glyphs occupy two cells
 (the trailing spacer cell has codepoint 0 and is skipped).
 
+### Kitty graphics
+
+libghostty-vt parses and stores images and placements for the [Kitty
+graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/); the
+app supplies only enablement, a PNG decoder, and compositing. `terminalNew`
+sets a non-zero `GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT` (zero would
+keep the protocol off) and installs a process-global PNG decode callback —
+vendored stb_image, in its own `pngdec` target so the third-party header
+compiles clear of libterm.so's `-Wall -Werror`. The decoder is needed only
+for PNG payloads (`f=100`); ghostty decompresses and PNG-decodes on store,
+so stored images are always uncompressed gray/gray+alpha/rgb/rgba.
+
+Images are a second snapshot channel, separate from the cell grid.
+`terminalGraphics` walks a reused placement iterator and packs per-placement
+geometry (image id + dimensions, viewport cell position, rendered pixel
+size, source rect, z) into a flat `int[]`, mirrored by `TerminalNative.GFX_*`
+— same grow-and-retry contract as the cell snapshot. `terminalImage` returns
+one image's pixels as RGBA8888 (the in-memory order of Android's
+`ARGB_8888`). Borrowed handles and pixel pointers are invalidated by the
+next mutating call, so each function consumes them within a single JNI call.
+`TerminalView` keeps a `Bitmap` cache keyed by image id (re-fetched only when
+the id is new or its dimensions changed, evicted when no longer placed) and
+draws placements in two `onDraw` passes — z<0 below the text, z≥0 (the Kitty
+default) above it. Viewport col/row go negative for images scrolled off the
+top/left; the canvas clip handles the partial draw. Virtual (unicode
+placeholder) placements are not yet rendered.
+
 ### Selection and clipboard
 
 Long-press selects the word under the finger (Ghostty's

@@ -42,6 +42,26 @@ public final class TerminalNative {
     public static final int SEL_START_VISIBLE = 2;
     public static final int SEL_END_VISIBLE = 4;
 
+    /**
+     * Kitty graphics placement record layout from {@link #terminalGraphics}:
+     * GFX_STRIDE ints per visible placement, mirrored in terminal_jni.c. Col,
+     * row and z are signed; col/row are viewport cell coordinates that may be
+     * negative when a placement is partly scrolled off the top/left.
+     */
+    public static final int GFX_STRIDE = 12;
+    public static final int GFX_IMAGE_ID = 0;
+    public static final int GFX_IMAGE_W = 1;   // source image width, px
+    public static final int GFX_IMAGE_H = 2;   // source image height, px
+    public static final int GFX_COL = 3;       // viewport column (cells)
+    public static final int GFX_ROW = 4;       // viewport row (cells)
+    public static final int GFX_PIXEL_W = 5;   // rendered width, px
+    public static final int GFX_PIXEL_H = 6;   // rendered height, px
+    public static final int GFX_SRC_X = 7;     // source rect origin x, px
+    public static final int GFX_SRC_Y = 8;     // source rect origin y, px
+    public static final int GFX_SRC_W = 9;     // source rect width, px
+    public static final int GFX_SRC_H = 10;    // source rect height, px
+    public static final int GFX_Z = 11;        // z-index (<0 draws below text)
+
     // --- PTY / process ---
 
     /**
@@ -103,6 +123,21 @@ public final class TerminalNative {
      */
     public static native int terminalSnapshot(long handle, int[] codepoints,
             int[] fg, int[] bg, byte[] attrs, int[] meta);
+
+    /**
+     * Packs visible Kitty graphics placements into out (GFX_STRIDE ints each)
+     * and returns the placement count. If out is too small, only those that
+     * fit are written and the caller must retry with a bigger array — same
+     * contract as {@link #terminalSnapshot}.
+     */
+    public static native int terminalGraphics(long handle, int[] out);
+
+    /**
+     * Pixels of a stored Kitty image as RGBA8888 (width*height*4 bytes, R,G,B,A
+     * order), with wh[0]=width and wh[1]=height. Null if the image is gone or
+     * can't be marshalled.
+     */
+    public static native byte[] terminalImage(long handle, int imageId, int[] wh);
 
     /**
      * Encodes a key press per current terminal modes. utf8 is the text the

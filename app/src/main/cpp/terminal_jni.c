@@ -14,9 +14,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "png_decode.h"
+
 /* Event bits returned by feed(), see TerminalNative.EVENT_*. */
 #define EVENT_BELL 1
 #define EVENT_TITLE 2
+
+/* Per-screen Kitty image storage cap. Non-zero enables the protocol; this
+ * bounds memory on a phone while leaving room for a few full-screen images. */
+#define KITTY_STORAGE_LIMIT_BYTES (64ull * 1024 * 1024)
+
+/* Ints per placement record from terminalGraphics; mirror TerminalNative.GFX_*. */
+#define GFX_STRIDE 12
 
 typedef struct {
     GhosttyTerminal term;
@@ -25,6 +34,9 @@ typedef struct {
     GhosttyRenderStateRowCells cells;
     GhosttyKeyEncoder encoder;
     GhosttyKeyEvent kev;
+    /* Reused across frames; re-populated from storage on each terminalGraphics
+     * call. NULL when iterator allocation failed (image readback disabled). */
+    GhosttyKittyGraphicsPlacementIterator graphics_iter;
 
     /* Bytes the terminal wants written back to the PTY (query responses),
      * collected during vt_write. */
@@ -65,6 +77,7 @@ static void on_title(GhosttyTerminal t, void *ud) {
 static const GhosttyTerminalWritePtyFn write_pty_fn = on_write_pty;
 static const GhosttyTerminalBellFn bell_fn = on_bell;
 static const GhosttyTerminalTitleChangedFn title_fn = on_title;
+static const GhosttySysDecodePngFn decode_png_fn = androidterm_decode_png;
 
 JNIEXPORT jlong JNICALL
 Java_dev_androidterm_term_TerminalNative_terminalNew(
@@ -94,6 +107,16 @@ Java_dev_androidterm_term_TerminalNative_terminalNew(
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_WRITE_PTY, write_pty_fn);
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_BELL, bell_fn);
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, title_fn);
+
+    /* Kitty graphics: enable PNG payloads (process-global, idempotent) and
+     * image storage on this terminal, then pre-allocate the placement
+     * iterator. All are no-ops when Kitty graphics are disabled at build
+     * time; a NULL iterator simply leaves image readback disabled. */
+    ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, decode_png_fn);
+    uint64_t kitty_limit = KITTY_STORAGE_LIMIT_BYTES;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT,
+                         &kitty_limit);
+    ghostty_kitty_graphics_placement_iterator_new(NULL, &c->graphics_iter);
     return (jlong)(intptr_t)c;
 
 fail:
@@ -113,6 +136,7 @@ Java_dev_androidterm_term_TerminalNative_terminalFree(
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
     if (!c) return;
+    ghostty_kitty_graphics_placement_iterator_free(c->graphics_iter);
     ghostty_key_event_free(c->kev);
     ghostty_key_encoder_free(c->encoder);
     ghostty_render_state_row_cells_free(c->cells);
@@ -436,6 +460,157 @@ done:
     free(row_bg);
     free(row_attr);
     return ret;
+}
+
+/*
+ * Kitty graphics. The VT engine parses and stores images/placements; these
+ * two calls read them back out for the Canvas renderer.
+ *
+ * terminalGraphics copies geometry for every visible placement into jout as
+ * GFX_STRIDE ints each (see TerminalNative.GFX_*). It returns the placement
+ * count; if jout can't hold them all, only those that fit are written and
+ * the caller retries with a larger array — same contract as terminalSnapshot.
+ * Virtual (unicode-placeholder) and fully off-screen placements are skipped.
+ *
+ * All handles and pixel pointers are borrowed and invalidated by the next
+ * mutating terminal call, so each function consumes them within one JNI call
+ * with no feed() in between (the same discipline as the selection code).
+ */
+JNIEXPORT jint JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalGraphics(
+    JNIEnv *env, jclass clazz, jlong h, jintArray jout) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    if (!c->graphics_iter) return 0;
+
+    GhosttyKittyGraphics gfx = NULL;
+    if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS,
+                             &gfx) != GHOSTTY_SUCCESS)
+        return 0;
+    if (ghostty_kitty_graphics_get(
+            gfx, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
+            &c->graphics_iter) != GHOSTTY_SUCCESS)
+        return 0;
+
+    jsize cap = (*env)->GetArrayLength(env, jout) / GFX_STRIDE;
+    jint n = 0;
+    while (ghostty_kitty_graphics_placement_next(c->graphics_iter)) {
+        uint32_t image_id = 0;
+        if (ghostty_kitty_graphics_placement_get(
+                c->graphics_iter,
+                GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
+                &image_id) != GHOSTTY_SUCCESS)
+            continue;
+        GhosttyKittyGraphicsImage img =
+            ghostty_kitty_graphics_image(gfx, image_id);
+        if (!img) continue;
+
+        GhosttyKittyGraphicsPlacementRenderInfo ri =
+            GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo);
+        if (ghostty_kitty_graphics_placement_render_info(
+                c->graphics_iter, img, c->term, &ri) != GHOSTTY_SUCCESS)
+            continue;
+        if (!ri.viewport_visible) continue;
+
+        uint32_t iw = 0, ih = 0;
+        ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
+                                         &iw);
+        ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,
+                                         &ih);
+        int32_t z = 0;
+        ghostty_kitty_graphics_placement_get(
+            c->graphics_iter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Z, &z);
+
+        if (n < cap) {
+            jint rec[GFX_STRIDE] = {
+                (jint)image_id,        (jint)iw,
+                (jint)ih,              ri.viewport_col,
+                ri.viewport_row,       (jint)ri.pixel_width,
+                (jint)ri.pixel_height, (jint)ri.source_x,
+                (jint)ri.source_y,     (jint)ri.source_width,
+                (jint)ri.source_height, (jint)z,
+            };
+            (*env)->SetIntArrayRegion(env, jout, n * GFX_STRIDE, GFX_STRIDE,
+                                      rec);
+        }
+        n++;
+    }
+    return n;
+}
+
+/*
+ * Returns a stored Kitty image's pixels as tightly packed RGBA8888 (one byte
+ * each R,G,B,A — the in-memory order of Android's ARGB_8888), writing width
+ * to wh[0] and height to wh[1]. Null if the image is missing, too large to
+ * marshal, or in an unexpected format. Stored images are always decompressed
+ * and PNG-decoded by libghostty-vt, so the format is gray/gray+alpha/rgb/rgba.
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_dev_androidterm_term_TerminalNative_terminalImage(
+    JNIEnv *env, jclass clazz, jlong h, jint image_id, jintArray jwh) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+
+    GhosttyKittyGraphics gfx = NULL;
+    if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS,
+                             &gfx) != GHOSTTY_SUCCESS)
+        return NULL;
+    GhosttyKittyGraphicsImage img =
+        ghostty_kitty_graphics_image(gfx, (uint32_t)image_id);
+    if (!img) return NULL;
+
+    uint32_t w = 0, ht = 0;
+    GhosttyKittyImageFormat fmt = GHOSTTY_KITTY_IMAGE_FORMAT_RGBA;
+    const uint8_t *data = NULL;
+    size_t len = 0;
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH, &w);
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, &ht);
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_FORMAT, &fmt);
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR,
+                                     &data);
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN,
+                                     &len);
+    if (!data || w == 0 || ht == 0) return NULL;
+
+    size_t bpp;
+    switch (fmt) {
+    case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY: bpp = 1; break;
+    case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA: bpp = 2; break;
+    case GHOSTTY_KITTY_IMAGE_FORMAT_RGB: bpp = 3; break;
+    case GHOSTTY_KITTY_IMAGE_FORMAT_RGBA: bpp = 4; break;
+    default: return NULL; /* PNG should already be decoded; reject the rest */
+    }
+    size_t npx = (size_t)w * ht;
+    if (len < npx * bpp) return NULL;
+
+    size_t out_len = npx * 4;
+    if (out_len > (size_t)INT32_MAX) return NULL;
+    uint8_t *rgba = malloc(out_len);
+    if (!rgba) return NULL;
+    const uint8_t *s = data;
+    uint8_t *d = rgba;
+    for (size_t i = 0; i < npx; i++) {
+        uint8_t r, g, b, a;
+        switch (bpp) {
+        case 1: r = g = b = s[0]; a = 255; break;
+        case 2: r = g = b = s[0]; a = s[1]; break;
+        case 3: r = s[0]; g = s[1]; b = s[2]; a = 255; break;
+        default: r = s[0]; g = s[1]; b = s[2]; a = s[3]; break;
+        }
+        d[0] = r; d[1] = g; d[2] = b; d[3] = a;
+        s += bpp;
+        d += 4;
+    }
+
+    jbyteArray out = (*env)->NewByteArray(env, (jsize)out_len);
+    if (out) {
+        (*env)->SetByteArrayRegion(env, out, 0, (jsize)out_len,
+                                   (const jbyte *)rgba);
+        jint wh[2] = {(jint)w, (jint)ht};
+        (*env)->SetIntArrayRegion(env, jwh, 0, 2, wh);
+    }
+    free(rgba);
+    return out;
 }
 
 /* Maps Android KeyEvent keycodes to GhosttyKey. Unmapped keys return

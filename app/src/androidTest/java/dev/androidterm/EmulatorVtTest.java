@@ -337,4 +337,34 @@ public class EmulatorVtTest {
                 "\u001b[200~ab\u001b[201~".getBytes(StandardCharsets.US_ASCII),
                 term.encodePaste("ab"));
     }
+
+    @Test
+    public void kittyGraphicsPlacementAndPixelReadback() {
+        term.resize(20, 5, 10, 20); // give the terminal cell pixel geometry
+        // 1x1 RGB red pixel, transmit and display at the cursor (a=T).
+        // base64 of bytes {0xff, 0x00, 0x00} is "/wAA".
+        feed("\u001b_Ga=T,f=24,s=1,v=1;/wAA\u001b\\");
+
+        int[] g = new int[TerminalNative.GFX_STRIDE * 4];
+        assertEquals(1, term.graphics(g));
+        assertEquals(1, g[TerminalNative.GFX_IMAGE_W]);
+        assertEquals(1, g[TerminalNative.GFX_IMAGE_H]);
+        assertEquals(0, g[TerminalNative.GFX_COL]);
+        assertEquals(0, g[TerminalNative.GFX_ROW]);
+
+        int[] wh = new int[2];
+        byte[] rgba = term.imagePixels(g[TerminalNative.GFX_IMAGE_ID], wh);
+        assertNotNull(rgba);
+        assertEquals(1, wh[0]);
+        assertEquals(1, wh[1]);
+        // The RGB source gains an opaque alpha channel on read-back.
+        assertArrayEquals(new byte[] {(byte) 0xff, 0, 0, (byte) 0xff}, rgba);
+    }
+
+    @Test
+    public void kittyGraphicsAbsentWhenNoImages() {
+        int[] g = new int[TerminalNative.GFX_STRIDE * 4];
+        assertEquals(0, term.graphics(g));
+        assertNull(term.imagePixels(123, new int[2]));
+    }
 }

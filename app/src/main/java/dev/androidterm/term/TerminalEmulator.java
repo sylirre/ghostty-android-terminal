@@ -66,6 +66,23 @@ public final class TerminalEmulator implements AutoCloseable {
         return true;
     }
 
+    // --- Kitty graphics. Images and placements live in the terminal; the
+    // renderer reads geometry every frame and pulls pixels on cache misses. ---
+
+    /**
+     * Packs visible image placements into out (TerminalNative.GFX_STRIDE ints
+     * each) and returns the count, 0 after close(). If out is too small only
+     * the first that fit are written; grow it and retry on overflow.
+     */
+    public synchronized int graphics(int[] out) {
+        return handle == 0 ? 0 : TerminalNative.terminalGraphics(handle, out);
+    }
+
+    /** RGBA8888 pixels for a stored image (wh[0]=width, wh[1]=height), or null. */
+    public synchronized byte[] imagePixels(int imageId, int[] wh) {
+        return handle == 0 ? null : TerminalNative.terminalImage(handle, imageId, wh);
+    }
+
     /** Encodes a key press per current terminal modes; null if it encodes to nothing. */
     public synchronized byte[] encodeKey(int androidKeyCode, int mods,
             String utf8, int unshiftedCodepoint) {

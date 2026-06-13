@@ -148,6 +148,14 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_sources(proot PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/loader-info.c)
 endif()
 
+# --- PNG decoder (vendored stb_image) for Kitty graphics ---
+# Its own target so the third-party header compiles warnings-off, clear of
+# libterm.so's -Wall -Werror.
+
+add_library(pngdec STATIC png_decode.c)
+target_include_directories(pngdec PRIVATE ${GHOSTTY_VT_DIR}/include)
+target_compile_options(pngdec PRIVATE -w)
+
 # --- libterm.so (JNI) ---
 
 add_library(term SHARED
@@ -156,4 +164,4 @@ add_library(term SHARED
 
 target_include_directories(term PRIVATE ${GHOSTTY_VT_DIR}/include)
 target_compile_options(term PRIVATE -Wall -Werror)
-target_link_libraries(term ghostty-vt proot log)
+target_link_libraries(term ghostty-vt proot pngdec log)
