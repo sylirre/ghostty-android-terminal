@@ -120,12 +120,16 @@ public class TerminalView extends View {
     // to an OverScroller, whose decelerating position is sampled once per
     // animation frame and converted to whole-row scrollBy() calls (the engine
     // scrolls in integer rows). flingRemainder carries the sub-row fraction
-    // between frames; flingScrollbar holds the [total, offset, len] probe used
-    // to stop the moment the viewport pins against the edge it is heading for.
+    // between frames.
     private final OverScroller scroller;
     private int lastFlingY;
     private float flingRemainder;
-    private final int[] flingScrollbar = new int[3];
+    // Cached [total, offset, len] in rows from emulator.scrollbar(), refreshed
+    // each onDraw and after each fling step. Feeds two things: the fling's
+    // edge-stop check, and the vertical scroll-position indicator, whose hot
+    // per-frame computeVerticalScroll* callbacks read it instead of crossing
+    // the JNI boundary themselves.
+    private final int[] scrollState = new int[3];
     // Cap peak fling speed so a hard flick on a device reporting a huge
     // velocity can't leap across the whole scrollback in a couple of frames.
     private static final float MAX_FLING_ROWS_PER_SEC = 600f;
@@ -160,6 +164,8 @@ public class TerminalView extends View {
         setTextSizePx(spToPx(fontSizeSp));
 
         scroller = new OverScroller(context);
+        setVerticalScrollBarEnabled(true);
+        setScrollbarFadingEnabled(true);
 
         scaleGestures = new ScaleGestureDetector(context,
                 new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -219,6 +225,7 @@ public class TerminalView extends View {
                         }
                     } else {
                         session.emulator.scrollBy(lines);
+                        if (scrollState[0] > scrollState[2]) awakenScrollBars();
                         invalidate();
                     }
                 }
@@ -273,10 +280,11 @@ public class TerminalView extends View {
                 // scrollBy clamps silently at the ends; stop coasting once the
                 // viewport is pinned against the edge we're moving toward
                 // (lines > 0 reveals lower content, lines < 0 goes into history).
-                session.emulator.scrollbar(flingScrollbar);
-                int offset = flingScrollbar[1];
+                session.emulator.scrollbar(scrollState);
+                if (scrollState[0] > scrollState[2]) awakenScrollBars();
+                int offset = scrollState[1];
                 boolean atTop = offset <= 0;
-                boolean atBottom = offset + flingScrollbar[2] >= flingScrollbar[0];
+                boolean atBottom = offset + scrollState[2] >= scrollState[0];
                 if ((lines < 0 && atTop) || (lines > 0 && atBottom)) {
                     scroller.forceFinished(true);
                     return;
@@ -641,12 +649,33 @@ public class TerminalView extends View {
         }
     };
 
+    // --- Vertical scroll-position indicator. The framework draws and fades a
+    // thumb on the right edge from these three values (row units); the scroll
+    // paths call awakenScrollBars() to flash it while scrolling. They read the
+    // scrollState cache (refreshed in onDraw) so these per-frame callbacks
+    // never reach across the JNI boundary.
+    @Override
+    protected int computeVerticalScrollRange() {
+        return scrollState[0];
+    }
+
+    @Override
+    protected int computeVerticalScrollOffset() {
+        return scrollState[1];
+    }
+
+    @Override
+    protected int computeVerticalScrollExtent() {
+        return scrollState[2];
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         if (session == null || !session.emulator.snapshot(snapshot)) {
             canvas.drawColor(0xFF000000);
             return;
         }
+        session.emulator.scrollbar(scrollState); // keep the indicator current
         updateRichInputActive();
         canvas.drawColor(snapshot.defaultBg());
 
