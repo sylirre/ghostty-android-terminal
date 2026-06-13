@@ -233,6 +233,21 @@ trick for terminal apps. Printable text is written to the PTY as UTF-8;
 navigation/function keys go through the Ghostty key encoder so applications
 that switch modes (e.g. vi's DECCKM cursor keys) get correct sequences.
 
+**Rich keyboard input** (off by default; toggled in the settings menu) is an
+opt-in third path for users who want suggestions, autocorrect and swipe
+typing. When enabled *and* the terminal is in a plain line-editing state, the
+view instead returns a `TYPE_CLASS_TEXT` composing connection backed by a
+local `Editable`. Every IME edit reconciles that buffer against what has
+already been forwarded (`richSent`): it emits backspaces back to the longest
+common prefix, then the new tail, so plain typing, whole-word swipe commits,
+and autocorrect replacements all map onto the remote line uniformly. This
+only holds while the remote cursor sits at the end of the line, so it is a
+best-effort mirror — any special key, line submit (Enter), session switch, or
+terminal mode change resets it. The snapshot reports when a full-screen or
+raw-key program is running (alt-screen or DECCKM, packed into `meta[14]` by
+`ghostty_terminal_mode_get`); rich input disables itself there and falls back
+to the `TYPE_NULL` path, restarting the IME on the transition.
+
 `ExtraKeysView` sits between the terminal and the IME. The activity is
 edge-to-edge (targetSdk 36 enforces it); an insets listener pads the root by
 `max(ime, navigationBars)` so the toolbar always rides directly above the

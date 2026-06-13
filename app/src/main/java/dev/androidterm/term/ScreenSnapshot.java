@@ -16,7 +16,7 @@ public final class ScreenSnapshot {
     public int[] bg = new int[0];
     public byte[] attrs = new byte[0];
     /** See terminal_jni.c terminalSnapshot for the layout. */
-    public final int[] meta = new int[14];
+    public final int[] meta = new int[15];
 
     public boolean cursorInViewport() { return meta[0] != 0; }
     public int cursorX() { return meta[1]; }
@@ -46,6 +46,17 @@ public final class ScreenSnapshot {
     public int selectionStartY() { return meta[11]; }
     public int selectionEndX() { return meta[12]; }
     public int selectionEndY() { return meta[13]; }
+
+    /**
+     * True when the terminal is running something that consumes raw keys —
+     * the alternate screen (vim/less/tmux) or application-cursor-keys mode.
+     * Rich keyboard input (suggestions/swipe) must disable itself here, since
+     * a local edit buffer can't mirror a full-screen or modal program.
+     */
+    public boolean rawKeyInput() {
+        return (meta[14] & (TerminalNative.INPUT_MODE_ALT_SCREEN
+                | TerminalNative.INPUT_MODE_APP_CURSOR)) != 0;
+    }
 
     void ensureCapacity(int cells) {
         if (codepoints.length >= cells) return;

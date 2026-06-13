@@ -105,7 +105,13 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 - **Input has two paths.** Printable text is written to the PTY as raw
   UTF-8; special keys and ctrl/alt combos go through Ghostty's key encoder,
   which honors terminal modes (e.g. DECCKM arrow encoding). The Android
-  keycode → GhosttyKey mapping lives in C (`map_keycode`).
+  keycode → GhosttyKey mapping lives in C (`map_keycode`). An opt-in *rich
+  keyboard* mode (off by default) adds a third path: a `TYPE_CLASS_TEXT`
+  composing `InputConnection` whose local `Editable` is mirrored to the PTY
+  by diffing (`reconcileRich` in `TerminalView`). It auto-disables inside
+  full-screen/raw-key apps via `meta[14]` mode flags (alt-screen, DECCKM)
+  and resets on any special key, Enter, or mode change — it's a best-effort
+  mirror, not a source of truth (docs/architecture.md, "Keyboard").
 - **Nothing proot-shaped is ever exec'd.** W^X (targetSdk ≥ 29) forbids
   exec under app data, so PRoot is linked into libterm.so and entered via
   `proot_main()` in the fork()ed PTY child; only its loader — a static

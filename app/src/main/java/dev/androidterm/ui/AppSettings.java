@@ -15,6 +15,7 @@ public final class AppSettings {
 
     private static final String FILE = "settings";
     private static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
+    private static final String KEY_RICH_KEYBOARD = "rich_keyboard";
 
     private final SharedPreferences prefs;
 
@@ -30,5 +31,20 @@ public final class AppSettings {
 
     public void setKeepScreenOn(boolean enabled) {
         prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply();
+    }
+
+    /**
+     * When true, the soft keyboard runs in composing mode at a plain shell
+     * prompt so suggestions, autocorrect and swipe typing work; input falls
+     * back to raw key forwarding inside full-screen apps. Off by default
+     * because the local edit buffer only approximates the remote line
+     * (see TerminalView's rich-input handling).
+     */
+    public boolean richKeyboard() {
+        return prefs.getBoolean(KEY_RICH_KEYBOARD, false);
+    }
+
+    public void setRichKeyboard(boolean enabled) {
+        prefs.edit().putBoolean(KEY_RICH_KEYBOARD, enabled).apply();
     }
 }

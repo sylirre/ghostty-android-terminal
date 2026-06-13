@@ -12,6 +12,9 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.Selection;
 import android.util.AttributeSet;
 import android.view.ActionMode;
 import android.view.GestureDetector;
@@ -68,6 +71,20 @@ public class TerminalView extends View {
     private TerminalSession session;
     private final ScreenSnapshot snapshot = new ScreenSnapshot();
     private StickyModifiers sticky = new StickyModifiers();
+
+    // --- Rich keyboard input (opt-in; AppSettings.richKeyboard). When on AND
+    // the terminal is in a plain line-editing state, the soft keyboard runs in
+    // composing mode (TYPE_CLASS_TEXT) so suggestions/autocorrect/swipe work.
+    // The IME edits a local buffer that we mirror to the PTY by diffing it
+    // against what was already sent (richSent), emitting backspaces + new text.
+    // Inside full-screen / raw-key apps we fall back to the TYPE_NULL path.
+    // The mirror is a best-effort approximation of the remote line: any special
+    // key, line submit, or terminal mode change resets it (see resetRichInput).
+    private boolean richKeyboardEnabled;
+    private boolean richInputActive; // enabled AND terminal currently safe
+    private Editable richEditable;   // the active composing connection's buffer
+    private String richSent = "";    // text already forwarded for this line
+    private boolean restartInputPending; // a debounced restartInput is queued
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bgPaint = new Paint();
@@ -235,6 +252,7 @@ public class TerminalView extends View {
             finishSelection(); // also clears the old session's selection
             clearImageCache(); // image ids belong to the old terminal
             gfxCount = 0;
+            resetRichInput(); // the mirror belonged to the old session's line
         }
         session = s;
         if (s != null && getWidth() > 0) {
@@ -546,6 +564,7 @@ public class TerminalView extends View {
             canvas.drawColor(0xFF000000);
             return;
         }
+        updateRichInputActive();
         canvas.drawColor(snapshot.defaultBg());
 
         int sc = snapshot.cols, sr = snapshot.rows;
@@ -812,6 +831,9 @@ public class TerminalView extends View {
     public void dispatchText(String text) {
         if (session == null || text.isEmpty()) return;
         if (selecting) finishSelection();
+        // This text bypasses the rich-input buffer (hardware key, toolbar, or a
+        // modifier combo), so re-sync the mirror from empty afterwards.
+        resetRichInput();
         int mods = sticky.consume();
         if (mods == 0 || text.codePointCount(0, text.length()) > 1) {
             session.emulator.scrollToBottom();
@@ -836,6 +858,9 @@ public class TerminalView extends View {
     public void dispatchKey(int androidKeyCode) {
         if (session == null) return;
         if (selecting) finishSelection();
+        // A special key may move the remote cursor or trigger completion, so
+        // the mirrored input line no longer matches; drop it.
+        resetRichInput();
         session.sendKey(androidKeyCode, sticky.consume(), null, 0);
         invalidate();
     }
@@ -855,6 +880,23 @@ public class TerminalView extends View {
 
     @Override
     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+        if (richInputActive) {
+            // Composing mode: a real text field so the keyboard offers
+            // suggestions, autocorrect and swipe typing. Enter maps to "Go".
+            outAttrs.inputType = InputType.TYPE_CLASS_TEXT
+                    | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
+            outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
+                    | EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                    | EditorInfo.IME_ACTION_GO;
+            RichInputConnection ic = new RichInputConnection();
+            richEditable = ic.getEditable();
+            richEditable.clear();
+            Selection.setSelection(richEditable, 0);
+            richSent = "";
+            return ic;
+        }
+        // Plain terminal: TYPE_NULL makes the keyboard forward raw keys.
+        richEditable = null;
         outAttrs.inputType = EditorInfo.TYPE_NULL;
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
                 | EditorInfo.IME_FLAG_NO_EXTRACT_UI
@@ -874,6 +916,230 @@ public class TerminalView extends View {
                 return true;
             }
         };
+    }
+
+    /**
+     * Enables/disables rich (composing-mode) soft input and recreates the
+     * input connection so an open keyboard switches modes immediately.
+     */
+    public void setRichKeyboard(boolean enabled) {
+        if (richKeyboardEnabled == enabled) return;
+        richKeyboardEnabled = enabled;
+        richInputActive = enabled && session != null && !snapshot.rawKeyInput();
+        resetRichInput();
+        requestRestartInput(); // activating from the TYPE_NULL path needs a restart
+    }
+
+    /**
+     * Recomputes whether composing mode applies to the current terminal state
+     * and, on a change, resets the mirror and rebuilds the input connection.
+     * Called every frame from {@link #onDraw}; acts only on transitions.
+     */
+    private void updateRichInputActive() {
+        boolean active = richKeyboardEnabled && !snapshot.rawKeyInput();
+        if (active == richInputActive) return;
+        richInputActive = active;
+        resetRichInput();
+        requestRestartInput(); // toggling the connection type needs a restart
+    }
+
+    /**
+     * Drops the mirrored input line and rebuilds the input connection so the
+     * IME fully clears its composing/suggestion state — a plain updateSelection
+     * leaves Gboard's word composer (and the suggestion strip) intact, so the
+     * connection has to be restarted. No-op unless a composing connection is
+     * live, so the plain TYPE_NULL path keeps forwarding keys untouched.
+     */
+    private void resetRichInput() {
+        richSent = "";
+        if (richEditable == null) return;
+        richEditable.clear();
+        Selection.setSelection(richEditable, 0);
+        requestRestartInput();
+    }
+
+    private void restartInput() {
+        InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
+        if (imm != null) imm.restartInput(this);
+    }
+
+    /**
+     * Restarts the IME on the next frame, coalescing bursts (e.g. a backspace
+     * run) into a single restart and avoiding reentrancy when called from
+     * inside an InputConnection callback such as {@link #submitLine}.
+     */
+    private void requestRestartInput() {
+        if (restartInputPending) return;
+        restartInputPending = true;
+        post(() -> {
+            restartInputPending = false;
+            restartInput();
+        });
+    }
+
+    /**
+     * Brings the remote line in step with the IME's local buffer by emitting
+     * backspaces back to the longest common prefix, then the new tail. This
+     * one operation covers plain typing, swipe (whole-word commit), and
+     * autocorrect (word replacement) uniformly, assuming the remote cursor
+     * sits at the end of the line — which holds at a normal shell prompt.
+     */
+    private void reconcileRich() {
+        if (session == null || richEditable == null) return;
+        String next = richEditable.toString();
+        if (next.equals(richSent)) return;
+
+        // A pending toolbar CTRL/ALT means the user wants a control combo, not
+        // composed text: send the appended characters through the modifier path
+        // and stop mirroring (resetRichInput already cleared the buffer above).
+        if ((sticky.ctrl || sticky.alt) && next.length() > richSent.length()
+                && next.startsWith(richSent)) {
+            dispatchText(next.substring(richSent.length()));
+            return;
+        }
+
+        int prefix = commonPrefixChars(richSent, next);
+        int deletions = richSent.codePointCount(prefix, richSent.length());
+        sendBackspaces(deletions);
+        if (prefix < next.length()) {
+            session.emulator.scrollToBottom();
+            session.write(next.substring(prefix));
+        }
+        richSent = next;
+        invalidate();
+    }
+
+    /** Sends the current line to the shell and starts a fresh mirror. */
+    private void submitLine() {
+        reconcileRich();
+        if (session != null) session.sendKey(KeyEvent.KEYCODE_ENTER, 0, null, 0);
+        resetRichInput();
+        invalidate();
+    }
+
+    private void sendBackspaces(int count) {
+        if (session == null || count <= 0) return;
+        byte[] one = session.emulator.encodeKey(KeyEvent.KEYCODE_DEL, 0, null, 0);
+        if (one == null || one.length == 0) one = new byte[] {0x7f};
+        byte[] out = new byte[one.length * count];
+        for (int i = 0; i < count; i++) {
+            System.arraycopy(one, 0, out, i * one.length, one.length);
+        }
+        session.emulator.scrollToBottom();
+        session.writeBytes(out);
+    }
+
+    /** Length (in chars) of the shared prefix, kept on a code-point boundary. */
+    private static int commonPrefixChars(String a, String b) {
+        int n = Math.min(a.length(), b.length());
+        int i = 0;
+        while (i < n && a.charAt(i) == b.charAt(i)) i++;
+        // Never split a surrogate pair: a trailing high surrogate whose low
+        // half differs must not count as shared.
+        if (i > 0 && Character.isHighSurrogate(a.charAt(i - 1))) i--;
+        return i;
+    }
+
+    /**
+     * Composing input connection used while {@link #richInputActive}. Each
+     * mutator updates the local {@link Editable} (via super) then reconciles
+     * the remote line; Enter and the editor action submit the line.
+     */
+    private final class RichInputConnection extends BaseInputConnection {
+        RichInputConnection() {
+            super(TerminalView.this, true);
+        }
+
+        @Override
+        public boolean commitText(CharSequence text, int newCursorPosition) {
+            String s = text.toString();
+            if (s.indexOf('\n') < 0 && s.indexOf('\r') < 0) {
+                super.commitText(text, newCursorPosition);
+                reconcileRich();
+                return true;
+            }
+            // Split on newlines: each completed segment submits its own line.
+            int start = 0;
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                if (c != '\n' && c != '\r') continue;
+                if (i > start) super.commitText(s.substring(start, i), 1);
+                submitLine();
+                start = i + 1;
+            }
+            if (start < s.length()) {
+                super.commitText(s.substring(start), 1);
+                reconcileRich();
+            }
+            return true;
+        }
+
+        @Override
+        public boolean setComposingText(CharSequence text, int newCursorPosition) {
+            super.setComposingText(text, newCursorPosition);
+            reconcileRich();
+            return true;
+        }
+
+        @Override
+        public boolean deleteSurroundingText(int beforeLength, int afterLength) {
+            if (getEditable().length() == 0 && beforeLength > 0 && afterLength == 0) {
+                // Nothing local to delete (e.g. after a reset): pass the
+                // backspaces through so they still reach the remote line.
+                sendBackspaces(beforeLength);
+                return true;
+            }
+            super.deleteSurroundingText(beforeLength, afterLength);
+            reconcileRich();
+            return true;
+        }
+
+        @Override
+        public boolean deleteSurroundingTextInCodePoints(int before, int after) {
+            if (getEditable().length() == 0 && before > 0 && after == 0) {
+                sendBackspaces(before);
+                return true;
+            }
+            super.deleteSurroundingTextInCodePoints(before, after);
+            reconcileRich();
+            return true;
+        }
+
+        @Override
+        public boolean performEditorAction(int actionCode) {
+            submitLine();
+            return true;
+        }
+
+        @Override
+        public boolean sendKeyEvent(KeyEvent event) {
+            int kc = event.getKeyCode();
+            boolean enter = kc == KeyEvent.KEYCODE_ENTER
+                    || kc == KeyEvent.KEYCODE_NUMPAD_ENTER;
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                if (enter) {
+                    submitLine();
+                    return true;
+                }
+                if (kc == KeyEvent.KEYCODE_DEL) {
+                    Editable e = getEditable();
+                    int len = e.length();
+                    if (len == 0) {
+                        sendBackspaces(1);
+                    } else {
+                        int from = len - (len >= 2 && Character.isLowSurrogate(
+                                e.charAt(len - 1)) ? 2 : 1);
+                        e.delete(from, len);
+                        reconcileRich();
+                    }
+                    return true;
+                }
+            } else if (event.getAction() == KeyEvent.ACTION_UP
+                    && (enter || kc == KeyEvent.KEYCODE_DEL)) {
+                return true; // handled on ACTION_DOWN
+            }
+            return super.sendKeyEvent(event);
+        }
     }
 
     @Override
@@ -897,8 +1163,9 @@ public class TerminalView extends View {
 
         if (mods == 0 && utf8 != null && keyCode != KeyEvent.KEYCODE_ENTER
                 && keyCode != KeyEvent.KEYCODE_TAB) {
-            dispatchText(utf8);
+            dispatchText(utf8); // resets the rich-input mirror itself
         } else {
+            resetRichInput(); // this key bypasses the mirror
             session.sendKey(keyCode, mods, utf8, unshifted);
             invalidate();
         }

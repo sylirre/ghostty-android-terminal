@@ -283,6 +283,14 @@ static jint pack_rgb(GhosttyColorRgb c) {
 #define SEL_START_VISIBLE 2
 #define SEL_END_VISIBLE 4
 
+/* Input-mode flag bits in meta[14], mirrored in ScreenSnapshot / TerminalNative.
+ * These tell the IME layer whether the terminal is in a plain line-editing
+ * state (none set) or running something that wants raw keys (alt screen /
+ * application cursor keys), so rich-keyboard input can disable itself. */
+#define INPUT_MODE_ALT_SCREEN 1
+#define INPUT_MODE_APP_CURSOR 2
+#define INPUT_MODE_BRACKETED_PASTE 4
+
 /*
  * Copies the current viewport into flat per-cell arrays (row-major).
  * Colors are resolved to ARGB here — including defaults, inverse,
@@ -292,9 +300,9 @@ static jint pack_rgb(GhosttyColorRgb c) {
  * meta layout: [0] cursor-in-viewport, [1] x, [2] y, [3] style,
  * [4] visible, [5] blinking, [6] wide-tail, [7] default bg, [8] default fg,
  * [9] SEL_* flags, [10] sel start x, [11] sel start y, [12] sel end x,
- * [13] sel end y. Selection endpoints are viewport coordinates ordered
- * top-left to bottom-right; each is only valid when its visibility bit is
- * set (an endpoint can sit above or below the viewport).
+ * [13] sel end y, [14] INPUT_MODE_* flags. Selection endpoints are viewport
+ * coordinates ordered top-left to bottom-right; each is only valid when its
+ * visibility bit is set (an endpoint can sit above or below the viewport).
  *
  * Returns (cols << 16) | rows. If the arrays are smaller than cols*rows
  * only meta is written; the caller must re-allocate and retry.
@@ -318,7 +326,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
     ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_COLOR_FOREGROUND,
                              &fg_default);
 
-    jint meta[14] = {0};
+    jint meta[15] = {0};
     bool b = false;
     ghostty_render_state_get(
         c->rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &b);
@@ -377,7 +385,29 @@ Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
             }
         }
     }
-    (*env)->SetIntArrayRegion(env, jmeta, 0, 14, meta);
+
+    /* Input-mode flags for the rich-keyboard layer. Any alt-screen variant or
+     * application-cursor-keys means a full-screen / raw-key app is running, so
+     * the IME should fall back to forwarding raw keys. */
+    bool mode = false;
+    if ((ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_ALT_SCREEN_SAVE, &mode)
+             == GHOSTTY_SUCCESS && mode)
+        || (ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_ALT_SCREEN, &mode)
+             == GHOSTTY_SUCCESS && mode)
+        || (ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_ALT_SCREEN_LEGACY, &mode)
+             == GHOSTTY_SUCCESS && mode)) {
+        meta[14] |= INPUT_MODE_ALT_SCREEN;
+    }
+    if (ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_DECCKM, &mode)
+            == GHOSTTY_SUCCESS && mode) {
+        meta[14] |= INPUT_MODE_APP_CURSOR;
+    }
+    if (ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_BRACKETED_PASTE, &mode)
+            == GHOSTTY_SUCCESS && mode) {
+        meta[14] |= INPUT_MODE_BRACKETED_PASTE;
+    }
+
+    (*env)->SetIntArrayRegion(env, jmeta, 0, 15, meta);
 
     jint ret = ((jint)cols << 16) | rows;
     size_t ncells = (size_t)cols * rows;

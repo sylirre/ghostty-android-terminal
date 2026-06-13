@@ -42,6 +42,11 @@ public final class TerminalNative {
     public static final int SEL_START_VISIBLE = 2;
     public static final int SEL_END_VISIBLE = 4;
 
+    /** Input-mode flag bits in snapshot meta[14] (mirrored in terminal_jni.c). */
+    public static final int INPUT_MODE_ALT_SCREEN = 1;
+    public static final int INPUT_MODE_APP_CURSOR = 2;
+    public static final int INPUT_MODE_BRACKETED_PASTE = 4;
+
     /**
      * Kitty graphics placement record layout from {@link #terminalGraphics}:
      * GFX_STRIDE ints per visible placement, mirrored in terminal_jni.c. Col,

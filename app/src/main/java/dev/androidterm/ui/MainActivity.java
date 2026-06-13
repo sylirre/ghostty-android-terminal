@@ -57,6 +57,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
 
     private static final int MENU_KEEP_SCREEN_ON = 1;
+    private static final int MENU_RICH_KEYBOARD = 2;
 
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
@@ -89,6 +90,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
         settings = new AppSettings(this);
         applyKeepScreenOn(settings.keepScreenOn());
+        terminal.setRichKeyboard(settings.richKeyboard());
         findViewById(R.id.settings_button).setOnClickListener(this::showSettingsMenu);
 
         View root = findViewById(R.id.root);
@@ -294,11 +296,21 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 Menu.NONE, MENU_KEEP_SCREEN_ON, Menu.NONE, "Keep screen on");
         keepScreenOn.setCheckable(true);
         keepScreenOn.setChecked(settings.keepScreenOn());
+        MenuItem richKeyboard = menu.getMenu().add(
+                Menu.NONE, MENU_RICH_KEYBOARD, Menu.NONE, "Rich keyboard input");
+        richKeyboard.setCheckable(true);
+        richKeyboard.setChecked(settings.richKeyboard());
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == MENU_KEEP_SCREEN_ON) {
                 boolean enabled = !settings.keepScreenOn();
                 settings.setKeepScreenOn(enabled);
                 applyKeepScreenOn(enabled);
+                return true;
+            }
+            if (item.getItemId() == MENU_RICH_KEYBOARD) {
+                boolean enabled = !settings.richKeyboard();
+                settings.setRichKeyboard(enabled);
+                terminal.setRichKeyboard(enabled);
                 return true;
             }
             return false;
