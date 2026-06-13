@@ -58,6 +58,15 @@ public final class ScreenSnapshot {
                 | TerminalNative.INPUT_MODE_APP_CURSOR)) != 0;
     }
 
+    /**
+     * True on the alternate screen (nano/vim/less/htop), which has no
+     * scrollback. A vertical swipe there can't scroll history, so the view
+     * translates it into arrow-key presses instead.
+     */
+    public boolean altScreen() {
+        return (meta[14] & TerminalNative.INPUT_MODE_ALT_SCREEN) != 0;
+    }
+
     void ensureCapacity(int cells) {
         if (codepoints.length >= cells) return;
         codepoints = new int[cells];

@@ -190,8 +190,20 @@ public class TerminalView extends View {
                 int lines = (int) scrollRemainder;
                 if (lines != 0) {
                     scrollRemainder -= lines;
-                    session.emulator.scrollBy(lines);
-                    invalidate();
+                    if (snapshot.altScreen()) {
+                        // No scrollback on the alternate screen; feed the swipe
+                        // to nano/vim/less as arrow keys so it moves the cursor.
+                        // dy > 0 is a finger-up swipe (revealing lower content),
+                        // matching scrollBy(+) — i.e. Down arrow.
+                        int code = lines > 0 ? KeyEvent.KEYCODE_DPAD_DOWN
+                                             : KeyEvent.KEYCODE_DPAD_UP;
+                        for (int i = Math.abs(lines); i > 0; i--) {
+                            session.sendKey(code, 0, null, 0);
+                        }
+                    } else {
+                        session.emulator.scrollBy(lines);
+                        invalidate();
+                    }
                 }
                 return true;
             }
