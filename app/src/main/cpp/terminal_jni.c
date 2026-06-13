@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "png_decode.h"
+#include "kitty_unicode.h"
 
 /* Event bits returned by feed(), see TerminalNative.EVENT_*. */
 #define EVENT_BELL 1
@@ -25,7 +26,7 @@
 #define KITTY_STORAGE_LIMIT_BYTES (64ull * 1024 * 1024)
 
 /* Ints per placement record from terminalGraphics; mirror TerminalNative.GFX_*. */
-#define GFX_STRIDE 12
+#define GFX_STRIDE 14
 
 typedef struct {
     GhosttyTerminal term;
@@ -37,6 +38,8 @@ typedef struct {
     /* Reused across frames; re-populated from storage on each terminalGraphics
      * call. NULL when iterator allocation failed (image readback disabled). */
     GhosttyKittyGraphicsPlacementIterator graphics_iter;
+    /* Last cell pixel size from resize; needed for virtual-placement layout. */
+    uint32_t cell_w, cell_h;
 
     /* Bytes the terminal wants written back to the PTY (query responses),
      * collected during vt_write. */
@@ -205,6 +208,8 @@ Java_dev_androidterm_term_TerminalNative_terminalResize(
     jint cell_h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
+    c->cell_w = (uint32_t)cell_w;
+    c->cell_h = (uint32_t)cell_h;
     ghostty_terminal_resize(c->term, (uint16_t)cols, (uint16_t)rows,
                             (uint32_t)cell_w, (uint32_t)cell_h);
 }
@@ -464,17 +469,177 @@ done:
 
 /*
  * Kitty graphics. The VT engine parses and stores images/placements; these
- * two calls read them back out for the Canvas renderer.
- *
- * terminalGraphics copies geometry for every visible placement into jout as
- * GFX_STRIDE ints each (see TerminalNative.GFX_*). It returns the placement
- * count; if jout can't hold them all, only those that fit are written and
- * the caller retries with a larger array — same contract as terminalSnapshot.
- * Virtual (unicode-placeholder) and fully off-screen placements are skipped.
+ * calls read them back out for the Canvas renderer.
  *
  * All handles and pixel pointers are borrowed and invalidated by the next
  * mutating terminal call, so each function consumes them within one JNI call
  * with no feed() in between (the same discipline as the selection code).
+ */
+
+/* Writes one GFX_STRIDE-wide placement record at index idx, if it fits. The
+ * caller counts records regardless of cap and grows/retries on overflow. */
+static void gfx_emit(JNIEnv *env, jintArray jout, jint cap, jint idx,
+                     jint image_id, jint iw, jint ih, jint col, jint row,
+                     jint pw, jint ph, jint sx, jint sy, jint sw, jint sh,
+                     jint z, jint ox, jint oy) {
+    if (idx >= cap) return;
+    jint rec[GFX_STRIDE] = {image_id, iw, ih, col, row, pw,  ph,
+                            sx,       sy, sw, sh,  z,   ox, oy};
+    (*env)->SetIntArrayRegion(env, jout, idx * GFX_STRIDE, GFX_STRIDE, rec);
+}
+
+/* A virtual placement collected in pass 1; positioned later by placeholders. */
+typedef struct {
+    uint32_t image_id;
+    uint32_t placement_id;
+    uint32_t rows;
+    uint32_t cols;
+} VPlace;
+#define MAX_VPLACE 32
+
+/* The placement bits decoded from one placeholder cell (U+10EEEE). */
+typedef struct {
+    uint32_t id_low;
+    uint32_t pid, high, row, col;
+    bool has_pid, has_high, has_row, has_col;
+} PHCell;
+
+/* A run of horizontally adjacent placeholder cells that share an image and
+ * continue the same fragment row with increasing columns. */
+typedef struct {
+    bool active;
+    uint32_t id_low, pid, high, row, col, width;
+    bool has_pid, has_high;
+    int start_x;
+} PHRun;
+
+static void decode_placeholder(GhosttyRenderStateRowCells cells, PHCell *out) {
+    memset(out, 0, sizeof(*out));
+
+    GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+    bool has_styling = false;
+    ghostty_render_state_row_cells_get(
+        cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING, &has_styling);
+    if (has_styling) {
+        ghostty_render_state_row_cells_get(
+            cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
+        out->id_low = kitty_color_to_id(style.fg_color);
+        uint32_t pid = kitty_color_to_id(style.underline_color);
+        if (pid != 0) {
+            out->pid = pid;
+            out->has_pid = true;
+        }
+    }
+
+    /* Row, column, and the image-id high byte come from up to three rowcolumn
+     * diacritics that follow the base placeholder codepoint. Invalid ones are
+     * treated as absent, which lets them continue a previous placement. */
+    uint32_t glen = 0;
+    ghostty_render_state_row_cells_get(
+        cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &glen);
+    if (glen <= 1) return;
+    uint32_t gstack[16];
+    uint32_t *gbuf =
+        glen <= 16 ? gstack : malloc((size_t)glen * sizeof(uint32_t));
+    if (!gbuf) return;
+    ghostty_render_state_row_cells_get(
+        cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, gbuf);
+
+    int ri = kitty_diacritic_index(gbuf[1]);
+    if (ri >= 0) {
+        out->row = (uint32_t)ri;
+        out->has_row = true;
+    }
+    if (glen > 2) {
+        int ci = kitty_diacritic_index(gbuf[2]);
+        if (ci >= 0) {
+            out->col = (uint32_t)ci;
+            out->has_col = true;
+        }
+        if (glen > 3) {
+            int hi = kitty_diacritic_index(gbuf[3]);
+            if (hi >= 0 && hi <= 255) {
+                out->high = (uint32_t)hi;
+                out->has_high = true;
+            }
+        }
+    }
+    if (gbuf != gstack) free(gbuf);
+}
+
+static void run_start(PHRun *run, const PHCell *ph, int x) {
+    run->active = true;
+    run->id_low = ph->id_low;
+    run->has_pid = ph->has_pid;
+    run->pid = ph->pid;
+    run->has_high = ph->has_high;
+    run->high = ph->high;
+    run->row = ph->has_row ? ph->row : 0;
+    run->col = ph->has_col ? ph->col : 0;
+    run->width = 1;
+    run->start_x = x;
+}
+
+static bool run_can_append(const PHRun *run, const PHCell *ph) {
+    return run->id_low == ph->id_low &&
+           run->has_pid == ph->has_pid && (!run->has_pid || run->pid == ph->pid) &&
+           (!ph->has_row || ph->row == run->row) &&
+           (!ph->has_col || ph->col == run->col + run->width) &&
+           (!ph->has_high || (run->has_high && ph->high == run->high));
+}
+
+/* Resolves a completed run to its virtual placement, computes its source rect
+ * and destination geometry, and emits a record. Returns 1 if a record was
+ * counted (it maps to a known placement and isn't fully clipped), else 0. */
+static jint run_emit(JNIEnv *env, jintArray jout, jint cap, jint idx,
+                     GhosttyKittyGraphics gfx, const VPlace *vplaces, int nv,
+                     uint32_t cell_w, uint32_t cell_h, const PHRun *run, int y) {
+    uint32_t image_id = run->id_low | (run->has_high ? (run->high << 24) : 0);
+    uint32_t placement_id = run->has_pid ? run->pid : 0;
+
+    const VPlace *vp = NULL;
+    for (int i = 0; i < nv; i++) {
+        if (vplaces[i].image_id != image_id) continue;
+        if (placement_id == 0 || vplaces[i].placement_id == placement_id) {
+            vp = &vplaces[i];
+            break;
+        }
+    }
+    if (!vp) return 0;
+
+    GhosttyKittyGraphicsImage img = ghostty_kitty_graphics_image(gfx, image_id);
+    if (!img) return 0;
+    uint32_t iw = 0, ih = 0;
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH, &iw);
+    ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, &ih);
+    if (iw == 0 || ih == 0) return 0;
+
+    uint32_t grid_rows = vp->rows, grid_cols = vp->cols;
+    if (grid_rows == 0) grid_rows = (ih + cell_h - 1) / cell_h;
+    if (grid_cols == 0) grid_cols = (iw + cell_w - 1) / cell_w;
+
+    KittyVirtualRender r;
+    if (!kitty_virtual_render(iw, ih, grid_rows, grid_cols, cell_w, cell_h,
+                              run->row, run->col, run->width, 1, &r))
+        return 0;
+
+    gfx_emit(env, jout, cap, idx, (jint)image_id, (jint)iw, (jint)ih,
+             run->start_x, y, (jint)r.dest_width, (jint)r.dest_height,
+             (jint)r.source_x, (jint)r.source_y, (jint)r.source_width,
+             (jint)r.source_height, 0, (jint)r.offset_x, (jint)r.offset_y);
+    return 1;
+}
+
+/*
+ * terminalGraphics copies geometry for every visible placement into jout as
+ * GFX_STRIDE ints each (see TerminalNative.GFX_*). It returns the placement
+ * count; if jout can't hold them all, only those that fit are written and the
+ * caller retries with a larger array — same contract as terminalSnapshot.
+ *
+ * Direct placements come straight from storage. Virtual placements
+ * (unicode placeholders) have no position of their own: pass 1 collects them,
+ * then pass 2 scans the viewport for placeholder cells, groups them into runs,
+ * and emits one record per run with the matching image fragment.
  */
 JNIEXPORT jint JNICALL
 Java_dev_androidterm_term_TerminalNative_terminalGraphics(
@@ -483,57 +648,142 @@ Java_dev_androidterm_term_TerminalNative_terminalGraphics(
     TermCtx *c = (TermCtx *)(intptr_t)h;
     if (!c->graphics_iter) return 0;
 
+    /* Reads the terminal into the render state for the pass-2 cell scan; not
+     * a mutating call, so the borrowed graphics handle below stays valid. */
+    ghostty_render_state_update(c->rs, c->term);
+
     GhosttyKittyGraphics gfx = NULL;
     if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_KITTY_GRAPHICS,
                              &gfx) != GHOSTTY_SUCCESS)
         return 0;
-    if (ghostty_kitty_graphics_get(
-            gfx, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
-            &c->graphics_iter) != GHOSTTY_SUCCESS)
-        return 0;
 
     jsize cap = (*env)->GetArrayLength(env, jout) / GFX_STRIDE;
     jint n = 0;
-    while (ghostty_kitty_graphics_placement_next(c->graphics_iter)) {
-        uint32_t image_id = 0;
-        if (ghostty_kitty_graphics_placement_get(
+
+    /* Pass 1: direct placements emit immediately; virtual ones are stashed. */
+    VPlace vplaces[MAX_VPLACE];
+    int nv = 0;
+    if (ghostty_kitty_graphics_get(
+            gfx, GHOSTTY_KITTY_GRAPHICS_DATA_PLACEMENT_ITERATOR,
+            &c->graphics_iter) == GHOSTTY_SUCCESS) {
+        while (ghostty_kitty_graphics_placement_next(c->graphics_iter)) {
+            uint32_t image_id = 0;
+            if (ghostty_kitty_graphics_placement_get(
+                    c->graphics_iter,
+                    GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
+                    &image_id) != GHOSTTY_SUCCESS)
+                continue;
+
+            bool is_virtual = false;
+            ghostty_kitty_graphics_placement_get(
                 c->graphics_iter,
-                GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IMAGE_ID,
-                &image_id) != GHOSTTY_SUCCESS)
-            continue;
-        GhosttyKittyGraphicsImage img =
-            ghostty_kitty_graphics_image(gfx, image_id);
-        if (!img) continue;
+                GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_IS_VIRTUAL, &is_virtual);
+            if (is_virtual) {
+                if (nv < MAX_VPLACE) {
+                    VPlace *vp = &vplaces[nv++];
+                    vp->image_id = image_id;
+                    vp->placement_id = 0;
+                    vp->rows = 0;
+                    vp->cols = 0;
+                    ghostty_kitty_graphics_placement_get(
+                        c->graphics_iter,
+                        GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_PLACEMENT_ID,
+                        &vp->placement_id);
+                    ghostty_kitty_graphics_placement_get(
+                        c->graphics_iter,
+                        GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_ROWS, &vp->rows);
+                    ghostty_kitty_graphics_placement_get(
+                        c->graphics_iter,
+                        GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_COLUMNS,
+                        &vp->cols);
+                }
+                continue;
+            }
 
-        GhosttyKittyGraphicsPlacementRenderInfo ri =
-            GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo);
-        if (ghostty_kitty_graphics_placement_render_info(
-                c->graphics_iter, img, c->term, &ri) != GHOSTTY_SUCCESS)
-            continue;
-        if (!ri.viewport_visible) continue;
+            GhosttyKittyGraphicsImage img =
+                ghostty_kitty_graphics_image(gfx, image_id);
+            if (!img) continue;
+            GhosttyKittyGraphicsPlacementRenderInfo ri =
+                GHOSTTY_INIT_SIZED(GhosttyKittyGraphicsPlacementRenderInfo);
+            if (ghostty_kitty_graphics_placement_render_info(
+                    c->graphics_iter, img, c->term, &ri) != GHOSTTY_SUCCESS)
+                continue;
+            if (!ri.viewport_visible) continue;
 
-        uint32_t iw = 0, ih = 0;
-        ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH,
-                                         &iw);
-        ghostty_kitty_graphics_image_get(img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT,
-                                         &ih);
-        int32_t z = 0;
-        ghostty_kitty_graphics_placement_get(
-            c->graphics_iter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Z, &z);
+            uint32_t iw = 0, ih = 0;
+            ghostty_kitty_graphics_image_get(
+                img, GHOSTTY_KITTY_IMAGE_DATA_WIDTH, &iw);
+            ghostty_kitty_graphics_image_get(
+                img, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, &ih);
+            int32_t z = 0;
+            ghostty_kitty_graphics_placement_get(
+                c->graphics_iter, GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Z, &z);
+            uint32_t xo = 0, yo = 0;
+            ghostty_kitty_graphics_placement_get(
+                c->graphics_iter,
+                GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_X_OFFSET, &xo);
+            ghostty_kitty_graphics_placement_get(
+                c->graphics_iter,
+                GHOSTTY_KITTY_GRAPHICS_PLACEMENT_DATA_Y_OFFSET, &yo);
 
-        if (n < cap) {
-            jint rec[GFX_STRIDE] = {
-                (jint)image_id,        (jint)iw,
-                (jint)ih,              ri.viewport_col,
-                ri.viewport_row,       (jint)ri.pixel_width,
-                (jint)ri.pixel_height, (jint)ri.source_x,
-                (jint)ri.source_y,     (jint)ri.source_width,
-                (jint)ri.source_height, (jint)z,
-            };
-            (*env)->SetIntArrayRegion(env, jout, n * GFX_STRIDE, GFX_STRIDE,
-                                      rec);
+            gfx_emit(env, jout, cap, n, (jint)image_id, (jint)iw, (jint)ih,
+                     ri.viewport_col, ri.viewport_row, (jint)ri.pixel_width,
+                     (jint)ri.pixel_height, (jint)ri.source_x,
+                     (jint)ri.source_y, (jint)ri.source_width,
+                     (jint)ri.source_height, (jint)z, (jint)xo, (jint)yo);
+            n++;
         }
-        n++;
+    }
+
+    /* Pass 2: scan the viewport for placeholder runs of the virtual images. */
+    if (nv == 0 || c->cell_w == 0 || c->cell_h == 0) return n;
+
+    uint16_t cols = 0, rows = 0;
+    ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_COLS, &cols);
+    ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_ROWS, &rows);
+    ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
+                             &c->row_iter);
+    int y = 0;
+    while (ghostty_render_state_row_iterator_next(c->row_iter) && y < rows) {
+        ghostty_render_state_row_get(
+            c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &c->cells);
+        PHRun run = {0};
+        int x = 0;
+        while (ghostty_render_state_row_cells_next(c->cells) && x < cols) {
+            GhosttyCell cell = 0;
+            uint32_t cp = 0;
+            ghostty_render_state_row_cells_get(
+                c->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &cell);
+            ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CODEPOINT, &cp);
+
+            if (cp != KITTY_PLACEHOLDER) {
+                if (run.active) {
+                    n += run_emit(env, jout, cap, n, gfx, vplaces, nv,
+                                  c->cell_w, c->cell_h, &run, y);
+                    run.active = false;
+                }
+                x++;
+                continue;
+            }
+
+            PHCell ph;
+            decode_placeholder(c->cells, &ph);
+            if (!run.active) {
+                run_start(&run, &ph, x);
+            } else if (run_can_append(&run, &ph)) {
+                run.width++;
+            } else {
+                n += run_emit(env, jout, cap, n, gfx, vplaces, nv, c->cell_w,
+                              c->cell_h, &run, y);
+                run_start(&run, &ph, x);
+            }
+            x++;
+        }
+        if (run.active) {
+            n += run_emit(env, jout, cap, n, gfx, vplaces, nv, c->cell_w,
+                          c->cell_h, &run, y);
+        }
+        y++;
     }
     return n;
 }

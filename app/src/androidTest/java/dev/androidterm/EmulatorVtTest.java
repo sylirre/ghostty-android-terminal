@@ -367,4 +367,32 @@ public class EmulatorVtTest {
         assertEquals(0, term.graphics(g));
         assertNull(term.imagePixels(123, new int[2]));
     }
+
+    @Test
+    public void kittyGraphicsVirtualUnicodePlaceholder() {
+        term.resize(20, 5, 10, 20);
+        // Transmit a 1x1 red image and create a virtual placement (U=1) with a
+        // 1x1 cell grid. i=1 -> image id 1. base64 of {0xff,0,0} is "/wAA".
+        feed("\u001b_Ga=T,U=1,i=1,f=24,s=1,v=1,c=1,r=1;/wAA\u001b\\");
+
+        // One placeholder cell for image id 1 (fg RGB 0,0,1) with row=0,col=0
+        // diacritics (U+0305 is rowcolumn index 0).
+        String ph = new String(Character.toChars(0x10EEEE)) + "\u0305\u0305";
+        feed("\u001b[38;2;0;0;1m" + ph + "\u001b[0m");
+
+        int[] g = new int[TerminalNative.GFX_STRIDE * 4];
+        assertEquals(1, term.graphics(g));
+        assertEquals(1, g[TerminalNative.GFX_IMAGE_ID]);
+        assertEquals(1, g[TerminalNative.GFX_IMAGE_W]);
+        assertEquals(1, g[TerminalNative.GFX_IMAGE_H]);
+        assertEquals(0, g[TerminalNative.GFX_COL]);
+        assertEquals(0, g[TerminalNative.GFX_ROW]);
+        assertEquals(1, g[TerminalNative.GFX_SRC_W]);
+        assertEquals(1, g[TerminalNative.GFX_SRC_H]);
+        // A 1x1 image centered in a 10x20 cell scales to 10x10, pushed 5px down.
+        assertEquals(10, g[TerminalNative.GFX_PIXEL_W]);
+        assertEquals(10, g[TerminalNative.GFX_PIXEL_H]);
+        assertEquals(0, g[TerminalNative.GFX_OFF_X]);
+        assertEquals(5, g[TerminalNative.GFX_OFF_Y]);
+    }
 }

@@ -48,7 +48,7 @@ public final class TerminalNative {
      * row and z are signed; col/row are viewport cell coordinates that may be
      * negative when a placement is partly scrolled off the top/left.
      */
-    public static final int GFX_STRIDE = 12;
+    public static final int GFX_STRIDE = 14;
     public static final int GFX_IMAGE_ID = 0;
     public static final int GFX_IMAGE_W = 1;   // source image width, px
     public static final int GFX_IMAGE_H = 2;   // source image height, px
@@ -61,6 +61,8 @@ public final class TerminalNative {
     public static final int GFX_SRC_W = 9;     // source rect width, px
     public static final int GFX_SRC_H = 10;    // source rect height, px
     public static final int GFX_Z = 11;        // z-index (<0 draws below text)
+    public static final int GFX_OFF_X = 12;    // sub-cell pixel offset x
+    public static final int GFX_OFF_Y = 13;    // sub-cell pixel offset y
 
     // --- PTY / process ---
 

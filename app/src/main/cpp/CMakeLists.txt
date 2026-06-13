@@ -160,8 +160,9 @@ target_compile_options(pngdec PRIVATE -w)
 
 add_library(term SHARED
     pty_jni.c
-    terminal_jni.c)
+    terminal_jni.c
+    kitty_unicode.c)
 
 target_include_directories(term PRIVATE ${GHOSTTY_VT_DIR}/include)
 target_compile_options(term PRIVATE -Wall -Werror)
-target_link_libraries(term ghostty-vt proot pngdec log)
+target_link_libraries(term ghostty-vt proot pngdec log m)

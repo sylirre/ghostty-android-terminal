@@ -570,8 +570,12 @@ public class TerminalView extends View {
             imgSrc.set(sx, sy, sx + sw, sy + sh);
             // col/row go negative when an image is scrolled off the top/left;
             // the canvas is clipped to the view, so partial images clip for free.
-            float left = gfx[base + TerminalNative.GFX_COL] * cellWidth;
-            float top = gfx[base + TerminalNative.GFX_ROW] * cellHeight;
+            // The pixel offsets nudge within the start cell (aspect centering
+            // for placeholders, sub-cell placement for direct images).
+            float left = gfx[base + TerminalNative.GFX_COL] * cellWidth
+                    + gfx[base + TerminalNative.GFX_OFF_X];
+            float top = gfx[base + TerminalNative.GFX_ROW] * cellHeight
+                    + gfx[base + TerminalNative.GFX_OFF_Y];
             imgDst.set(left, top, left + pw, top + ph);
             canvas.drawBitmap(bmp, imgSrc, imgDst, imagePaint);
         }

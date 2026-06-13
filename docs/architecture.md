@@ -164,19 +164,29 @@ for PNG payloads (`f=100`); ghostty decompresses and PNG-decodes on store,
 so stored images are always uncompressed gray/gray+alpha/rgb/rgba.
 
 Images are a second snapshot channel, separate from the cell grid.
-`terminalGraphics` walks a reused placement iterator and packs per-placement
-geometry (image id + dimensions, viewport cell position, rendered pixel
-size, source rect, z) into a flat `int[]`, mirrored by `TerminalNative.GFX_*`
-— same grow-and-retry contract as the cell snapshot. `terminalImage` returns
-one image's pixels as RGBA8888 (the in-memory order of Android's
-`ARGB_8888`). Borrowed handles and pixel pointers are invalidated by the
-next mutating call, so each function consumes them within a single JNI call.
-`TerminalView` keeps a `Bitmap` cache keyed by image id (re-fetched only when
-the id is new or its dimensions changed, evicted when no longer placed) and
-draws placements in two `onDraw` passes — z<0 below the text, z≥0 (the Kitty
+`terminalGraphics` packs per-placement geometry (image id + dimensions,
+viewport cell position, rendered pixel size, source rect, z, sub-cell pixel
+offset) into a flat `int[]`, mirrored by `TerminalNative.GFX_*` — same
+grow-and-retry contract as the cell snapshot. `terminalImage` returns one
+image's pixels as RGBA8888 (the in-memory order of Android's `ARGB_8888`).
+Borrowed handles and pixel pointers are invalidated by the next mutating
+call, so each function consumes them within a single JNI call. `TerminalView`
+keeps a `Bitmap` cache keyed by image id (re-fetched only when the id is new
+or its dimensions changed, evicted when no longer placed) and draws
+placements in two `onDraw` passes — z<0 below the text, z≥0 (the Kitty
 default) above it. Viewport col/row go negative for images scrolled off the
-top/left; the canvas clip handles the partial draw. Virtual (unicode
-placeholder) placements are not yet rendered.
+top/left; the canvas clip handles the partial draw.
+
+Virtual placements (Unicode placeholders) have no position of their own —
+the image appears wherever the program prints the placeholder codepoint
+`U+10EEEE`, with the image id in the cell's foreground color and the image
+row/col fragment in combining "rowcolumn" diacritics. `terminalGraphics`
+handles them in a second pass: it collects the virtual placements, scans the
+viewport for placeholder cells, groups horizontally adjacent cells that
+continue the same fragment into runs, and emits each run as an ordinary GFX
+record so the renderer stays oblivious. The decode and aspect-ratio layout
+math (`kitty_unicode.c`) is a direct port of ghostty's
+`graphics_unicode.zig`, including its 297-entry diacritic table.
 
 ### Selection and clipboard
 
