@@ -3,6 +3,7 @@ package dev.androidterm;
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static androidx.test.espresso.matcher.RootMatchers.isPlatformPopup;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
@@ -232,15 +233,18 @@ public class TerminalUiTest {
         // Off by default: the window flag is clear at launch.
         assertFalse("keep-screen-on starts off", keepScreenOnFlag());
 
-        // Open the settings menu (gear in the top bar) and enable the toggle.
+        // Open the settings dialog (gear in the top bar) and tap the row to
+        // enable the toggle, then dismiss the dialog.
         onView(withId(R.id.settings_button)).perform(click());
-        onView(withText("Keep screen on")).inRoot(isPlatformPopup()).perform(click());
+        onView(withText("Keep screen on")).inRoot(isDialog()).perform(click());
+        onView(withText("Close")).inRoot(isDialog()).perform(click());
         assertTrue("flag set after enabling", keepScreenOnFlag());
 
         // Reopen and disable it, leaving the shared preference clean for
         // other tests (the setting persists across activity instances).
         onView(withId(R.id.settings_button)).perform(click());
-        onView(withText("Keep screen on")).inRoot(isPlatformPopup()).perform(click());
+        onView(withText("Keep screen on")).inRoot(isDialog()).perform(click());
+        onView(withText("Close")).inRoot(isDialog()).perform(click());
         assertFalse("flag cleared after disabling", keepScreenOnFlag());
     }
 

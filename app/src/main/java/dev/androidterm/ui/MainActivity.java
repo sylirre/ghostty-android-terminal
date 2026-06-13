@@ -13,12 +13,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
-import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -56,9 +53,6 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private static final int REQ_POST_NOTIFICATIONS = 1;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
 
-    private static final int MENU_KEEP_SCREEN_ON = 1;
-    private static final int MENU_RICH_KEYBOARD = 2;
-
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
     private TabStripView tabs;
@@ -91,7 +85,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         settings = new AppSettings(this);
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
-        findViewById(R.id.settings_button).setOnClickListener(this::showSettingsMenu);
+        findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -289,33 +283,27 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
-    /** Opens the settings menu anchored to the gear button in the top bar. */
-    private void showSettingsMenu(View anchor) {
-        PopupMenu menu = new PopupMenu(this, anchor);
-        MenuItem keepScreenOn = menu.getMenu().add(
-                Menu.NONE, MENU_KEEP_SCREEN_ON, Menu.NONE, "Keep screen on");
-        keepScreenOn.setCheckable(true);
-        keepScreenOn.setChecked(settings.keepScreenOn());
-        MenuItem richKeyboard = menu.getMenu().add(
-                Menu.NONE, MENU_RICH_KEYBOARD, Menu.NONE, "Rich keyboard input");
-        richKeyboard.setCheckable(true);
-        richKeyboard.setChecked(settings.richKeyboard());
-        menu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == MENU_KEEP_SCREEN_ON) {
-                boolean enabled = !settings.keepScreenOn();
-                settings.setKeepScreenOn(enabled);
-                applyKeepScreenOn(enabled);
-                return true;
-            }
-            if (item.getItemId() == MENU_RICH_KEYBOARD) {
-                boolean enabled = !settings.richKeyboard();
-                settings.setRichKeyboard(enabled);
-                terminal.setRichKeyboard(enabled);
-                return true;
-            }
-            return false;
-        });
-        menu.show();
+    /** Opens the settings dialog from the gear button in the top bar. */
+    private void showSettings(View ignored) {
+        List<Setting> items = new ArrayList<>();
+        items.add(new Setting.Toggle(
+                "Keep screen on",
+                "Keep the display awake while the terminal is in the foreground.",
+                settings::keepScreenOn,
+                enabled -> {
+                    settings.setKeepScreenOn(enabled);
+                    applyKeepScreenOn(enabled);
+                }));
+        items.add(new Setting.Toggle(
+                "Rich keyboard input",
+                "Enable suggestions, autocorrect and swipe typing at the shell "
+                        + "prompt. Falls back to raw keys inside full-screen apps.",
+                settings::richKeyboard,
+                enabled -> {
+                    settings.setRichKeyboard(enabled);
+                    terminal.setRichKeyboard(enabled);
+                }));
+        SettingsDialog.show(this, items);
     }
 
     /** Holds the display on (or releases it) via the activity window flag. */

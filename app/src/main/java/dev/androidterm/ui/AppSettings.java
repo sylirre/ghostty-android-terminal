@@ -8,8 +8,9 @@ import android.content.SharedPreferences;
  * they survive process death and Activity recreation (unlike the
  * activity-local {@code getPreferences()} store used for one-off prompts).
  *
- * Add a new option as a typed getter/setter pair; {@code MainActivity}'s
- * settings menu renders one row per option.
+ * Add a new option as a typed getter/setter pair, then declare a matching
+ * {@link Setting} in {@code MainActivity#showSettings}; {@link SettingsDialog}
+ * renders one row (title, description, control) per option.
  */
 public final class AppSettings {
 
