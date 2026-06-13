@@ -17,6 +17,10 @@ public final class AppSettings {
     private static final String FILE = "settings";
     private static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
     private static final String KEY_RICH_KEYBOARD = "rich_keyboard";
+    private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
+
+    /** Default scrollback depth used until the user changes it. */
+    private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
 
     private final SharedPreferences prefs;
 
@@ -47,5 +51,18 @@ public final class AppSettings {
 
     public void setRichKeyboard(boolean enabled) {
         prefs.edit().putBoolean(KEY_RICH_KEYBOARD, enabled).apply();
+    }
+
+    /**
+     * Number of output lines kept in each terminal's scrollback history.
+     * Read when a session is created; the underlying limit is fixed at
+     * terminal creation, so a change only takes effect for new sessions.
+     */
+    public int scrollbackLines() {
+        return prefs.getInt(KEY_SCROLLBACK_LINES, DEFAULT_SCROLLBACK_LINES);
+    }
+
+    public void setScrollbackLines(int lines) {
+        prefs.edit().putInt(KEY_SCROLLBACK_LINES, lines).apply();
     }
 }

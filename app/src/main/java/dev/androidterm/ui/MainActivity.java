@@ -195,7 +195,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         try {
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
-                    terminal.cellWidthPx(), terminal.cellHeightPx(), debian, this);
+                    terminal.cellWidthPx(), terminal.cellHeightPx(),
+                    settings.scrollbackLines(), debian, this);
             switchTo(s);
             // Promote the process to foreground priority so the shell
             // survives backgrounding; refresh updates the session count.
@@ -303,6 +304,15 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setRichKeyboard(enabled);
                     terminal.setRichKeyboard(enabled);
                 }));
+        items.add(new Setting.Choice(
+                "Scrollback buffer",
+                "Lines of output kept for scrolling back. Takes effect for "
+                        + "sessions started afterwards.",
+                new int[] {1_000, 5_000, 10_000, 50_000, 100_000},
+                new String[] {"1,000 lines", "5,000 lines", "10,000 lines",
+                        "50,000 lines", "100,000 lines"},
+                settings::scrollbackLines,
+                settings::setScrollbackLines));
         SettingsDialog.show(this, items);
     }
 

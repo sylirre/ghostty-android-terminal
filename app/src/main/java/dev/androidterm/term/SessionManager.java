@@ -31,9 +31,10 @@ public final class SessionManager {
      *
      * @param debian Debian login shell under PRoot (rootfs must be
      *               installed) instead of /system/bin/sh.
+     * @param scrollbackRows lines of history the new session keeps.
      */
     public TerminalSession create(Context context, int cols, int rows,
-            int cellWidthPx, int cellHeightPx, boolean debian,
+            int cellWidthPx, int cellHeightPx, int scrollbackRows, boolean debian,
             TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
                 ? DebianRootfs.command(context)
@@ -41,7 +42,7 @@ public final class SessionManager {
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());
         TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
-                cellHeightPx, command, listener);
+                cellHeightPx, scrollbackRows, command, listener);
         sessions.add(s);
         return s;
     }
