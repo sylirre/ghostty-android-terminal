@@ -1,0 +1,72 @@
+Terminal (sh.easycli.proot)
+Copyright (C) 2026 Sylirre
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option)
+any later version. See the LICENSE file for the full text.
+
+The combined work is distributed under GPL-3.0-or-later because it
+statically links PRoot (GPL-2.0-or-later) and talloc (LGPL-3.0-or-later)
+into libterm.so. The "or later" clause of PRoot's license allows that code
+to be used under GPLv3, which is the version required to also combine the
+LGPLv3 talloc code.
+
+This product bundles the following third-party components. Their original
+copyright notices and license texts are retained at the paths listed below
+and must be preserved in any redistribution.
+
+================================================================================
+Ghostty (libghostty-vt)
+
+VT engine. Vendored source in third_party/ghostty/; the per-ABI prebuilt
+static archive (libghostty-vt.a) and headers live in native/ghostty-vt/.
+
+Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors
+License: MIT (SPDX: MIT)
+Upstream: https://github.com/ghostty-org/ghostty
+Pinned commit: 5659cef41f4f2f7a478d0800a11836fa17e64d66
+License text: third_party/ghostty/LICENSE
+
+================================================================================
+PRoot (Termux fork)
+
+User-space chroot/bind via ptrace; linked into libterm.so and entered via
+proot_main(). Source in native/proot/.
+
+Copyright holder: STMicroelectronics (Compilation Expertise Center)
+  and PRoot/Termux contributors
+License: GPL-2.0-or-later (SPDX: GPL-2.0-or-later)
+Upstream (fork): https://github.com/termux/proot at a7147b5 (v5.1.107.78)
+Original project: https://github.com/proot-me/PRoot
+License text: native/proot/COPYING
+
+================================================================================
+talloc
+
+Hierarchical memory allocator; a PRoot dependency, statically linked into
+libterm.so. Source in native/talloc/.
+
+Copyright (C) Andrew Tridgell 2004
+Copyright (C) Stefan Metzmacher 2006
+  (the Samba project)
+License: LGPL-3.0-or-later (SPDX: LGPL-3.0-or-later)
+Upstream: https://talloc.samba.org
+License text: native/talloc/LICENSE
+
+================================================================================
+XZ for Java
+
+Pure-Java XZ decoder used by the Debian rootfs installer. Pulled at build
+time via Gradle (org.tukaani:xz:1.10).
+
+Authors: Lasse Collin and contributors (based on Igor Pavlov's LZMA SDK)
+License: Public domain (SPDX: 0BSD)
+Upstream: https://tukaani.org/xz/java.html
+
+================================================================================
+Test-only dependencies (NOT distributed in the APK)
+
+The instrumented test suite uses AndroidX Test and Espresso, licensed under
+the Apache License 2.0 (SPDX: Apache-2.0). These are build/test dependencies
+only and are not included in the shipped application.
