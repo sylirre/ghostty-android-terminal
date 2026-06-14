@@ -127,6 +127,24 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void themeColorsApply() {
+        // A palette where ANSI red (index 1) is a recognizable color; the rest
+        // are black. fg/bg/cursor are distinct so each meta slot is testable.
+        int[] palette = new int[256];
+        for (int i = 0; i < palette.length; i++) palette[i] = 0xFF000000;
+        palette[1] = 0xFFAB1234;
+        term.setColors(0xFF112233, 0xFF445566, 0xFF778899, palette);
+
+        feed("\u001b[31mX\u001b[0m");
+        ScreenSnapshot s = snapshot();
+        assertEquals(0xFF112233, s.defaultFg());
+        assertEquals(0xFF445566, s.defaultBg());
+        assertEquals(0xFF778899, s.cursorColor());
+        // SGR 31 resolves through the palette to the value we set.
+        assertEquals(0xFFAB1234, s.fg[cell(0, 0)]);
+    }
+
+    @Test
     public void inverseIsResolvedNatively() {
         feed("\u001b[7mX");
         ScreenSnapshot s = snapshot();

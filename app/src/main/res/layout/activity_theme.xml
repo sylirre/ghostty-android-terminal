@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full-screen terminal theme editor. ThemeActivity fills the swatch grid
+     programmatically (one theme_swatch per editable color) and drives the
+     preview, picker label, and action buttons. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#FF000000">
+
+    <!-- Top bar: title + Done. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#FF14141A">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/theme_activity_title"
+            android:textColor="#FFEEEEEE"
+            android:textSize="18sp"
+            android:paddingLeft="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp" />
+
+        <Button
+            android:id="@+id/theme_done"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/theme_done" />
+
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <sh.easycli.proot.ui.ThemePreviewView
+                android:id="@+id/theme_preview"
+                android:layout_width="match_parent"
+                android:layout_height="200dp" />
+
+            <!-- Active theme + switcher. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_picker_label"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <Button
+                    android:id="@+id/theme_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginLeft="8dp" />
+
+            </LinearLayout>
+
+            <!-- Theme actions; horizontally scrollable so they never clip. -->
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/theme_save"
+                        style="?android:attr/buttonStyleSmall"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_save" />
+
+                    <Button
+                        android:id="@+id/theme_save_as"
+                        style="?android:attr/buttonStyleSmall"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_save_as" />
+
+                    <Button
+                        android:id="@+id/theme_revert"
+                        style="?android:attr/buttonStyleSmall"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_revert" />
+
+                    <Button
+                        android:id="@+id/theme_rename"
+                        style="?android:attr/buttonStyleSmall"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_rename" />
+
+                    <Button
+                        android:id="@+id/theme_delete"
+                        style="?android:attr/buttonStyleSmall"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_delete" />
+
+                </LinearLayout>
+
+            </HorizontalScrollView>
+
+            <GridLayout
+                android:id="@+id/theme_swatches"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:columnCount="4" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

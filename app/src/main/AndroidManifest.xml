@@ -31,6 +31,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Terminal theme editor, launched from Settings. -->
+        <activity
+            android:name=".ui.ThemeActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Holds the process at foreground priority while shells run.
              stopWithTask=false keeps it (and the shells) alive when the
              task is swiped from Recents. -->

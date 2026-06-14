@@ -90,9 +90,13 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   There are deliberately no native→Java upcalls.
 - **Java is a dumb renderer.** The snapshot resolves colors to final ARGB
   natively (defaults, inverse, faint, invisible, selection highlight,
-  palette lookups). The `meta[]` layout is defined in `terminal_jni.c` and
-  mirrored by `ScreenSnapshot` accessors; `ATTR_*`/`EVENT_*`/`MOD_*`/`SEL_*`
-  constants must stay in sync between `terminal_jni.c` and `TerminalNative`.
+  palette lookups). The default fg/bg/cursor/palette are themeable:
+  `TerminalEmulator.setColors` pushes them into libghostty-vt and the render
+  state resolves cells through them (UI in `ui/TerminalTheme` +
+  `ThemeActivity`). The `meta[]` array is 16 ints (`[15]` = effective cursor
+  color, 0 = unset); its layout is defined in `terminal_jni.c` and mirrored by
+  `ScreenSnapshot` accessors; `ATTR_*`/`EVENT_*`/`MOD_*`/`SEL_*` constants
+  must stay in sync between `terminal_jni.c` and `TerminalNative`.
 - **The selection lives in the terminal, not the view.** Long-press installs
   it via `GHOSTTY_TERMINAL_OPT_SELECTION` (tracked grid refs), so it follows
   its text across scroll/output/reflow; `TerminalView` only draws handles at

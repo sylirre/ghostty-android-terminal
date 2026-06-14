@@ -59,6 +59,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private TextView installStatus;
     private TerminalSession current;
     private AppSettings settings;
+    private ThemeStore themeStore;
     private boolean forceShell;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
@@ -83,6 +84,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.attachTerminal(terminal);
 
         settings = new AppSettings(this);
+        themeStore = new ThemeStore(this);
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
@@ -174,9 +176,26 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Pick up theme changes made in ThemeActivity (and seed the first paint).
+        applyTheme();
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(exitReceiver);
+    }
+
+    /** Pushes the selected theme to every open session and repaints. */
+    private void applyTheme() {
+        TerminalTheme theme = themeStore.current();
+        int[] palette = theme.toPalette256();
+        for (TerminalSession s : sessions.sessions()) {
+            s.emulator.setColors(theme.foreground, theme.background, theme.cursor, palette);
+        }
+        terminal.invalidate();
     }
 
     private boolean debianByDefault() {
@@ -205,6 +224,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
                     settings.scrollbackLines(), debian, this);
             switchTo(s);
+            applyTheme(); // color the new session before any output arrives
             // Promote the process to foreground priority so the shell
             // survives backgrounding; refresh updates the session count.
             SessionService.refresh(this);
@@ -303,6 +323,11 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     /** Opens the settings dialog from the gear button in the top bar. */
     private void showSettings(View ignored) {
         List<Setting> items = new ArrayList<>();
+        items.add(new Setting.Action(
+                getString(R.string.setting_theme_title),
+                getString(R.string.setting_theme_summary),
+                () -> themeStore.current().name,
+                () -> startActivity(new Intent(this, ThemeActivity.class))));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_keep_screen_on_title),
                 getString(R.string.setting_keep_screen_on_summary),

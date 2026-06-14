@@ -10,6 +10,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 /**
  * One entry in the settings dialog: a title, a one-line description, and an
@@ -131,6 +132,35 @@ abstract class Setting {
                 if (values[i] == v) return labels[i];
             }
             return String.valueOf(v);
+        }
+    }
+
+    /**
+     * A row that opens something else (a screen or sub-dialog) when tapped.
+     * The trailing control is a label showing the current value (e.g. the
+     * active theme name), refreshed each time the settings dialog is built.
+     */
+    static final class Action extends Setting {
+
+        private final Supplier<String> value;
+        private final Runnable onClick;
+
+        Action(String title, String summary, Supplier<String> value, Runnable onClick) {
+            super(title, summary);
+            this.value = value;
+            this.onClick = onClick;
+        }
+
+        @Override
+        View createControl(Context context) {
+            TextView label = new TextView(context);
+            label.setText(value.get());
+            return label;
+        }
+
+        @Override
+        void onRowClick(View control) {
+            onClick.run();
         }
     }
 }

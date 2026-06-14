@@ -187,6 +187,44 @@ Java_sh_easycli_proot_term_TerminalNative_terminalFree(
     free(c);
 }
 
+/* Inverse of pack_rgb: ARGB int (alpha byte ignored) -> GhosttyColorRgb. */
+static GhosttyColorRgb unpack_rgb(jint argb) {
+    GhosttyColorRgb c;
+    c.r = (uint8_t)((argb >> 16) & 0xFF);
+    c.g = (uint8_t)((argb >> 8) & 0xFF);
+    c.b = (uint8_t)(argb & 0xFF);
+    return c;
+}
+
+/*
+ * Sets the default color theme: foreground, background, cursor, and the full
+ * 256-entry palette (built Java-side from the theme's 16 ANSI colors plus the
+ * standard 6x6x6 cube and grayscale ramp). Colors are ARGB ints; the alpha
+ * byte is ignored. These are *defaults* — a program's OSC 4/10/11/12
+ * overrides still win, and the palette set preserves any per-index OSC
+ * override. Runs under the TerminalEmulator lock like every other call.
+ */
+JNIEXPORT void JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalSetColors(
+    JNIEnv *env, jclass clazz, jlong h, jint fg, jint bg, jint cursor,
+    jintArray jpalette) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+
+    GhosttyColorRgb fg_rgb = unpack_rgb(fg);
+    GhosttyColorRgb bg_rgb = unpack_rgb(bg);
+    GhosttyColorRgb cursor_rgb = unpack_rgb(cursor);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &fg_rgb);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &bg_rgb);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cursor_rgb);
+
+    jint argb[256];
+    (*env)->GetIntArrayRegion(env, jpalette, 0, 256, argb);
+    GhosttyColorRgb pal[256];
+    for (int i = 0; i < 256; i++) pal[i] = unpack_rgb(argb[i]);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, pal);
+}
+
 /*
  * Feeds PTY output through the VT parser. Returns bytes the terminal wants
  * written back to the PTY (e.g. DA/DSR responses), or null if none.
@@ -317,9 +355,10 @@ static jint pack_rgb(GhosttyColorRgb c) {
  * meta layout: [0] cursor-in-viewport, [1] x, [2] y, [3] style,
  * [4] visible, [5] blinking, [6] wide-tail, [7] default bg, [8] default fg,
  * [9] SEL_* flags, [10] sel start x, [11] sel start y, [12] sel end x,
- * [13] sel end y, [14] INPUT_MODE_* flags. Selection endpoints are viewport
- * coordinates ordered top-left to bottom-right; each is only valid when its
- * visibility bit is set (an endpoint can sit above or below the viewport).
+ * [13] sel end y, [14] INPUT_MODE_* flags, [15] cursor color (0 = unset).
+ * Selection endpoints are viewport coordinates ordered top-left to
+ * bottom-right; each is only valid when its visibility bit is set (an
+ * endpoint can sit above or below the viewport).
  *
  * Returns (cols << 16) | rows. If the arrays are smaller than cols*rows
  * only meta is written; the caller must re-allocate and retry.
@@ -343,7 +382,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_COLOR_FOREGROUND,
                              &fg_default);
 
-    jint meta[15] = {0};
+    jint meta[16] = {0};
     bool b = false;
     ghostty_render_state_get(
         c->rs, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &b);
@@ -373,6 +412,19 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     }
     meta[7] = pack_rgb(bg_default);
     meta[8] = pack_rgb(fg_default);
+
+    /* Effective cursor color (OSC override or the theme default set via
+     * terminalSetColors); left 0 when unset, in which case the renderer
+     * falls back to the foreground color. */
+    bool cursor_has = false;
+    ghostty_render_state_get(
+        c->rs, GHOSTTY_RENDER_STATE_DATA_COLOR_CURSOR_HAS_VALUE, &cursor_has);
+    if (cursor_has) {
+        GhosttyColorRgb cursor_rgb = {0};
+        ghostty_render_state_get(
+            c->rs, GHOSTTY_RENDER_STATE_DATA_COLOR_CURSOR, &cursor_rgb);
+        meta[15] = pack_rgb(cursor_rgb);
+    }
 
     /* Selection endpoints, ordered top-left → bottom-right for handle
      * placement. The untracked refs are valid here because nothing below
@@ -424,7 +476,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
         meta[14] |= INPUT_MODE_BRACKETED_PASTE;
     }
 
-    (*env)->SetIntArrayRegion(env, jmeta, 0, 15, meta);
+    (*env)->SetIntArrayRegion(env, jmeta, 0, 16, meta);
 
     jint ret = ((jint)cols << 16) | rows;
     size_t ncells = (size_t)cols * rows;

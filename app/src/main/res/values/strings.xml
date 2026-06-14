@@ -36,6 +36,53 @@
         <item>100000</item>
     </integer-array>
 
+    <!-- Settings: Terminal theme -->
+    <string name="setting_theme_title">Terminal theme</string>
+    <string name="setting_theme_summary">Colors for the terminal: pick a preset or build your own palette.</string>
+
+    <!-- Theme editor -->
+    <string name="theme_activity_title">Terminal theme</string>
+    <string name="theme_done">Done</string>
+    <string name="theme_picker_label">Theme</string>
+    <string name="theme_save">Save</string>
+    <string name="theme_save_as">Save as…</string>
+    <string name="theme_revert">Revert</string>
+    <string name="theme_rename">Rename</string>
+    <string name="theme_delete">Delete</string>
+    <string name="theme_name_modified">%1$s (modified)</string>
+    <string name="theme_custom_default">Custom</string>
+    <string name="theme_name_taken">That name is already in use.</string>
+    <string name="theme_name_empty">Enter a name.</string>
+    <string name="theme_saved">Theme saved</string>
+    <string name="theme_deleted">Theme deleted</string>
+    <string name="theme_delete_confirm">Delete \"%1$s\"?</string>
+    <string name="theme_discard_title">Discard changes?</string>
+    <string name="theme_discard_message">You have unsaved color changes. Save the theme first to keep them.</string>
+    <string name="theme_discard">Discard</string>
+    <string name="theme_color_ok">OK</string>
+    <string name="theme_color_cancel">Cancel</string>
+    <string name="theme_color_foreground">Foreground</string>
+    <string name="theme_color_background">Background</string>
+    <string name="theme_color_cursor">Cursor</string>
+    <string-array name="theme_ansi_names">
+        <item>Black</item>
+        <item>Red</item>
+        <item>Green</item>
+        <item>Yellow</item>
+        <item>Blue</item>
+        <item>Magenta</item>
+        <item>Cyan</item>
+        <item>White</item>
+        <item>Br. Black</item>
+        <item>Br. Red</item>
+        <item>Br. Green</item>
+        <item>Br. Yellow</item>
+        <item>Br. Blue</item>
+        <item>Br. Magenta</item>
+        <item>Br. Cyan</item>
+        <item>Br. White</item>
+    </string-array>
+
     <!-- Debian install progress overlay -->
     <string name="installing_debian">Installing Debian…</string>
     <string name="installing_debian_progress">Installing Debian… %d MB</string>

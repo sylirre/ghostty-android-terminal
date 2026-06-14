@@ -123,6 +123,16 @@ public final class TerminalNative {
     public static native void terminalResize(long handle, int cols, int rows,
             int cellWidthPx, int cellHeightPx);
 
+    /**
+     * Sets the default color theme. {@code fg}, {@code bg} and {@code cursor}
+     * are ARGB ints (alpha ignored); {@code palette256} is the full 256-entry
+     * palette as ARGB ints. These are defaults — programs may still override
+     * them via OSC. Effective colors show up in {@link #terminalSnapshot}
+     * (defaults in meta[7]/[8], cursor in meta[15], per-cell fg/bg resolved).
+     */
+    public static native void terminalSetColors(long handle, int fg, int bg,
+            int cursor, int[] palette256);
+
     /** mode: 0 = top, 1 = bottom, 2 = by delta rows (negative is up). */
     public static native void terminalScroll(long handle, int mode, int delta);
 

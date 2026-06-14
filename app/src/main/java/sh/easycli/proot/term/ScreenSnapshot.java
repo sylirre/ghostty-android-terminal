@@ -16,7 +16,7 @@ public final class ScreenSnapshot {
     public int[] bg = new int[0];
     public byte[] attrs = new byte[0];
     /** See terminal_jni.c terminalSnapshot for the layout. */
-    public final int[] meta = new int[15];
+    public final int[] meta = new int[16];
 
     public boolean cursorInViewport() { return meta[0] != 0; }
     public int cursorX() { return meta[1]; }
@@ -26,6 +26,12 @@ public final class ScreenSnapshot {
     public boolean cursorBlinking() { return meta[5] != 0; }
     public int defaultBg() { return meta[7]; }
     public int defaultFg() { return meta[8]; }
+
+    /**
+     * Effective cursor color (ARGB), or 0 when unset — callers fall back to
+     * {@link #defaultFg()}. Set by the theme and by program OSC 12 overrides.
+     */
+    public int cursorColor() { return meta[15]; }
 
     /**
      * Selection endpoints are viewport cells ordered top-left to

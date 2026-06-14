@@ -36,6 +36,17 @@ public final class TerminalEmulator implements AutoCloseable {
         }
     }
 
+    /**
+     * Sets the default fg/bg/cursor colors (ARGB ints) and the full 256-entry
+     * palette (ARGB ints). Safe to call at any time; takes effect on the next
+     * snapshot. No-op after {@link #close}.
+     */
+    public synchronized void setColors(int fg, int bg, int cursor, int[] palette256) {
+        if (handle != 0) {
+            TerminalNative.terminalSetColors(handle, fg, bg, cursor, palette256);
+        }
+    }
+
     public synchronized void scrollToBottom() {
         if (handle != 0) TerminalNative.terminalScroll(handle, 1, 0);
     }

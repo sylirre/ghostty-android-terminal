@@ -151,6 +151,26 @@ calls. Cell size derives from font metrics; on layout the view computes
 cols/rows and resizes the PTY + terminal. Wide (CJK) glyphs occupy two cells
 (the trailing spacer cell has codepoint 0 and is skipped).
 
+### Theming
+
+Colors are a property of the terminal, not the renderer. `TerminalEmulator.
+setColors` (→ `terminalSetColors`) pushes a default foreground, background,
+cursor, and full 256-entry palette into libghostty-vt via the
+`GHOSTTY_TERMINAL_OPT_COLOR_*` options; the render state then resolves every
+cell's fg/bg through them, so the snapshot already carries final ARGB (the
+Java side still does no palette logic). Defaults are exactly that — a
+program's OSC 4/10/11/12 overrides still win. The effective cursor color rides
+in `meta[15]` (0 = unset → renderer falls back to the foreground).
+
+The UI side lives in `ui`: `TerminalTheme` (an immutable 19-color value object
+that expands to the 256-entry palette — ANSI 0–15 plus the standard xterm cube
+and grayscale), `ThemePresets` (built-in read-only themes), and `ThemeStore`
+(the selection plus user themes, persisted as JSON in its own
+SharedPreferences). `ThemeActivity` edits a working copy with a live
+`ThemePreviewView` and `ColorPickerDialog`; `MainActivity.applyTheme` pushes
+the selected theme to every open session and repaints, on session create and
+in `onResume` (so edits made in the editor land when you return).
+
 ### Kitty graphics
 
 libghostty-vt parses and stores images and placements for the [Kitty

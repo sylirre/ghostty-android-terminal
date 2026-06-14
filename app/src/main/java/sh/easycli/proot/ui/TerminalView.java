@@ -907,7 +907,8 @@ public class TerminalView extends View {
                 && (snapshot.attrs[snapshot.cursorY() * snapshot.cols + snapshot.cursorX()]
                         & TerminalNative.ATTR_WIDE) != 0;
         float right = left + cellWidth * (wide ? 2 : 1);
-        bgPaint.setColor(snapshot.defaultFg());
+        int cursorColor = snapshot.cursorColor();
+        bgPaint.setColor(cursorColor != 0 ? cursorColor : snapshot.defaultFg());
         switch (snapshot.cursorStyle()) {
             case TerminalNative.CURSOR_BAR:
                 canvas.drawRect(left, top, left + cellWidth / 4, top + cellHeight, bgPaint);
