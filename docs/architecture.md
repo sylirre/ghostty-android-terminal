@@ -1,6 +1,6 @@
 # Architecture
 
-AndroidTerm is a terminal emulator for Android built on the
+Terminal is a terminal emulator for Android built on the
 [Ghostty](https://github.com/ghostty-org/ghostty) VT engine (`libghostty-vt`).
 It runs a full Debian userland under [PRoot](https://proot-me.github.io/)
 (when a rootfs is bundled) or the stock `/system/bin/sh`, supports multiple

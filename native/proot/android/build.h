@@ -7,7 +7,7 @@
 #ifndef BUILD_H
 #define BUILD_H
 
-#define VERSION "5.1.107-androidterm"
+#define VERSION "5.1.107-terminal"
 
 #define HAVE_PROCESS_VM
 #define HAVE_SECCOMP_FILTER

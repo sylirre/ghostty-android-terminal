@@ -1,4 +1,4 @@
-# AndroidTerm
+# Terminal
 
 Terminal emulator for Android backed by the
 [Ghostty](https://github.com/ghostty-org/ghostty) VT engine
@@ -7,7 +7,7 @@ Terminal emulator for Android backed by the
 required) when a rootfs is bundled, and the stock `/system/bin/sh`
 otherwise.
 
-<img src="docs/screenshot.png" width="280" alt="AndroidTerm running ls /system">
+<img src="docs/screenshot.png" width="280" alt="Terminal running ls /system">
 
 
 - Debian login shell (fake root, working apt/dpkg) via PRoot, which is

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(androidterm C ASM)
+project(terminal C ASM)
 
 set(NATIVE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../native)
 set(GHOSTTY_VT_DIR ${NATIVE_DIR}/ghostty-vt)

@@ -8,8 +8,8 @@
  * layout math from ghostty's src/terminal/kitty/graphics_unicode.zig so the
  * JNI layer can turn placeholder runs into ordinary placement records.
  */
-#ifndef ANDROIDTERM_KITTY_UNICODE_H
-#define ANDROIDTERM_KITTY_UNICODE_H
+#ifndef TERM_KITTY_UNICODE_H
+#define TERM_KITTY_UNICODE_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -46,4 +46,4 @@ bool kitty_virtual_render(uint32_t img_width, uint32_t img_height,
                           uint32_t vp_width, uint32_t vp_height,
                           KittyVirtualRender *out);
 
-#endif /* ANDROIDTERM_KITTY_UNICODE_H */
+#endif /* TERM_KITTY_UNICODE_H */

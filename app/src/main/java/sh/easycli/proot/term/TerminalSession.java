@@ -1,4 +1,4 @@
-package dev.androidterm.term;
+package sh.easycli.proot.term;
 
 import android.os.Handler;
 import android.os.Looper;

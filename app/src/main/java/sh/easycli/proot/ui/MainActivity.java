@@ -1,4 +1,4 @@
-package dev.androidterm.ui;
+package sh.easycli.proot.ui;
 
 import android.Manifest;
 import android.app.Activity;
@@ -23,11 +23,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import dev.androidterm.R;
-import dev.androidterm.term.DebianRootfs;
-import dev.androidterm.term.SessionManager;
-import dev.androidterm.term.SessionService;
-import dev.androidterm.term.TerminalSession;
+import sh.easycli.proot.R;
+import sh.easycli.proot.term.DebianRootfs;
+import sh.easycli.proot.term.SessionManager;
+import sh.easycli.proot.term.SessionService;
+import sh.easycli.proot.term.TerminalSession;
 
 /**
  * Hosts the tab strip, terminal view, and extra-keys toolbar.
@@ -48,7 +48,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
      * Test seam: forces the plain Android shell as the default session type
      * so UI tests are deterministic whether or not a rootfs is bundled.
      */
-    public static final String EXTRA_FORCE_SHELL = "dev.androidterm.FORCE_SHELL";
+    public static final String EXTRA_FORCE_SHELL = "sh.easycli.proot.FORCE_SHELL";
 
     private static final int REQ_POST_NOTIFICATIONS = 1;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";

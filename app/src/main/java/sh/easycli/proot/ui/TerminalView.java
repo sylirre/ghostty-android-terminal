@@ -1,4 +1,4 @@
-package dev.androidterm.ui;
+package sh.easycli.proot.ui;
 
 import android.content.ClipData;
 import android.content.ClipDescription;
@@ -36,9 +36,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import dev.androidterm.term.ScreenSnapshot;
-import dev.androidterm.term.TerminalNative;
-import dev.androidterm.term.TerminalSession;
+import sh.easycli.proot.term.ScreenSnapshot;
+import sh.easycli.proot.term.TerminalNative;
+import sh.easycli.proot.term.TerminalSession;
 
 /**
  * Renders one session's viewport as a monospace cell grid and feeds user

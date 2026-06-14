@@ -8,16 +8,16 @@
  * own translation unit lets the heavy third-party header compile with
  * warnings off, away from libterm.so's -Wall -Werror.
  */
-#ifndef ANDROIDTERM_PNG_DECODE_H
-#define ANDROIDTERM_PNG_DECODE_H
+#ifndef TERM_PNG_DECODE_H
+#define TERM_PNG_DECODE_H
 
 #include <ghostty/vt/sys.h>
 
 /* Matches GhosttySysDecodePngFn. Decodes data/data_len into out as RGBA,
  * allocating out->data through the supplied allocator (ghostty frees it).
  * Returns false on any decode/allocation failure. */
-bool androidterm_decode_png(void *userdata, const GhosttyAllocator *allocator,
+bool term_decode_png(void *userdata, const GhosttyAllocator *allocator,
                             const uint8_t *data, size_t data_len,
                             GhosttySysImage *out);
 
-#endif /* ANDROIDTERM_PNG_DECODE_H */
+#endif /* TERM_PNG_DECODE_H */

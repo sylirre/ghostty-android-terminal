@@ -1,4 +1,4 @@
-package dev.androidterm.term;
+package sh.easycli.proot.term;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -12,7 +12,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 
-import dev.androidterm.R;
+import sh.easycli.proot.R;
 
 /**
  * Keeps the app's process alive while shells are running.
@@ -34,14 +34,14 @@ import dev.androidterm.R;
 public final class SessionService extends Service {
 
     /** Bring the service to (or keep it in) the foreground; refresh the notification. */
-    private static final String ACTION_START = "dev.androidterm.service.START";
+    private static final String ACTION_START = "sh.easycli.proot.service.START";
     /** Kill every shell and stop; user tapped "Exit". */
-    private static final String ACTION_EXIT = "dev.androidterm.service.EXIT";
+    private static final String ACTION_EXIT = "sh.easycli.proot.service.EXIT";
     /** Flip the CPU wake lock. */
-    private static final String ACTION_TOGGLE_WAKELOCK = "dev.androidterm.service.TOGGLE_WAKELOCK";
+    private static final String ACTION_TOGGLE_WAKELOCK = "sh.easycli.proot.service.TOGGLE_WAKELOCK";
 
     /** In-process broadcast telling a live Activity to finish after "Exit". */
-    public static final String ACTION_EXITED = "dev.androidterm.service.EXITED";
+    public static final String ACTION_EXITED = "sh.easycli.proot.service.EXITED";
 
     private static final int NOTIFICATION_ID = 1;
     private static final String CHANNEL_ID = "sessions";
@@ -135,7 +135,7 @@ public final class SessionService extends Service {
 
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_terminal)
-                .setContentTitle("AndroidTerm")
+                .setContentTitle("Terminal")
                 .setContentText(text)
                 .setContentIntent(content)
                 .setOngoing(true)
@@ -154,7 +154,7 @@ public final class SessionService extends Service {
         if (wakeLock == null) {
             PowerManager pm = getSystemService(PowerManager.class);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                    "AndroidTerm:sessions");
+                    "Terminal:sessions");
             wakeLock.setReferenceCounted(false);
         }
         wakeLock.acquire();

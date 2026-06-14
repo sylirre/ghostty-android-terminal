@@ -96,10 +96,10 @@ static const GhosttyTerminalWritePtyFn write_pty_fn = on_write_pty;
 static const GhosttyTerminalBellFn bell_fn = on_bell;
 static const GhosttyTerminalTitleChangedFn title_fn = on_title;
 static const GhosttyTerminalSizeFn size_fn = on_size;
-static const GhosttySysDecodePngFn decode_png_fn = androidterm_decode_png;
+static const GhosttySysDecodePngFn decode_png_fn = term_decode_png;
 
 JNIEXPORT jlong JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalNew(
+Java_sh_easycli_proot_term_TerminalNative_terminalNew(
     JNIEnv *env, jclass clazz, jint cols, jint rows, jint scrollbackLines) {
     (void)env; (void)clazz;
     TermCtx *c = calloc(1, sizeof(TermCtx));
@@ -171,7 +171,7 @@ fail:
 }
 
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalFree(
+Java_sh_easycli_proot_term_TerminalNative_terminalFree(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -192,7 +192,7 @@ Java_dev_androidterm_term_TerminalNative_terminalFree(
  * written back to the PTY (e.g. DA/DSR responses), or null if none.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalFeed(
+Java_sh_easycli_proot_term_TerminalNative_terminalFeed(
     JNIEnv *env, jclass clazz, jlong h, jbyteArray data, jint len) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -210,7 +210,7 @@ Java_dev_androidterm_term_TerminalNative_terminalFeed(
 
 /* Returns and clears accumulated EVENT_* bits. */
 JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalEvents(
+Java_sh_easycli_proot_term_TerminalNative_terminalEvents(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -220,7 +220,7 @@ Java_dev_androidterm_term_TerminalNative_terminalEvents(
 }
 
 JNIEXPORT jstring JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalTitle(
+Java_sh_easycli_proot_term_TerminalNative_terminalTitle(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -240,7 +240,7 @@ Java_dev_androidterm_term_TerminalNative_terminalTitle(
 }
 
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalResize(
+Java_sh_easycli_proot_term_TerminalNative_terminalResize(
     JNIEnv *env, jclass clazz, jlong h, jint cols, jint rows, jint cell_w,
     jint cell_h) {
     (void)env; (void)clazz;
@@ -255,7 +255,7 @@ Java_dev_androidterm_term_TerminalNative_terminalResize(
 
 /* mode: 0 = top, 1 = bottom, 2 = by delta rows (negative is up). */
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalScroll(
+Java_sh_easycli_proot_term_TerminalNative_terminalScroll(
     JNIEnv *env, jclass clazz, jlong h, jint mode, jint delta) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -273,7 +273,7 @@ Java_dev_androidterm_term_TerminalNative_terminalScroll(
 
 /* out: [0]=total rows, [1]=viewport offset, [2]=viewport length. */
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalScrollbar(
+Java_sh_easycli_proot_term_TerminalNative_terminalScrollbar(
     JNIEnv *env, jclass clazz, jlong h, jintArray jout) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -325,7 +325,7 @@ static jint pack_rgb(GhosttyColorRgb c) {
  * only meta is written; the caller must re-allocate and retry.
  */
 JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalSnapshot(
+Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     JNIEnv *env, jclass clazz, jlong h, jintArray jcp, jintArray jfg,
     jintArray jbg, jbyteArray jattrs, jintArray jmeta) {
     (void)clazz;
@@ -711,7 +711,7 @@ static jint run_emit(JNIEnv *env, jintArray jout, jint cap, jint idx,
  * and emits one record per run with the matching image fragment.
  */
 JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalGraphics(
+Java_sh_easycli_proot_term_TerminalNative_terminalGraphics(
     JNIEnv *env, jclass clazz, jlong h, jintArray jout) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -865,7 +865,7 @@ Java_dev_androidterm_term_TerminalNative_terminalGraphics(
  * and PNG-decoded by libghostty-vt, so the format is gray/gray+alpha/rgb/rgba.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalImage(
+Java_sh_easycli_proot_term_TerminalNative_terminalImage(
     JNIEnv *env, jclass clazz, jlong h, jint image_id, jintArray jwh) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -981,7 +981,7 @@ static GhosttyKey map_keycode(jint code) {
  * produces, or null. Returns null when the key encodes to nothing.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalEncodeKey(
+Java_sh_easycli_proot_term_TerminalNative_terminalEncodeKey(
     JNIEnv *env, jclass clazz, jlong h, jint keycode, jint mods, jstring jutf8,
     jint unshifted_cp) {
     (void)clazz;
@@ -1046,7 +1046,7 @@ static bool viewport_ref(TermCtx *c, jint x, jint y, GhosttyGridRef *out) {
  * only when the coordinates don't resolve.
  */
 JNIEXPORT jboolean JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalSelectWord(
+Java_sh_easycli_proot_term_TerminalNative_terminalSelectWord(
     JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1074,7 +1074,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSelectWord(
  * flips the selection naturally.
  */
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalSelectionAnchor(
+Java_sh_easycli_proot_term_TerminalNative_terminalSelectionAnchor(
     JNIEnv *env, jclass clazz, jlong h, jint which) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1093,7 +1093,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSelectionAnchor(
 
 /* Moves the active selection's logical end to viewport cell (x, y). */
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalSelectionDrag(
+Java_sh_easycli_proot_term_TerminalNative_terminalSelectionDrag(
     JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1108,7 +1108,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSelectionDrag(
 }
 
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalSelectionClear(
+Java_sh_easycli_proot_term_TerminalNative_terminalSelectionClear(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1122,7 +1122,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSelectionClear(
  * modified UTF-8 and would mangle non-BMP characters.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalSelectionText(
+Java_sh_easycli_proot_term_TerminalNative_terminalSelectionText(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1150,7 +1150,7 @@ Java_dev_androidterm_term_TerminalNative_terminalSelectionText(
  * is set, otherwise converts newlines to carriage returns.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_dev_androidterm_term_TerminalNative_terminalEncodePaste(
+Java_sh_easycli_proot_term_TerminalNative_terminalEncodePaste(
     JNIEnv *env, jclass clazz, jlong h, jbyteArray data) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;

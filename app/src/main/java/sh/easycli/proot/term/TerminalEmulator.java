@@ -1,4 +1,4 @@
-package dev.androidterm.term;
+package sh.easycli.proot.term;
 
 /**
  * Java owner of one native Ghostty terminal.

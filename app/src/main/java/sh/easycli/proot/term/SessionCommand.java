@@ -1,4 +1,4 @@
-package dev.androidterm.term;
+package sh.easycli.proot.term;
 
 /**
  * What a {@link TerminalSession} spawns: either a command to execve() or a

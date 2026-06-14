@@ -1,4 +1,4 @@
-package dev.androidterm.term;
+package sh.easycli.proot.term;
 
 /**
  * JNI surface of libterm.so (PTY syscalls + libghostty-vt bindings).

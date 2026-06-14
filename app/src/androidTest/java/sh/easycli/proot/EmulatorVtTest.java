@@ -1,4 +1,4 @@
-package dev.androidterm;
+package sh.easycli.proot;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -18,9 +18,9 @@ import java.nio.charset.StandardCharsets;
 
 import android.view.KeyEvent;
 
-import dev.androidterm.term.ScreenSnapshot;
-import dev.androidterm.term.TerminalEmulator;
-import dev.androidterm.term.TerminalNative;
+import sh.easycli.proot.term.ScreenSnapshot;
+import sh.easycli.proot.term.TerminalEmulator;
+import sh.easycli.proot.term.TerminalNative;
 
 /**
  * Ghostty VT correctness through the JNI boundary — no shell involved, so

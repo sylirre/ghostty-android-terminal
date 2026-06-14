@@ -1,4 +1,4 @@
-package dev.androidterm.ui;
+package sh.easycli.proot.ui;
 
 import android.app.AlertDialog;
 import android.content.Context;
@@ -11,7 +11,7 @@ import android.widget.TextView;
 
 import java.util.List;
 
-import dev.androidterm.R;
+import sh.easycli.proot.R;
 
 /**
  * Shows a list of {@link Setting}s as a scrollable dialog, one row each.

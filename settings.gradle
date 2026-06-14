@@ -11,5 +11,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "AndroidTerm"
+rootProject.name = "Terminal"
 include ":app"

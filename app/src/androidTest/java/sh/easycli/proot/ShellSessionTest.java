@@ -1,6 +1,6 @@
-package dev.androidterm;
+package sh.easycli.proot;
 
-import static dev.androidterm.TestUtil.waitFor;
+import static sh.easycli.proot.TestUtil.waitFor;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -21,8 +21,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import dev.androidterm.term.ScreenSnapshot;
-import dev.androidterm.term.TerminalSession;
+import sh.easycli.proot.term.ScreenSnapshot;
+import sh.easycli.proot.term.TerminalSession;
 
 /**
  * End-to-end: a real /system/bin/sh on a real PTY, asserted through the
@@ -98,7 +98,7 @@ public class ShellSessionTest {
         // getFilesDir() reports /data/user/0/... but the kernel resolves the
         // cwd through the /data/data symlink, so match the stable suffix.
         session.write("pwd\n");
-        waitForOnScreen("dev.androidterm/files");
+        waitForOnScreen("sh.easycli.proot/files");
     }
 
     @Test

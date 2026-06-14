@@ -124,7 +124,7 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
 }
 
 JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_ptyCreate(
+Java_sh_easycli_proot_term_TerminalNative_ptyCreate(
     JNIEnv *env, jclass clazz, jstring jcmd, jobjectArray jargs,
     jobjectArray jenv, jstring jcwd, jint cols, jint rows, jint cell_w,
     jint cell_h, jintArray jpid) {
@@ -134,7 +134,7 @@ Java_dev_androidterm_term_TerminalNative_ptyCreate(
 }
 
 JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_ptyCreateProot(
+Java_sh_easycli_proot_term_TerminalNative_ptyCreateProot(
     JNIEnv *env, jclass clazz, jobjectArray jargs, jobjectArray jenv,
     jstring jcwd, jint cols, jint rows, jint cell_w, jint cell_h,
     jintArray jpid) {
@@ -144,7 +144,7 @@ Java_dev_androidterm_term_TerminalNative_ptyCreateProot(
 }
 
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_ptySetSize(
+Java_sh_easycli_proot_term_TerminalNative_ptySetSize(
     JNIEnv *env, jclass clazz, jint fd, jint cols, jint rows, jint cell_w,
     jint cell_h) {
     (void)env; (void)clazz;
@@ -157,7 +157,7 @@ Java_dev_androidterm_term_TerminalNative_ptySetSize(
 
 /* Blocks until the child exits. Returns exit code, or -signal if killed. */
 JNIEXPORT jint JNICALL
-Java_dev_androidterm_term_TerminalNative_processWaitFor(
+Java_sh_easycli_proot_term_TerminalNative_processWaitFor(
     JNIEnv *env, jclass clazz, jint pid) {
     (void)env; (void)clazz;
     int status;
@@ -170,7 +170,7 @@ Java_dev_androidterm_term_TerminalNative_processWaitFor(
 }
 
 JNIEXPORT void JNICALL
-Java_dev_androidterm_term_TerminalNative_processKill(
+Java_sh_easycli_proot_term_TerminalNative_processKill(
     JNIEnv *env, jclass clazz, jint pid, jint sig) {
     (void)env; (void)clazz;
     kill((pid_t)pid, sig);

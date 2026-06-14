@@ -1,4 +1,4 @@
-package dev.androidterm.term;
+package sh.easycli.proot.term;
 
 /**
  * Reusable flat-array copy of the terminal viewport for rendering.

@@ -30,7 +30,7 @@ export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 
 # Single class or test:
 ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=dev.androidterm.EmulatorVtTest#lineWrap
+  -Pandroid.testInstrumentationRunnerArguments.class=sh.easycli.proot.EmulatorVtTest#lineWrap
 
 scripts/setup-emulator.sh                     # one-time AVD creation (API 34 x86_64)
 scripts/run-emulator.sh                       # boot it headless; needs /dev/kvm
@@ -54,7 +54,7 @@ scripts/fetch-ghostty.sh && ZIG=/path/to/zig-0.15 scripts/build-ghostty-vt.sh
 Three layers; native code is limited to what Java cannot do.
 
 ```
-Java  app/src/main/java/dev/androidterm/
+Java  app/src/main/java/sh/easycli/proot/
   term/  TerminalNative (JNI surface + shared constants)
          TerminalEmulator (owns the native handle, all calls synchronized)
          TerminalSession (PTY + shell pid + reader thread)
@@ -150,7 +150,7 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   bytes in source files.
 - Toolbar keys at the right end of the strip must be scrolled into view
   before Espresso can click them (see `extraKeysTypeIntoShell`).
-- Assert on the app-id path suffix (`dev.androidterm/files`), not on
+- Assert on the app-id path suffix (`sh.easycli.proot/files`), not on
   `getFilesDir()` verbatim — the kernel resolves cwd through the
   `/data/data` symlink.
 

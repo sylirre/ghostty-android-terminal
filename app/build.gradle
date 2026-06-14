@@ -3,12 +3,12 @@ plugins {
 }
 
 android {
-    namespace "dev.androidterm"
+    namespace "sh.easycli.proot"
     compileSdk 36
     ndkVersion "28.2.13676358"
 
     defaultConfig {
-        applicationId "dev.androidterm"
+        applicationId "sh.easycli.proot"
         // 29+: the Zig-built libghostty-vt.a uses ELF TLS, which bionic
         // only supports since API 29.
         minSdk 29

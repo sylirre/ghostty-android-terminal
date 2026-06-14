@@ -1,4 +1,4 @@
-package dev.androidterm;
+package sh.easycli.proot;
 
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
@@ -9,7 +9,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
 
-import static dev.androidterm.TestUtil.waitFor;
+import static sh.easycli.proot.TestUtil.waitFor;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -46,11 +46,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import dev.androidterm.term.ScreenSnapshot;
-import dev.androidterm.term.SessionManager;
-import dev.androidterm.term.TerminalSession;
-import dev.androidterm.ui.MainActivity;
-import dev.androidterm.ui.TerminalView;
+import sh.easycli.proot.term.ScreenSnapshot;
+import sh.easycli.proot.term.SessionManager;
+import sh.easycli.proot.term.TerminalSession;
+import sh.easycli.proot.ui.MainActivity;
+import sh.easycli.proot.ui.TerminalView;
 
 /**
  * Activity-level integration: tabs, extra-keys toolbar, and typing all the

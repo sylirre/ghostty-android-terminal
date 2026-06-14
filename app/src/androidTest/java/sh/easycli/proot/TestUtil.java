@@ -1,4 +1,4 @@
-package dev.androidterm;
+package sh.easycli.proot;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;

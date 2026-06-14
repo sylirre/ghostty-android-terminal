@@ -1,4 +1,4 @@
-package dev.androidterm.ui;
+package sh.easycli.proot.ui;
 
 import android.content.Context;
 import android.graphics.Color;

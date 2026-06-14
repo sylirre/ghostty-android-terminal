@@ -17,7 +17,7 @@
             android:orientation="horizontal"
             android:background="#FF14141A">
 
-            <dev.androidterm.ui.TabStripView
+            <sh.easycli.proot.ui.TabStripView
                 android:id="@+id/tabs"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -39,14 +39,14 @@
 
         </LinearLayout>
 
-        <dev.androidterm.ui.TerminalView
+        <sh.easycli.proot.ui.TerminalView
             android:id="@+id/terminal"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:scrollbars="vertical" />
 
-        <dev.androidterm.ui.ExtraKeysView
+        <sh.easycli.proot.ui.ExtraKeysView
             android:id="@+id/extra_keys"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />

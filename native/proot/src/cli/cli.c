@@ -446,7 +446,7 @@ static int parse_config(Tracee *tracee, size_t argc, char *const argv[])
 bool exit_failure = true;
 
 #ifdef PROOT_JNI
-/* AndroidTerm: PRoot is linked into libterm.so and entered via
+/* Terminal: PRoot is linked into libterm.so and entered via
  * proot_main() from a fork()ed child of the app process (Android's
  * SELinux policy forbids execve() of files in app data, so there is no
  * separate proot binary to exec). Because that child never execs, a

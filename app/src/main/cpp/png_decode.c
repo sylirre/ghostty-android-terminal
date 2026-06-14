@@ -13,7 +13,7 @@
 #define STBI_NO_STDIO
 #include "stb_image.h"
 
-bool androidterm_decode_png(void *userdata, const GhosttyAllocator *allocator,
+bool term_decode_png(void *userdata, const GhosttyAllocator *allocator,
                             const uint8_t *data, size_t data_len,
                             GhosttySysImage *out) {
     (void)userdata;

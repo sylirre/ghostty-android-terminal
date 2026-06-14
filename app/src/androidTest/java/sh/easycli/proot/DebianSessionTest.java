@@ -1,6 +1,6 @@
-package dev.androidterm;
+package sh.easycli.proot;
 
-import static dev.androidterm.TestUtil.waitFor;
+import static sh.easycli.proot.TestUtil.waitFor;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -21,9 +21,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import dev.androidterm.term.DebianRootfs;
-import dev.androidterm.term.ScreenSnapshot;
-import dev.androidterm.term.TerminalSession;
+import sh.easycli.proot.term.DebianRootfs;
+import sh.easycli.proot.term.ScreenSnapshot;
+import sh.easycli.proot.term.TerminalSession;
 
 /**
  * End-to-end Debian-under-PRoot: rootfs install, proot_main() in the PTY
