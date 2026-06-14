@@ -158,9 +158,10 @@ public class TerminalView extends View {
     // toolbar appear — it reads as a plain search hit.
     private String searchQuery = "";
     private boolean searchCaseSensitive;
-    private int matchCount;
-    private int matchIndex;
-    private final int[] searchInitial = new int[1];
+    private int matchTotal;  // all hits; may exceed the navigable window
+    private int matchStored; // navigable matches (the most-recent window)
+    private int matchIndex;  // position within the navigable matches
+    private final int[] searchOut = new int[2]; // [0] initial index, [1] stored
     private SearchListener searchListener;
 
     /** Reports the current match position (1-based) and total to the search UI. */
@@ -628,15 +629,17 @@ public class TerminalView extends View {
         searchCaseSensitive = caseSensitive;
         if (session == null || searchQuery.isEmpty()) {
             if (session != null) session.emulator.searchClear();
-            matchCount = 0;
+            matchTotal = 0;
+            matchStored = 0;
             matchIndex = 0;
             invalidate();
             notifySearch();
             return;
         }
-        matchCount = session.emulator.search(searchQuery, searchCaseSensitive, searchInitial);
-        matchIndex = matchCount > 0 ? searchInitial[0] : 0;
-        if (matchCount > 0) session.emulator.searchShow(matchIndex);
+        matchTotal = session.emulator.search(searchQuery, searchCaseSensitive, searchOut);
+        matchStored = searchOut[1];
+        matchIndex = matchStored > 0 ? searchOut[0] : 0;
+        if (matchStored > 0) session.emulator.searchShow(matchIndex);
         invalidate();
         notifySearch();
     }
@@ -657,14 +660,15 @@ public class TerminalView extends View {
             return;
         }
         // Re-scan so the count and positions stay valid after any new output.
-        matchCount = session.emulator.search(searchQuery, searchCaseSensitive, searchInitial);
-        if (matchCount == 0) {
+        matchTotal = session.emulator.search(searchQuery, searchCaseSensitive, searchOut);
+        matchStored = searchOut[1];
+        if (matchStored == 0) {
             matchIndex = 0;
             invalidate();
             notifySearch();
             return;
         }
-        matchIndex = ((matchIndex + dir) % matchCount + matchCount) % matchCount;
+        matchIndex = ((matchIndex + dir) % matchStored + matchStored) % matchStored;
         session.emulator.searchShow(matchIndex);
         invalidate();
         notifySearch();
@@ -673,16 +677,21 @@ public class TerminalView extends View {
     /** Ends search mode and clears the match highlight. */
     public void searchClose() {
         searchQuery = "";
-        matchCount = 0;
+        matchTotal = 0;
+        matchStored = 0;
         matchIndex = 0;
         if (session != null) session.emulator.searchClear();
         invalidate();
     }
 
     private void notifySearch() {
-        if (searchListener != null) {
-            searchListener.onSearchUpdated(matchCount > 0 ? matchIndex + 1 : 0, matchCount);
-        }
+        if (searchListener == null) return;
+        // The navigable matches are the most-recent window of the total, so the
+        // displayed position is offset by how many older hits were dropped.
+        int current = matchStored > 0
+                ? (matchTotal - matchStored) + matchIndex + 1
+                : 0;
+        searchListener.onSearchUpdated(current, matchTotal);
     }
 
     private final ActionMode.Callback2 selectionActions = new ActionMode.Callback2() {

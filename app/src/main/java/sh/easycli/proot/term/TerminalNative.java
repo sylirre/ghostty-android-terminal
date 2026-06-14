@@ -199,13 +199,15 @@ public final class TerminalNative {
 
     /**
      * Scans the whole screen (scrollback + active area) for {@code query}
-     * (UTF-8) and stores the hits. Returns the match count and writes the
-     * suggested initial index — the hit nearest the current viewport — to
-     * {@code outInitialIndex[0]}. An empty query clears the matches. Use
-     * {@link #terminalSearchShow} to highlight and reveal one.
+     * (UTF-8) and records the hits. Returns the <em>total</em> match count,
+     * which may exceed the navigable window, and writes two ints to {@code out}:
+     * {@code out[0]} = the suggested initial index (the hit nearest the current
+     * viewport) within the navigable matches, {@code out[1]} = the navigable
+     * match count (the most-recent hits, capped to bound memory). An empty query
+     * clears the matches. Use {@link #terminalSearchShow} to highlight one.
      */
     public static native int terminalSearch(long handle, byte[] query,
-            boolean caseSensitive, int[] outInitialIndex);
+            boolean caseSensitive, int[] out);
 
     /**
      * Installs the indexed match (wrapping into range) as the active selection

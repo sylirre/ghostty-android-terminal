@@ -466,7 +466,7 @@ public class EmulatorVtTest {
         for (int i = 0; i < 10; i++) {
             feed("filler" + i + "\r\n"); // push "needle" into history
         }
-        int[] init = new int[1];
+        int[] init = new int[2];
         assertEquals(1, term.search("needle", false, init));
 
         assertEquals(0, term.searchShow(0));
@@ -481,7 +481,7 @@ public class EmulatorVtTest {
     @Test
     public void searchCaseSensitivity() {
         feed("Foo foo FOO");
-        int[] init = new int[1];
+        int[] init = new int[2];
         assertEquals(3, term.search("foo", false, init)); // all three
         assertEquals(1, term.search("foo", true, init));  // only the lowercase
         assertEquals(1, term.search("FOO", true, init));
@@ -495,7 +495,7 @@ public class EmulatorVtTest {
         sb.append("needle"); // straddles the soft-wrap boundary
         feed(sb.toString());
 
-        int[] init = new int[1];
+        int[] init = new int[2];
         assertEquals(1, term.search("needle", false, init));
         assertEquals(0, term.searchShow(0));
         // The selection spans the wrap; unwrapped text is the whole token.
@@ -505,7 +505,7 @@ public class EmulatorVtTest {
     @Test
     public void searchNoMatchesLeavesNoSelection() {
         feed("hello world");
-        int[] init = new int[1];
+        int[] init = new int[2];
         assertEquals(0, term.search("zzz", false, init));
         assertEquals(-1, term.searchShow(0));
         assertFalse(snapshot().hasSelection());
@@ -514,7 +514,7 @@ public class EmulatorVtTest {
     @Test
     public void searchShowWrapsIndex() {
         feed("match\r\nmatch\r\nmatch");
-        int[] init = new int[1];
+        int[] init = new int[2];
         assertEquals(3, term.search("match", false, init));
         assertEquals(0, term.searchShow(3));  // wraps past the end
         assertEquals(2, term.searchShow(-1)); // wraps before the start
@@ -523,7 +523,7 @@ public class EmulatorVtTest {
     @Test
     public void searchClearRemovesMatchesAndSelection() {
         feed("hello world");
-        int[] init = new int[1];
+        int[] init = new int[2];
         assertEquals(1, term.search("world", false, init));
         term.searchShow(0);
         assertTrue(snapshot().hasSelection());
@@ -531,5 +531,32 @@ public class EmulatorVtTest {
         term.searchClear();
         assertFalse(snapshot().hasSelection());
         assertEquals(-1, term.searchShow(0)); // matches were freed
+    }
+
+    @Test
+    public void searchCountsPastTheNavigableCapAndKeepsNewestReachable() {
+        // More matches than the navigable window: the whole buffer must still be
+        // scanned (an honest total), and the most recent matches must stay
+        // reachable — the regression where the scan stopped at the cap and the
+        // newest output was never searched.
+        final int lines = 60_000; // > MAX_MATCHES (50_000)
+        TerminalEmulator big = new TerminalEmulator(4, 2, 70_000);
+        try {
+            StringBuilder sb = new StringBuilder(lines * 3);
+            for (int i = 0; i < lines; i++) sb.append("x\r\n");
+            byte[] b = sb.toString().getBytes(StandardCharsets.UTF_8);
+            big.feed(b, b.length);
+
+            int[] out = new int[2];
+            int total = big.search("x", false, out);
+            assertEquals("every match counted", lines, total);
+            assertEquals("navigable window capped", 50_000, out[1]);
+            // The newest hit (bottom of the buffer) is still navigable.
+            int last = out[1] - 1;
+            assertEquals(last, big.searchShow(last));
+            assertEquals("x", big.selectionText());
+        } finally {
+            big.close();
+        }
     }
 }

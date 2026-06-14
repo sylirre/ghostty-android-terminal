@@ -63,11 +63,14 @@ typedef struct {
     uint8_t *out;
     size_t out_len, out_cap;
 
-    /* Text-search results from terminalSearch: screen-coordinate ranges sorted
-     * top-to-bottom. Rebuilt on each search; navigation re-runs the scan, so
-     * these never need to outlive intervening output. */
+    /* Text-search results from terminalSearch. During a scan `matches` is a
+     * ring of capacity match_cap that keeps the most recent hits (so the newest
+     * content stays navigable even on a huge buffer); afterwards it is rotated
+     * into match_count sorted, navigable entries. match_total counts every hit,
+     * including those past the cap, for an honest total. Rebuilt on each search;
+     * navigation re-runs the scan, so these never outlive intervening output. */
     SearchMatch *matches;
-    size_t match_count, match_cap;
+    size_t match_count, match_cap, match_total;
 
     int events;
 } TermCtx;
@@ -1340,17 +1343,34 @@ static bool linebuf_push(LineBuf *l, uint32_t cp, uint16_t x, uint32_t y) {
     return true;
 }
 
-static bool match_push(TermCtx *c, uint16_t sx, uint32_t sy, uint16_t ex,
-                       uint32_t ey) {
-    if (c->match_count == c->match_cap) {
-        size_t cap = c->match_cap ? c->match_cap * 2 : 64;
-        SearchMatch *m = realloc(c->matches, cap * sizeof(SearchMatch));
-        if (!m) return false;
-        c->matches = m;
-        c->match_cap = cap;
+static void match_reverse(SearchMatch *a, size_t lo, size_t hi) {
+    while (lo < hi) {
+        SearchMatch t = a[lo];
+        a[lo] = a[hi];
+        a[hi] = t;
+        lo++;
+        hi--;
     }
-    c->matches[c->match_count++] = (SearchMatch){sx, sy, ex, ey};
-    return true;
+}
+
+/* Rotates a[0..n) left by k so a[k] becomes a[0] (three-reversal rotate). */
+static void match_rotate_left(SearchMatch *a, size_t n, size_t k) {
+    if (n == 0) return;
+    k %= n;
+    if (k == 0) return;
+    match_reverse(a, 0, k - 1);
+    match_reverse(a, k, n - 1);
+    match_reverse(a, 0, n - 1);
+}
+
+/* Records one hit: always counts it, and when there is ring capacity stores it
+ * in the slot for the most-recent window. A count is never dropped, so the
+ * total stays honest even past the navigable cap. */
+static void match_store(TermCtx *c, uint16_t sx, uint32_t sy, uint16_t ex,
+                        uint32_t ey) {
+    if (c->match_cap)
+        c->matches[c->match_total % c->match_cap] = (SearchMatch){sx, sy, ex, ey};
+    c->match_total++;
 }
 
 /* Searches one finished logical line for the query, recording every
@@ -1370,8 +1390,7 @@ static void search_line(TermCtx *c, LineBuf *l, const uint32_t *q, size_t qlen,
         }
         if (hit) {
             size_t e = i + qlen - 1;
-            if (!match_push(c, l->cx[i], l->cy[i], l->cx[e], l->cy[e])) return;
-            if (c->match_count >= MAX_MATCHES) return;
+            match_store(c, l->cx[i], l->cy[i], l->cx[e], l->cy[e]);
             i += qlen;
         } else {
             i++;
@@ -1380,9 +1399,12 @@ static void search_line(TermCtx *c, LineBuf *l, const uint32_t *q, size_t qlen,
 }
 
 /*
- * Scans the whole active screen for the query and stores the hits. Returns the
- * match count and writes the suggested initial index (the hit nearest the
- * current viewport) to outInitialIndex[0]. An empty query clears the matches.
+ * Scans the whole active screen for the query and records the hits. Returns the
+ * total match count (which may exceed the navigable window) and writes two ints
+ * to out: out[0] = the suggested initial index (the hit nearest the current
+ * viewport) within the navigable matches, out[1] = the navigable match count
+ * (the most-recent window, capped at MAX_MATCHES). An empty query clears the
+ * matches.
  */
 JNIEXPORT jint JNICALL
 Java_sh_easycli_proot_term_TerminalNative_terminalSearch(
@@ -1391,19 +1413,28 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSearch(
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
     c->match_count = 0;
-    jint initial = 0;
+    c->match_total = 0;
+    jint out2[2] = {0, 0};
 
     jsize qbytes = (*env)->GetArrayLength(env, jquery);
     if (qbytes <= 0) {
-        if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 1, &initial);
+        if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 2, out2);
         return 0;
+    }
+    /* Allocate the navigable ring once and reuse it across searches. */
+    if (c->match_cap < MAX_MATCHES) {
+        SearchMatch *m = realloc(c->matches, (size_t)MAX_MATCHES * sizeof(SearchMatch));
+        if (m) {
+            c->matches = m;
+            c->match_cap = MAX_MATCHES;
+        }
     }
     uint8_t *qbuf = malloc((size_t)qbytes);
     uint32_t *q = malloc((size_t)qbytes * sizeof(uint32_t));
     if (!qbuf || !q) {
         free(qbuf);
         free(q);
-        if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 1, &initial);
+        if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 2, out2);
         return 0;
     }
     (*env)->GetByteArrayRegion(env, jquery, 0, qbytes, (jbyte *)qbuf);
@@ -1427,7 +1458,6 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSearch(
             if (ghostty_terminal_grid_ref(c->term, p, &ref) != GHOSTTY_SUCCESS) {
                 search_line(c, &line, q, qlen, cs); /* flush what we have */
                 line.len = 0;
-                if (c->match_count >= MAX_MATCHES) break;
                 continue;
             }
             bool wrap = false;
@@ -1451,30 +1481,39 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSearch(
             if (wrap) continue; /* soft-wrapped: the next row continues it */
             search_line(c, &line, q, qlen, cs);
             line.len = 0;
-            if (c->match_count >= MAX_MATCHES) break;
         }
         /* A trailing wrapped run with no terminating row still searches. */
-        if (line.len > 0 && c->match_count < MAX_MATCHES)
-            search_line(c, &line, q, qlen, cs);
+        if (line.len > 0) search_line(c, &line, q, qlen, cs);
         free(line.cp);
         free(line.cx);
         free(line.cy);
     }
     free(q);
 
-    /* Initial selection: the last hit at or above the viewport bottom, so the
-     * first jump lands near what the user is looking at; else the first hit. */
+    /* The ring holds the most recent min(total, cap) hits. When it wrapped,
+     * rotate it so the navigable matches sit at [0, match_count) in screen
+     * order; otherwise they are already in order. */
+    c->match_count =
+        c->match_total < c->match_cap ? c->match_total : c->match_cap;
+    if (c->match_cap && c->match_total > c->match_cap)
+        match_rotate_left(c->matches, c->match_cap,
+                          c->match_total % c->match_cap);
+
+    /* Initial selection: the last navigable hit at or above the viewport
+     * bottom, so the first jump lands near what the user is looking at; else
+     * the first navigable hit. */
     if (c->match_count > 0) {
         GhosttyTerminalScrollbar sb = {0};
         ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb);
         uint64_t bottom = sb.offset + (sb.len ? sb.len - 1 : 0);
         for (size_t i = 0; i < c->match_count; i++) {
-            if (c->matches[i].sy <= bottom) initial = (jint)i;
+            if (c->matches[i].sy <= bottom) out2[0] = (jint)i;
             else break;
         }
     }
-    if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 1, &initial);
-    return (jint)c->match_count;
+    out2[1] = (jint)c->match_count;
+    if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 2, out2);
+    return (jint)c->match_total;
 }
 
 /*
@@ -1541,5 +1580,6 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSearchClear(
     c->matches = NULL;
     c->match_count = 0;
     c->match_cap = 0;
+    c->match_total = 0;
     ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
 }

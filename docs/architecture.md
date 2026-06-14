@@ -262,8 +262,12 @@ inverse video with no handles/Copy toolbar (the view never enters
 stored screen points never need to survive intervening output and no
 per-match tracked refs are kept; only the *current* match's highlight is a
 tracked selection that follows its text. Case folding is ASCII (the "Aa"
-toggle), and the match list is capped (`MAX_MATCHES`) to bound memory on a
-pathological query.
+toggle). The whole buffer is always scanned for an honest total count, but
+only the most recent `MAX_MATCHES` hits are kept navigable (a ring buffer
+rotated into order after the scan) — this bounds memory on a pathological
+single-character query while keeping the newest output reachable, which is
+what a terminal user at the bottom of the buffer wants. The UI numbers the
+current match globally, so the count stays truthful even past the cap.
 
 ### Keyboard and extra keys
 

@@ -138,18 +138,20 @@ public final class TerminalEmulator implements AutoCloseable {
     // scrolls into view), which is why search reuses the selection slot. ---
 
     /**
-     * Scans the whole screen for {@code query} and stores the hits. Returns the
-     * match count (0 after close); {@code outInitialIndex[0]} receives the
-     * suggested first index — the match nearest the current viewport.
+     * Scans the whole screen for {@code query} and records the hits. Returns the
+     * total match count (0 after close); {@code out} (length &ge; 2) receives
+     * the suggested first index nearest the viewport in {@code out[0]} and the
+     * navigable (most-recent) match count in {@code out[1]}.
      */
-    public synchronized int search(String query, boolean caseSensitive, int[] outInitialIndex) {
+    public synchronized int search(String query, boolean caseSensitive, int[] out) {
         if (handle == 0) {
-            outInitialIndex[0] = 0;
+            out[0] = 0;
+            out[1] = 0;
             return 0;
         }
         return TerminalNative.terminalSearch(handle,
                 query.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                caseSensitive, outInitialIndex);
+                caseSensitive, out);
     }
 
     /** Highlights and reveals the indexed match (wraps); returns it, or -1. */
