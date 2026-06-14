@@ -50,9 +50,9 @@ public final class TerminalSession {
 
     /** Spawns /system/bin/sh; see {@link SessionCommand#androidShell}. */
     public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
-            int scrollbackRows, String homeDir, String tmpDir, Listener listener)
+            int scrollbackLines, String homeDir, String tmpDir, Listener listener)
             throws IOException {
-        this(cols, rows, cellWidthPx, cellHeightPx, scrollbackRows,
+        this(cols, rows, cellWidthPx, cellHeightPx, scrollbackLines,
                 SessionCommand.androidShell(homeDir, tmpDir), listener);
     }
 
@@ -60,15 +60,15 @@ public final class TerminalSession {
      * Spawns the given command (Android shell or Debian-under-PRoot). The cell
      * pixel size seeds the PTY winsize so the spawn size is final — including
      * the pixel fields some programs (e.g. Kitty's icat) read to size images.
-     * {@code scrollbackRows} fixes the emulator's history depth for this
+     * {@code scrollbackLines} fixes the emulator's history depth for this
      * session's lifetime.
      */
     public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
-            int scrollbackRows, SessionCommand command, Listener listener)
+            int scrollbackLines, SessionCommand command, Listener listener)
             throws IOException {
         this.listener = listener;
         this.label = command.label;
-        this.emulator = new TerminalEmulator(cols, rows, scrollbackRows);
+        this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
 
         int[] pidOut = new int[1];
         int fd = command.cmd != null

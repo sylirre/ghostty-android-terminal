@@ -100,15 +100,32 @@ static const GhosttySysDecodePngFn decode_png_fn = androidterm_decode_png;
 
 JNIEXPORT jlong JNICALL
 Java_dev_androidterm_term_TerminalNative_terminalNew(
-    JNIEnv *env, jclass clazz, jint cols, jint rows, jint scrollback) {
+    JNIEnv *env, jclass clazz, jint cols, jint rows, jint scrollbackLines) {
     (void)env; (void)clazz;
     TermCtx *c = calloc(1, sizeof(TermCtx));
     if (!c) return 0;
 
+    /* Ghostty's max_scrollback is a BYTE budget, not a line count (the vt.h
+     * comment is misleading; see Screen.zig "amount of scrollback to keep in
+     * bytes"). The grid for one row costs Row + cols*Cell = 8*(cols+1) bytes,
+     * but each backing page also carries fixed metadata (styles, graphemes,
+     * hyperlinks, strings) and is allocated/pruned in whole page-sized chunks,
+     * so the real cost per retained row measures ~1.6x the bare grid cost.
+     * We double the grid estimate: that clears the per-page overhead, the
+     * two-page floor the limit is clamped to internally, and page-granular
+     * rounding at small sizes, so the user gets at least the requested depth.
+     * Over-provisioning is cheap — the budget is only a cap, and pages are
+     * created lazily as output scrolls, not up front. Sized at the spawn
+     * width; a later reflow to a wider grid yields fewer lines for the same
+     * bytes, as it would in upstream Ghostty. */
+    size_t bytes_per_row = (size_t)8 * ((size_t)(uint16_t)cols + 1);
+    size_t want_rows = (size_t)(uint16_t)rows + (size_t)(uint32_t)scrollbackLines;
+    size_t max_scrollback = want_rows * bytes_per_row * 2;
+
     GhosttyTerminalOptions opts = {
         .cols = (uint16_t)cols,
         .rows = (uint16_t)rows,
-        .max_scrollback = (size_t)scrollback,
+        .max_scrollback = max_scrollback,
     };
     if (ghostty_terminal_new(NULL, &c->term, opts) != GHOSTTY_SUCCESS)
         goto fail;

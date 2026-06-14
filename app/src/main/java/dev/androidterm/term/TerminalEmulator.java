@@ -11,8 +11,8 @@ package dev.androidterm.term;
 public final class TerminalEmulator implements AutoCloseable {
     private long handle;
 
-    public TerminalEmulator(int cols, int rows, int scrollbackRows) {
-        handle = TerminalNative.terminalNew(cols, rows, scrollbackRows);
+    public TerminalEmulator(int cols, int rows, int scrollbackLines) {
+        handle = TerminalNative.terminalNew(cols, rows, scrollbackLines);
         if (handle == 0) throw new OutOfMemoryError("ghostty_terminal_new failed");
     }
 

@@ -177,6 +177,33 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void scrollbackHonorsConfiguredLineCount() {
+        // Regression: Ghostty's max_scrollback is a byte budget, not a line
+        // count, and a budget below a ~2-page floor is ignored entirely. Before
+        // the lines->bytes conversion in terminalNew, every configured size
+        // therefore collapsed to a few hundred rows of history. Configure a
+        // deep buffer, feed past it, and confirm history grows accordingly.
+        final int lines = 20_000;
+        TerminalEmulator big = new TerminalEmulator(80, 24, lines);
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 1; i <= 25_000; i++) {
+                sb.append('L').append(i).append("\r\n");
+            }
+            byte[] b = sb.toString().getBytes(StandardCharsets.UTF_8);
+            big.feed(b, b.length);
+
+            int[] bar = new int[3];
+            big.scrollbar(bar);
+            int total = bar[0]; // scrollback + viewport rows
+            assertTrue("history collapsed to " + total + " rows; expected >= "
+                    + lines, total >= lines);
+        } finally {
+            big.close();
+        }
+    }
+
+    @Test
     public void shrinkReflowKeepsText() {
         feed("hello world");
         term.resize(10, 5, 8, 16);

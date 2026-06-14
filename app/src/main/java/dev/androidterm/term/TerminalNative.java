@@ -99,8 +99,12 @@ public final class TerminalNative {
 
     // --- Ghostty terminal ---
 
-    /** Returns a terminal handle, or 0 on allocation failure. */
-    public static native long terminalNew(int cols, int rows, int scrollbackRows);
+    /**
+     * Returns a terminal handle, or 0 on allocation failure. {@code
+     * scrollbackLines} is a line count; the native side converts it to the
+     * byte budget Ghostty's max_scrollback actually expects (see terminal_jni).
+     */
+    public static native long terminalNew(int cols, int rows, int scrollbackLines);
 
     public static native void terminalFree(long handle);
 
