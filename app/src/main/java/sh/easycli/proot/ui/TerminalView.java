@@ -150,6 +150,24 @@ public class TerminalView extends View {
     // onDraw reposition it (invalidateContentRect) only when it actually moves.
     private long toolbarSelGeom = Long.MIN_VALUE;
 
+    // --- Text search. The emulator scans the whole buffer and reuses the
+    // selection slot to highlight/reveal the current match; this view just
+    // tracks the query and the index into the match list, re-running the scan
+    // on each navigation so the count stays valid after new output. The match
+    // highlight deliberately does not enter `selecting`, so no handles or Copy
+    // toolbar appear — it reads as a plain search hit.
+    private String searchQuery = "";
+    private boolean searchCaseSensitive;
+    private int matchCount;
+    private int matchIndex;
+    private final int[] searchInitial = new int[1];
+    private SearchListener searchListener;
+
+    /** Reports the current match position (1-based) and total to the search UI. */
+    public interface SearchListener {
+        void onSearchUpdated(int current, int total);
+    }
+
     private static final int MENU_COPY = 1;
     private static final int MENU_PASTE = 2;
 
@@ -343,6 +361,7 @@ public class TerminalView extends View {
     public void attachSession(TerminalSession s) {
         if (s != session) {
             finishSelection(); // also clears the old session's selection
+            searchClose(); // the match list belonged to the old session
             clearImageCache(); // image ids belong to the old terminal
             gfxCount = 0;
             resetRichInput(); // the mirror belonged to the old session's line
@@ -591,6 +610,79 @@ public class TerminalView extends View {
         session.emulator.scrollToBottom();
         session.writeBytes(encoded);
         invalidate();
+    }
+
+    // --- Search ---
+
+    public void setSearchListener(SearchListener l) {
+        searchListener = l;
+    }
+
+    /**
+     * Runs a fresh query: scans the buffer, jumps to the match nearest the
+     * current viewport, and reports the count to the listener. An empty query
+     * clears the highlight.
+     */
+    public void searchSetQuery(String query, boolean caseSensitive) {
+        searchQuery = query == null ? "" : query;
+        searchCaseSensitive = caseSensitive;
+        if (session == null || searchQuery.isEmpty()) {
+            if (session != null) session.emulator.searchClear();
+            matchCount = 0;
+            matchIndex = 0;
+            invalidate();
+            notifySearch();
+            return;
+        }
+        matchCount = session.emulator.search(searchQuery, searchCaseSensitive, searchInitial);
+        matchIndex = matchCount > 0 ? searchInitial[0] : 0;
+        if (matchCount > 0) session.emulator.searchShow(matchIndex);
+        invalidate();
+        notifySearch();
+    }
+
+    /** Moves to the next match (wraps), revealing and highlighting it. */
+    public void searchNext() {
+        stepSearch(1);
+    }
+
+    /** Moves to the previous match (wraps), revealing and highlighting it. */
+    public void searchPrev() {
+        stepSearch(-1);
+    }
+
+    private void stepSearch(int dir) {
+        if (session == null || searchQuery.isEmpty()) {
+            notifySearch();
+            return;
+        }
+        // Re-scan so the count and positions stay valid after any new output.
+        matchCount = session.emulator.search(searchQuery, searchCaseSensitive, searchInitial);
+        if (matchCount == 0) {
+            matchIndex = 0;
+            invalidate();
+            notifySearch();
+            return;
+        }
+        matchIndex = ((matchIndex + dir) % matchCount + matchCount) % matchCount;
+        session.emulator.searchShow(matchIndex);
+        invalidate();
+        notifySearch();
+    }
+
+    /** Ends search mode and clears the match highlight. */
+    public void searchClose() {
+        searchQuery = "";
+        matchCount = 0;
+        matchIndex = 0;
+        if (session != null) session.emulator.searchClear();
+        invalidate();
+    }
+
+    private void notifySearch() {
+        if (searchListener != null) {
+            searchListener.onSearchUpdated(matchCount > 0 ? matchIndex + 1 : 0, matchCount);
+        }
     }
 
     private final ActionMode.Callback2 selectionActions = new ActionMode.Callback2() {

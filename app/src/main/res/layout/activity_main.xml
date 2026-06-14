@@ -24,6 +24,20 @@
                 android:layout_weight="1" />
 
             <TextView
+                android:id="@+id/search_button"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="@string/search_button_icon"
+                android:textColor="#FF9999A6"
+                android:textSize="18sp"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:contentDescription="@string/search_button_description"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
                 android:id="@+id/settings_button"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
@@ -38,6 +52,13 @@
                 android:focusable="true" />
 
         </LinearLayout>
+
+        <!-- Find bar; hidden until the search button is tapped. -->
+        <sh.easycli.proot.ui.SearchBarView
+            android:id="@+id/search_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
 
         <sh.easycli.proot.ui.TerminalView
             android:id="@+id/terminal"

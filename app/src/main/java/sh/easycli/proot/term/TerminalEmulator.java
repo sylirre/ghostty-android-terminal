@@ -133,6 +133,34 @@ public final class TerminalEmulator implements AutoCloseable {
                 : new String(utf8, java.nio.charset.StandardCharsets.UTF_8);
     }
 
+    // --- Text search. Matches are screen-coordinate ranges held in the native
+    // context; showing one installs it as the selection (so it highlights and
+    // scrolls into view), which is why search reuses the selection slot. ---
+
+    /**
+     * Scans the whole screen for {@code query} and stores the hits. Returns the
+     * match count (0 after close); {@code outInitialIndex[0]} receives the
+     * suggested first index — the match nearest the current viewport.
+     */
+    public synchronized int search(String query, boolean caseSensitive, int[] outInitialIndex) {
+        if (handle == 0) {
+            outInitialIndex[0] = 0;
+            return 0;
+        }
+        return TerminalNative.terminalSearch(handle,
+                query.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                caseSensitive, outInitialIndex);
+    }
+
+    /** Highlights and reveals the indexed match (wraps); returns it, or -1. */
+    public synchronized int searchShow(int index) {
+        return handle == 0 ? -1 : TerminalNative.terminalSearchShow(handle, index);
+    }
+
+    public synchronized void searchClear() {
+        if (handle != 0) TerminalNative.terminalSearchClear(handle);
+    }
+
     /** Encodes paste text per terminal modes (bracketed paste etc.), or null. */
     public synchronized byte[] encodePaste(String text) {
         if (handle == 0) return null;

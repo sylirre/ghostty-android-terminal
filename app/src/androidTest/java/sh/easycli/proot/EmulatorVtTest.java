@@ -459,4 +459,77 @@ public class EmulatorVtTest {
         assertEquals(0, g[TerminalNative.GFX_OFF_X]);
         assertEquals(5, g[TerminalNative.GFX_OFF_Y]);
     }
+
+    @Test
+    public void searchFindsMatchAcrossScrollbackAndReveals() {
+        feed("needle\r\n");
+        for (int i = 0; i < 10; i++) {
+            feed("filler" + i + "\r\n"); // push "needle" into history
+        }
+        int[] init = new int[1];
+        assertEquals(1, term.search("needle", false, init));
+
+        assertEquals(0, term.searchShow(0));
+        assertEquals("needle", term.selectionText());
+        ScreenSnapshot s = snapshot();
+        assertTrue(s.hasSelection());
+        // searchShow scrolled the match back into the viewport.
+        assertTrue(s.selectionStartVisible());
+        assertEquals("needle", s.rowText(s.selectionStartY()));
+    }
+
+    @Test
+    public void searchCaseSensitivity() {
+        feed("Foo foo FOO");
+        int[] init = new int[1];
+        assertEquals(3, term.search("foo", false, init)); // all three
+        assertEquals(1, term.search("foo", true, init));  // only the lowercase
+        assertEquals(1, term.search("FOO", true, init));
+        assertEquals(0, term.search("bar", false, init));
+    }
+
+    @Test
+    public void searchSpansSoftWrap() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 18; i++) sb.append('x'); // fill toward the 20th col
+        sb.append("needle"); // straddles the soft-wrap boundary
+        feed(sb.toString());
+
+        int[] init = new int[1];
+        assertEquals(1, term.search("needle", false, init));
+        assertEquals(0, term.searchShow(0));
+        // The selection spans the wrap; unwrapped text is the whole token.
+        assertEquals("needle", term.selectionText());
+    }
+
+    @Test
+    public void searchNoMatchesLeavesNoSelection() {
+        feed("hello world");
+        int[] init = new int[1];
+        assertEquals(0, term.search("zzz", false, init));
+        assertEquals(-1, term.searchShow(0));
+        assertFalse(snapshot().hasSelection());
+    }
+
+    @Test
+    public void searchShowWrapsIndex() {
+        feed("match\r\nmatch\r\nmatch");
+        int[] init = new int[1];
+        assertEquals(3, term.search("match", false, init));
+        assertEquals(0, term.searchShow(3));  // wraps past the end
+        assertEquals(2, term.searchShow(-1)); // wraps before the start
+    }
+
+    @Test
+    public void searchClearRemovesMatchesAndSelection() {
+        feed("hello world");
+        int[] init = new int[1];
+        assertEquals(1, term.search("world", false, init));
+        term.searchShow(0);
+        assertTrue(snapshot().hasSelection());
+
+        term.searchClear();
+        assertFalse(snapshot().hasSelection());
+        assertEquals(-1, term.searchShow(0)); // matches were freed
+    }
 }

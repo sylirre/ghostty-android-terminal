@@ -28,6 +28,21 @@
 /* Ints per placement record from terminalGraphics; mirror TerminalNative.GFX_*. */
 #define GFX_STRIDE 14
 
+/* Upper bound on stored search matches, to cap memory on a pathological query
+ * (e.g. a single common letter against a deep scrollback). Scanning stops once
+ * this many hits are found. */
+#define MAX_MATCHES 50000
+
+/* One text-search hit, as inclusive screen-coordinate endpoints. Screen y can
+ * exceed 65535 with deep scrollback, so it is 32-bit (GhosttyPointCoordinate.y
+ * is uint32_t too); x is a column and fits in 16 bits. */
+typedef struct {
+    uint16_t sx;
+    uint32_t sy;
+    uint16_t ex;
+    uint32_t ey;
+} SearchMatch;
+
 typedef struct {
     GhosttyTerminal term;
     GhosttyRenderState rs;
@@ -47,6 +62,12 @@ typedef struct {
      * collected during vt_write. */
     uint8_t *out;
     size_t out_len, out_cap;
+
+    /* Text-search results from terminalSearch: screen-coordinate ranges sorted
+     * top-to-bottom. Rebuilt on each search; navigation re-runs the scan, so
+     * these never need to outlive intervening output. */
+    SearchMatch *matches;
+    size_t match_count, match_cap;
 
     int events;
 } TermCtx;
@@ -184,6 +205,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalFree(
     ghostty_render_state_free(c->rs);
     ghostty_terminal_free(c->term);
     free(c->out);
+    free(c->matches);
     free(c);
 }
 
@@ -1240,4 +1262,284 @@ Java_sh_easycli_proot_term_TerminalNative_terminalEncodePaste(
     }
     free(enc);
     return out;
+}
+
+/*
+ * Text search.
+ *
+ * libghostty-vt has no built-in search, so we scan the whole active screen
+ * (scrollback + active area) here and reuse the selection slot to highlight
+ * and reveal the current hit. Matches are stored as screen-coordinate ranges;
+ * navigation re-runs the scan from Java, so stale screen points across
+ * intervening output are a non-issue and no per-match tracked refs are kept
+ * (grid_ref.h flags those as costly per terminal mutation).
+ *
+ * Reading cells: one untracked row ref is resolved per screen row at column 0,
+ * then the column is walked by setting ref.x — the documented grid-ref
+ * traverse pattern (node identifies the row, x the column). Untracked refs are
+ * produced and consumed with no terminal mutation in between, per their
+ * lifetime rules (the same discipline as the selection helpers above).
+ */
+
+/* Decodes UTF-8 into codepoints, writing at most len entries (one byte is the
+ * worst case). Invalid bytes are skipped. Returns the codepoint count. */
+static size_t utf8_to_cp(const uint8_t *b, size_t len, uint32_t *out) {
+    size_t n = 0, i = 0;
+    while (i < len) {
+        uint8_t c = b[i];
+        uint32_t cp;
+        int extra;
+        if (c < 0x80) { cp = c; extra = 0; }
+        else if ((c >> 5) == 0x6) { cp = c & 0x1F; extra = 1; }
+        else if ((c >> 4) == 0xE) { cp = c & 0x0F; extra = 2; }
+        else if ((c >> 3) == 0x1E) { cp = c & 0x07; extra = 3; }
+        else { i++; continue; }
+        if (i + (size_t)extra >= len) break;
+        bool ok = true;
+        for (int k = 1; k <= extra; k++) {
+            if ((b[i + k] & 0xC0) != 0x80) { ok = false; break; }
+            cp = (cp << 6) | (b[i + k] & 0x3F);
+        }
+        if (ok) { out[n++] = cp; i += (size_t)extra + 1; }
+        else { i++; }
+    }
+    return n;
+}
+
+/* ASCII case fold for case-insensitive matching. */
+static inline uint32_t fold_cp(uint32_t cp, bool case_sensitive) {
+    if (!case_sensitive && cp >= 'A' && cp <= 'Z') return cp + 32;
+    return cp;
+}
+
+/* Reusable logical-line buffer: one entry per cell across soft-wrapped rows,
+ * carrying the codepoint and its screen position. */
+typedef struct {
+    uint32_t *cp;
+    uint16_t *cx;
+    uint32_t *cy;
+    size_t len, cap;
+} LineBuf;
+
+static bool linebuf_push(LineBuf *l, uint32_t cp, uint16_t x, uint32_t y) {
+    if (l->len == l->cap) {
+        size_t cap = l->cap ? l->cap * 2 : 256;
+        uint32_t *ncp = realloc(l->cp, cap * sizeof(uint32_t));
+        uint16_t *ncx = realloc(l->cx, cap * sizeof(uint16_t));
+        uint32_t *ncy = realloc(l->cy, cap * sizeof(uint32_t));
+        if (ncp) l->cp = ncp;
+        if (ncx) l->cx = ncx;
+        if (ncy) l->cy = ncy;
+        if (!ncp || !ncx || !ncy) return false;
+        l->cap = cap;
+    }
+    l->cp[l->len] = cp;
+    l->cx[l->len] = x;
+    l->cy[l->len] = y;
+    l->len++;
+    return true;
+}
+
+static bool match_push(TermCtx *c, uint16_t sx, uint32_t sy, uint16_t ex,
+                       uint32_t ey) {
+    if (c->match_count == c->match_cap) {
+        size_t cap = c->match_cap ? c->match_cap * 2 : 64;
+        SearchMatch *m = realloc(c->matches, cap * sizeof(SearchMatch));
+        if (!m) return false;
+        c->matches = m;
+        c->match_cap = cap;
+    }
+    c->matches[c->match_count++] = (SearchMatch){sx, sy, ex, ey};
+    return true;
+}
+
+/* Searches one finished logical line for the query, recording every
+ * non-overlapping hit. Trailing unwritten cells (codepoint 0) are ignored;
+ * interior empty cells match as spaces. */
+static void search_line(TermCtx *c, LineBuf *l, const uint32_t *q, size_t qlen,
+                        bool cs) {
+    size_t end = l->len;
+    while (end > 0 && l->cp[end - 1] == 0) end--; /* trim trailing blanks */
+    if (qlen == 0 || end < qlen) return;
+    for (size_t i = 0; i + qlen <= end;) {
+        bool hit = true;
+        for (size_t j = 0; j < qlen; j++) {
+            uint32_t a = l->cp[i + j];
+            if (a == 0) a = ' ';
+            if (fold_cp(a, cs) != fold_cp(q[j], cs)) { hit = false; break; }
+        }
+        if (hit) {
+            size_t e = i + qlen - 1;
+            if (!match_push(c, l->cx[i], l->cy[i], l->cx[e], l->cy[e])) return;
+            if (c->match_count >= MAX_MATCHES) return;
+            i += qlen;
+        } else {
+            i++;
+        }
+    }
+}
+
+/*
+ * Scans the whole active screen for the query and stores the hits. Returns the
+ * match count and writes the suggested initial index (the hit nearest the
+ * current viewport) to outInitialIndex[0]. An empty query clears the matches.
+ */
+JNIEXPORT jint JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalSearch(
+    JNIEnv *env, jclass clazz, jlong h, jbyteArray jquery,
+    jboolean caseSensitive, jintArray jout) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    c->match_count = 0;
+    jint initial = 0;
+
+    jsize qbytes = (*env)->GetArrayLength(env, jquery);
+    if (qbytes <= 0) {
+        if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 1, &initial);
+        return 0;
+    }
+    uint8_t *qbuf = malloc((size_t)qbytes);
+    uint32_t *q = malloc((size_t)qbytes * sizeof(uint32_t));
+    if (!qbuf || !q) {
+        free(qbuf);
+        free(q);
+        if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 1, &initial);
+        return 0;
+    }
+    (*env)->GetByteArrayRegion(env, jquery, 0, qbytes, (jbyte *)qbuf);
+    size_t qlen = utf8_to_cp(qbuf, (size_t)qbytes, q);
+    free(qbuf);
+    bool cs = caseSensitive == JNI_TRUE;
+
+    size_t total = 0;
+    uint16_t cols = 0;
+    ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &total);
+    ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+
+    if (qlen > 0 && total > 0 && cols > 0) {
+        LineBuf line = {0};
+        for (uint32_t y = 0; y < (uint32_t)total; y++) {
+            GhosttyPoint p = {
+                .tag = GHOSTTY_POINT_TAG_SCREEN,
+                .value.coordinate = {.x = 0, .y = y},
+            };
+            GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+            if (ghostty_terminal_grid_ref(c->term, p, &ref) != GHOSTTY_SUCCESS) {
+                search_line(c, &line, q, qlen, cs); /* flush what we have */
+                line.len = 0;
+                if (c->match_count >= MAX_MATCHES) break;
+                continue;
+            }
+            bool wrap = false;
+            GhosttyRow row = 0;
+            if (ghostty_grid_ref_row(&ref, &row) == GHOSTTY_SUCCESS)
+                ghostty_row_get(row, GHOSTTY_ROW_DATA_WRAP, &wrap);
+            for (uint16_t x = 0; x < cols; x++) {
+                ref.x = x;
+                GhosttyCell cell = 0;
+                uint32_t cp = 0;
+                GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+                if (ghostty_grid_ref_cell(&ref, &cell) == GHOSTTY_SUCCESS) {
+                    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_CODEPOINT, &cp);
+                    ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+                }
+                if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL ||
+                    wide == GHOSTTY_CELL_WIDE_SPACER_HEAD)
+                    continue;
+                if (!linebuf_push(&line, cp, x, y)) { wrap = false; break; }
+            }
+            if (wrap) continue; /* soft-wrapped: the next row continues it */
+            search_line(c, &line, q, qlen, cs);
+            line.len = 0;
+            if (c->match_count >= MAX_MATCHES) break;
+        }
+        /* A trailing wrapped run with no terminating row still searches. */
+        if (line.len > 0 && c->match_count < MAX_MATCHES)
+            search_line(c, &line, q, qlen, cs);
+        free(line.cp);
+        free(line.cx);
+        free(line.cy);
+    }
+    free(q);
+
+    /* Initial selection: the last hit at or above the viewport bottom, so the
+     * first jump lands near what the user is looking at; else the first hit. */
+    if (c->match_count > 0) {
+        GhosttyTerminalScrollbar sb = {0};
+        ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb);
+        uint64_t bottom = sb.offset + (sb.len ? sb.len - 1 : 0);
+        for (size_t i = 0; i < c->match_count; i++) {
+            if (c->matches[i].sy <= bottom) initial = (jint)i;
+            else break;
+        }
+    }
+    if (jout) (*env)->SetIntArrayRegion(env, jout, 0, 1, &initial);
+    return (jint)c->match_count;
+}
+
+/*
+ * Installs the indexed match as the active selection and scrolls it into view.
+ * The index wraps into range. Returns the shown index, or -1 if there are no
+ * matches (or the stored points no longer resolve).
+ */
+JNIEXPORT jint JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalSearchShow(
+    JNIEnv *env, jclass clazz, jlong h, jint index) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    if (c->match_count == 0) return -1;
+
+    long i = index % (long)c->match_count;
+    if (i < 0) i += (long)c->match_count;
+    SearchMatch m = c->matches[i];
+
+    GhosttyPoint ps = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                       .value.coordinate = {.x = m.sx, .y = m.sy}};
+    GhosttyPoint pe = {.tag = GHOSTTY_POINT_TAG_SCREEN,
+                       .value.coordinate = {.x = m.ex, .y = m.ey}};
+    GhosttyGridRef start = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    GhosttyGridRef end = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (ghostty_terminal_grid_ref(c->term, ps, &start) != GHOSTTY_SUCCESS ||
+        ghostty_terminal_grid_ref(c->term, pe, &end) != GHOSTTY_SUCCESS)
+        return -1;
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    sel.start = start;
+    sel.end = end;
+    sel.rectangle = false;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+
+    /* Scroll the match into view when it sits outside the viewport, leaving a
+     * little context above it. Scrollbar coordinates are screen rows from the
+     * top; delta is negative for up (into history). */
+    GhosttyTerminalScrollbar sb = {0};
+    ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb);
+    long len = sb.len ? (long)sb.len : 1;
+    long top = (long)sb.offset;
+    long margin = len / 4;
+    long target = top;
+    if ((long)m.sy < top || (long)m.sy > top + len - 1)
+        target = (long)m.sy - margin;
+    if (target < 0) target = 0;
+    long max_top = (long)sb.total - len;
+    if (max_top < 0) max_top = 0;
+    if (target > max_top) target = max_top;
+    long delta = target - top;
+    if (delta != 0) {
+        GhosttyTerminalScrollViewport sv = {.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA};
+        sv.value.delta = (intptr_t)delta;
+        ghostty_terminal_scroll_viewport(c->term, sv);
+    }
+    return (jint)i;
+}
+
+JNIEXPORT void JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalSearchClear(
+    JNIEnv *env, jclass clazz, jlong h) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    free(c->matches);
+    c->matches = NULL;
+    c->match_count = 0;
+    c->match_cap = 0;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
 }

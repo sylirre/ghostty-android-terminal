@@ -195,6 +195,28 @@ public final class TerminalNative {
     /** Selected text as UTF-8 (unwrapped, trimmed), or null if no selection. */
     public static native byte[] terminalSelectionText(long handle);
 
+    // --- Text search (state lives in the terminal; matches are screen ranges) ---
+
+    /**
+     * Scans the whole screen (scrollback + active area) for {@code query}
+     * (UTF-8) and stores the hits. Returns the match count and writes the
+     * suggested initial index — the hit nearest the current viewport — to
+     * {@code outInitialIndex[0]}. An empty query clears the matches. Use
+     * {@link #terminalSearchShow} to highlight and reveal one.
+     */
+    public static native int terminalSearch(long handle, byte[] query,
+            boolean caseSensitive, int[] outInitialIndex);
+
+    /**
+     * Installs the indexed match (wrapping into range) as the active selection
+     * and scrolls it into view. Returns the shown index, or -1 if there are no
+     * matches.
+     */
+    public static native int terminalSearchShow(long handle, int index);
+
+    /** Frees the stored matches and clears the selection. */
+    public static native void terminalSearchClear(long handle);
+
     /**
      * Encodes paste text for the PTY: strips unsafe control bytes and
      * applies bracketed-paste markers or newline→CR per terminal modes.

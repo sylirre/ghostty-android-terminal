@@ -2,12 +2,18 @@ package sh.easycli.proot;
 
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.action.ViewActions.closeSoftKeyboard;
+import static androidx.test.espresso.action.ViewActions.typeText;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
 import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static androidx.test.espresso.matcher.RootMatchers.isPlatformPopup;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
+import static androidx.test.espresso.matcher.ViewMatchers.withContentDescription;
+import static androidx.test.espresso.matcher.ViewMatchers.withHint;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
+
+import static org.hamcrest.Matchers.not;
 
 import static sh.easycli.proot.TestUtil.waitFor;
 
@@ -426,6 +432,31 @@ public class TerminalUiTest {
         waitFor("clipboard text reaches the shell", TIMEOUT_MS,
                 () -> currentScreen().replace("\n", "").contains("pasted-xyz"),
                 this::diagnose);
+    }
+
+    // --- Search ---
+
+    @Test
+    public void searchBarFindsAndHighlightsToken() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        dispatchText("echo searchtoken\n");
+        waitFor("token on screen", TIMEOUT_MS,
+                () -> screenRowWith("searchtoken") >= 0, this::diagnose);
+
+        onView(withId(R.id.search_button)).perform(click());
+        onView(withId(R.id.search_bar)).check(matches(isDisplayed()));
+
+        // Typing the query runs the (debounced) scan, which installs the
+        // current match as the selection — the search highlight.
+        onView(withHint(R.string.search_hint))
+                .perform(typeText("searchtoken"), closeSoftKeyboard());
+        waitFor("match highlighted", TIMEOUT_MS,
+                () -> "searchtoken".equals(selectionText()), this::diagnose);
+
+        // Closing the bar clears the highlight and hides it.
+        onView(withContentDescription(R.string.search_close_description)).perform(click());
+        waitFor("highlight cleared", TIMEOUT_MS, () -> !selectionActive());
+        onView(withId(R.id.search_bar)).check(matches(not(isDisplayed())));
     }
 
     @Test

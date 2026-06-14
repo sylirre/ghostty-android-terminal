@@ -6,6 +6,21 @@
     <string name="settings_button_icon">⚙</string>
     <string name="settings_button_description">Settings</string>
 
+    <!-- Search (find) bar in the top bar -->
+    <string name="search_button_icon">🔍</string>
+    <string name="search_button_description">Search</string>
+    <string name="search_hint">Find in terminal</string>
+    <string name="search_count">%1$d/%2$d</string>
+    <string name="search_no_results">0/0</string>
+    <string name="search_case_label">Aa</string>
+    <string name="search_case_description">Match case</string>
+    <string name="search_prev_label">&#9650;</string>
+    <string name="search_prev_description">Previous match</string>
+    <string name="search_next_label">&#9660;</string>
+    <string name="search_next_description">Next match</string>
+    <string name="search_close_label">&#10005;</string>
+    <string name="search_close_description">Close search</string>
+
     <!-- Settings dialog -->
     <string name="settings_dialog_title">Settings</string>
     <string name="settings_dialog_close">Close</string>

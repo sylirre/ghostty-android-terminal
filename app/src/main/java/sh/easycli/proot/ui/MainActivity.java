@@ -56,6 +56,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
     private TabStripView tabs;
+    private SearchBarView searchBar;
     private TextView installStatus;
     private TerminalSession current;
     private AppSettings settings;
@@ -88,6 +89,21 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
+
+        searchBar = findViewById(R.id.search_bar);
+        searchBar.setListener(new SearchBarView.Listener() {
+            @Override public void onQueryChanged(String query, boolean caseSensitive) {
+                terminal.searchSetQuery(query, caseSensitive);
+            }
+            @Override public void onNext() { terminal.searchNext(); }
+            @Override public void onPrev() { terminal.searchPrev(); }
+            @Override public void onClose() { hideSearch(); }
+        });
+        terminal.setSearchListener(searchBar);
+        findViewById(R.id.search_button).setOnClickListener(v -> {
+            if (searchBar.isOpen()) hideSearch();
+            else searchBar.show();
+        });
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -278,9 +294,25 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     private void switchTo(TerminalSession s) {
+        if (searchBar != null) hideSearch(); // matches belong to the old session
         current = s;
         terminal.attachSession(s);
         updateTabs();
+    }
+
+    /** Collapses the find bar and clears its match highlight. */
+    private void hideSearch() {
+        searchBar.hide();
+        terminal.searchClose();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (searchBar != null && searchBar.isOpen()) {
+            hideSearch();
+            return;
+        }
+        super.onBackPressed();
     }
 
     private void closeTab(TerminalSession s) {

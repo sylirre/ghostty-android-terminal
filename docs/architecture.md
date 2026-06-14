@@ -245,6 +245,26 @@ the clip through `ghostty_paste_encode`, which strips unsafe control bytes
 and applies bracketed-paste markers (mode 2004) or newline→CR. Typing, a
 tap outside the handles, or switching sessions dismisses the selection.
 
+### Search
+
+libghostty-vt has no built-in string search, so the 🔍 find bar
+(`SearchBarView`, toggled from the top bar) drives a native scan.
+`terminalSearch` walks the whole active screen (scrollback + active area),
+reading each row via one untracked grid ref per row whose column is advanced
+by setting `ref.x` (the grid-ref traverse pattern), concatenating
+soft-wrapped rows into logical lines so matches that straddle a wrap are
+found. Hits are stored as screen-coordinate ranges in the `TermCtx`;
+`terminalSearchShow` installs the current one as the terminal selection —
+**reusing the selection slot** for the highlight and scroll-into-view — and
+`terminalSearchClear` frees them. The match therefore renders as plain
+inverse video with no handles/Copy toolbar (the view never enters
+`selecting` for search). Navigation re-runs the scan from Java each time, so
+stored screen points never need to survive intervening output and no
+per-match tracked refs are kept; only the *current* match's highlight is a
+tracked selection that follows its text. Case folding is ASCII (the "Aa"
+toggle), and the match list is capped (`MAX_MATCHES`) to bound memory on a
+pathological query.
+
 ### Keyboard and extra keys
 
 The view's `InputConnection` uses `TYPE_NULL` so soft keyboards deliver
