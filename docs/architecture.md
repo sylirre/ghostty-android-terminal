@@ -268,6 +268,25 @@ overlay, then opens the first Debian tab. `MainActivity.EXTRA_FORCE_SHELL`
 pins the default to the Android shell — a test seam so UI tests don't
 depend on whether a rootfs is bundled.
 
+The rootfs directory itself is the install marker: `install` extracts into a
+staging dir (`debian.tmp`) and renames it onto `debian/` only once complete,
+so `debian/` exists atomically and never names a half-written rootfs (a crash
+mid-extract leaves only the staging dir, discarded next time). There is no
+separate marker file. The Debian session type is gated on
+`DebianRootfs.isUsable`, not just `isInstalled`: the rootfs lives under
+`filesDir`, which a session's own `rm -rf` (or another app) can gut, leaving
+the directory but no shell. `isUsable` re-checks that `/bin/bash` actually
+resolves, and `command()` refuses to spawn PRoot otherwise. Reinstalling is
+gated on `isInstalled`, not `isUsable`: a rootfs that is present but broken is
+deliberately *not* wiped and rebuilt — it may hold the user's data — so the
+app falls back to the Android shell and leaves it alone. Two guards keep a broken rootfs from
+taking the app down with it: a Debian `IOException` at spawn falls back to
+`/system/bin/sh`, and a Debian session that exits before the user ever
+typed into it (`TerminalSession.userInteracted`) as the last tab — i.e.
+PRoot/bash never came up — reopens as a shell rather than `finish()`ing the
+activity. The signal is the user-interaction flag, not a timeout, so it
+doesn't misfire on a slow device or a fast quit.
+
 ## Decisions worth remembering
 
 - **Prebuilt `libghostty-vt.a` is committed.** Building it needs an exact

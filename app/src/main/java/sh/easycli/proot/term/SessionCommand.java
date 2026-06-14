@@ -14,14 +14,17 @@ public final class SessionCommand {
     public final String cwd;
     /** Default tab-title prefix while the shell hasn't set one (OSC 0/2). */
     public final String label;
+    /** True for a Debian-under-PRoot session (vs. the plain Android shell). */
+    public final boolean debian;
 
     SessionCommand(String cmd, String[] argv, String[] env, String cwd,
-            String label) {
+            String label, boolean debian) {
         this.cmd = cmd;
         this.argv = argv;
         this.env = env;
         this.cwd = cwd;
         this.label = label;
+        this.debian = debian;
     }
 
     /**
@@ -42,6 +45,6 @@ public final class SessionCommand {
                 "ANDROID_DATA=/data",
         };
         return new SessionCommand("/system/bin/sh", new String[] {"sh"}, env,
-                homeDir, "sh");
+                homeDir, "sh", false);
     }
 }

@@ -120,6 +120,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
             @Override
             public void onNewTabLongPress() {
+                // Only ever extract when nothing is installed yet; an installed
+                // but broken rootfs is left alone (createSession falls back to
+                // a shell) rather than wiped and rebuilt behind the user's back.
                 if (!DebianRootfs.isInstalled(MainActivity.this)
                         && DebianRootfs.assetAvailable(MainActivity.this)) {
                     installDebianThenCreateSession();
@@ -177,16 +180,20 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     private boolean debianByDefault() {
-        return !forceShell && DebianRootfs.isInstalled(this);
+        return !forceShell && DebianRootfs.isUsable(this);
     }
 
-    /** First tab: Debian when installed, install flow when only bundled. */
+    /** First tab: Debian when usable, install flow when bundled but never installed. */
     private void createFirstSession() {
         if (debianByDefault()) {
             createSession(true);
-        } else if (!forceShell && DebianRootfs.assetAvailable(this)) {
+        } else if (!forceShell && !DebianRootfs.isInstalled(this)
+                && DebianRootfs.assetAvailable(this)) {
             installDebianThenCreateSession();
         } else {
+            // No asset, or an installed-but-unusable rootfs we won't wipe:
+            // a plain Android shell. createSession also falls back here if a
+            // Debian spawn fails.
             createSession(false);
         }
     }
@@ -203,9 +210,18 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             SessionService.refresh(this);
             maybePromptBatteryOptimization();
         } catch (IOException e) {
-            Toast.makeText(this, getString(R.string.toast_shell_start_failed, e.getMessage()),
-                    Toast.LENGTH_LONG).show();
-            if (sessions.isEmpty()) finish();
+            if (debian) {
+                // The rootfs went missing or is incomplete (deleted from a
+                // shell, half-installed). Don't strand the user: fall back to
+                // a plain Android shell rather than failing with nothing.
+                Toast.makeText(this, getString(R.string.toast_debian_unavailable,
+                        e.getMessage()), Toast.LENGTH_LONG).show();
+                createSession(false);
+            } else {
+                Toast.makeText(this, getString(R.string.toast_shell_start_failed,
+                        e.getMessage()), Toast.LENGTH_LONG).show();
+                if (sessions.isEmpty()) finish();
+            }
         }
     }
 
@@ -352,8 +368,21 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     @Override
     public void onExited(TerminalSession session, int exitCode) {
-        if (sessions.indexOf(session) >= 0) {
-            closeTab(session);
+        if (sessions.indexOf(session) < 0) return;
+        // A Debian session that exits before the user ever typed into it never
+        // really came up: the rootfs was deleted out from under us, or bash is
+        // unusable and PRoot bailed at launch. If it was the last tab, closing
+        // it would finish() the app — so the whole app vanishes on launch.
+        // Instead, drop to a plain shell so the user keeps a working terminal.
+        boolean lastTab = sessions.sessions().size() == 1;
+        boolean startupFailure = session.isDebian() && !session.userInteracted();
+        if (lastTab && startupFailure) {
+            sessions.close(session);
+            Toast.makeText(this, R.string.toast_debian_session_failed,
+                    Toast.LENGTH_LONG).show();
+            createSession(false);
+            return;
         }
+        closeTab(session);
     }
 }

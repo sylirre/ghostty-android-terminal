@@ -40,18 +40,46 @@ public final class DebianRootfs {
 
     private DebianRootfs() {}
 
-    /** Rootfs root, bound as guest "/" — filesDir/debian. */
+    /**
+     * Rootfs root, bound as guest "/" — filesDir/debian. Its existence is the
+     * install marker: {@link #install} builds the tree in {@link #stagingDir}
+     * and only renames it into place once complete, so this directory appears
+     * atomically and never represents a half-written rootfs.
+     */
     public static File dir(Context ctx) {
         return new File(ctx.getFilesDir(), "debian");
     }
 
-    /** Marker lives next to the rootfs so the guest never sees it. */
-    private static File marker(Context ctx) {
-        return new File(ctx.getFilesDir(), "debian.installed");
+    /** Where {@link #install} extracts before the atomic rename onto {@link #dir}. */
+    private static File stagingDir(Context ctx) {
+        return new File(ctx.getFilesDir(), "debian.tmp");
     }
 
+    /** The rootfs directory is present, i.e. an install completed here. */
     public static boolean isInstalled(Context ctx) {
-        return marker(ctx).exists();
+        return dir(ctx).isDirectory();
+    }
+
+    /**
+     * The rootfs is present and actually runnable: the directory exists
+     * <em>and</em> the bash binary the login command execs is still there.
+     *
+     * The directory alone is not enough — it lives under filesDir, which a
+     * session's own {@code rm -rf} (or another app) can gut from under us,
+     * leaving the directory but no shell. Spawning PRoot against a gutted
+     * rootfs only dies instantly, so callers gate the Debian session type on
+     * this instead of {@link #isInstalled}.
+     */
+    public static boolean isUsable(Context ctx) {
+        return isInstalled(ctx) && hasShell(dir(ctx));
+    }
+
+    /** True when the login shell ({@code /bin/bash}) resolves inside root. */
+    private static boolean hasShell(File root) {
+        // exists() follows the usrmerge bin -> usr/bin symlink; check both
+        // layouts so a non-usrmerge rootfs is recognized too.
+        return new File(root, "bin/bash").exists()
+                || new File(root, "usr/bin/bash").exists();
     }
 
     /** Asset file name for this device's primary ABI, or null. */
@@ -76,8 +104,15 @@ public final class DebianRootfs {
 
     /**
      * Extracts the bundled rootfs into {@link #dir}. Idempotent: returns
-     * immediately when already installed; a partial install (no marker) is
-     * wiped and redone. Blocking — call from a background thread.
+     * immediately when already installed. Extraction happens in a staging
+     * directory that is renamed onto {@link #dir} only once complete, so the
+     * rootfs directory — which is the install marker — appears atomically; a
+     * crash mid-extract leaves only the staging dir, which the next attempt
+     * discards. Deliberately does <em>not</em> rebuild an installed rootfs that
+     * has become unusable (e.g. its {@code /bin/bash} was deleted) — that
+     * rootfs may hold the user's data, so it is never wiped behind their back;
+     * callers fall back to the Android shell instead. Blocking — call from a
+     * background thread.
      */
     public static synchronized void install(Context ctx, ProgressListener progress)
             throws IOException {
@@ -86,17 +121,24 @@ public final class DebianRootfs {
         if (asset == null) throw new IOException("no Debian rootfs for ABI "
                 + Build.SUPPORTED_ABIS[0]);
 
-        File root = dir(ctx);
-        deleteRecursively(root);
-        if (!root.mkdirs()) throw new IOException("cannot create " + root);
+        File staging = stagingDir(ctx);
+        deleteRecursively(staging); // drop any aborted previous attempt
+        if (!staging.mkdirs()) throw new IOException("cannot create " + staging);
 
         try (InputStream raw = ctx.getAssets().open(asset);
                 XZInputStream xz = new XZInputStream(new BufferedInputStream(raw, 1 << 16))) {
-            extractTar(xz, root, progress);
+            extractTar(xz, staging, progress);
         }
+        writeGuestDefaults(staging);
 
-        writeGuestDefaults(root);
-        if (!marker(ctx).createNewFile()) throw new IOException("cannot create marker");
+        // Publish atomically: dir() (the marker) only ever names a finished
+        // rootfs. renameTo is a rename(2) within filesDir, so it's atomic.
+        File root = dir(ctx);
+        deleteRecursively(root); // unreachable for a real install; defensive
+        if (!staging.renameTo(root)) {
+            deleteRecursively(staging);
+            throw new IOException("cannot publish rootfs to " + root);
+        }
     }
 
     /**
@@ -106,6 +148,10 @@ public final class DebianRootfs {
      */
     public static SessionCommand command(Context ctx) throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Debian rootfs not installed");
+        if (!hasShell(dir(ctx))) {
+            throw new IOException("Debian rootfs is incomplete: /bin/bash is "
+                    + "missing (was it deleted outside the app?)");
+        }
         File loader = new File(ctx.getApplicationInfo().nativeLibraryDir,
                 "libproot-loader.so");
         if (!loader.canExecute()) {
@@ -142,7 +188,7 @@ public final class DebianRootfs {
                 "HOME=" + ctx.getFilesDir().getAbsolutePath(),
         };
         return new SessionCommand(null, argv, env,
-                ctx.getFilesDir().getAbsolutePath(), "deb");
+                ctx.getFilesDir().getAbsolutePath(), "deb", true);
     }
 
     // --- tar extraction ---

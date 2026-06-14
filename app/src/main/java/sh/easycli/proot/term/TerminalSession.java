@@ -47,6 +47,10 @@ public final class TerminalSession {
     private volatile Integer exitCode;
 
     private final String label;
+    private final boolean debian;
+    // Set once the user actually sends something to the shell. Distinguishes a
+    // session the user used from one that died before they could touch it.
+    private volatile boolean userInteracted;
 
     /** Spawns /system/bin/sh; see {@link SessionCommand#androidShell}. */
     public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
@@ -68,6 +72,7 @@ public final class TerminalSession {
             throws IOException {
         this.listener = listener;
         this.label = command.label;
+        this.debian = command.debian;
         this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
 
         int[] pidOut = new int[1];
@@ -99,7 +104,7 @@ public final class TerminalSession {
             while ((n = in.read(buf)) >= 0) {
                 if (n == 0) continue;
                 byte[] response = emulator.feed(buf, n);
-                if (response != null) writeBytes(response);
+                if (response != null) writeRaw(response); // protocol reply, not user input
                 dispatchEvents();
             }
         } catch (IOException ignored) {
@@ -157,16 +162,38 @@ public final class TerminalSession {
         return label;
     }
 
+    /** True for a Debian-under-PRoot session (vs. the plain Android shell). */
+    public boolean isDebian() {
+        return debian;
+    }
+
+    /**
+     * True once the user has sent any input (a key, text, or paste) to this
+     * shell. A session that exits while this is still false never came up far
+     * enough for the user to use it — e.g. PRoot or bash failed at launch.
+     * Terminal query replies written back by the reader thread don't count.
+     */
+    public boolean userInteracted() {
+        return userInteracted;
+    }
+
     /** Exit status, or null while the shell is running. */
     public Integer exitCode() {
         return exitCode;
     }
 
     public void write(String text) {
-        writeBytes(text.getBytes(StandardCharsets.UTF_8));
+        userInteracted = true;
+        writeRaw(text.getBytes(StandardCharsets.UTF_8));
     }
 
     public void writeBytes(byte[] data) {
+        userInteracted = true;
+        writeRaw(data);
+    }
+
+    /** Writes to the PTY without marking user interaction (protocol replies). */
+    private void writeRaw(byte[] data) {
         if (closed) return;
         try {
             toPty.write(data);
@@ -181,12 +208,13 @@ public final class TerminalSession {
      * to the live screen, like desktop terminals.
      */
     public void sendKey(int androidKeyCode, int mods, String utf8, int unshiftedCp) {
+        userInteracted = true;
         byte[] encoded = emulator.encodeKey(androidKeyCode, mods, utf8, unshiftedCp);
         emulator.scrollToBottom();
         if (encoded != null) {
-            writeBytes(encoded);
+            writeRaw(encoded);
         } else if (utf8 != null && !utf8.isEmpty()) {
-            write(utf8);
+            writeRaw(utf8.getBytes(StandardCharsets.UTF_8));
         }
     }
 

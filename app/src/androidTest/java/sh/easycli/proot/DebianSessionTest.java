@@ -3,7 +3,9 @@ package sh.easycli.proot;
 import static sh.easycli.proot.TestUtil.waitFor;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 
 import android.content.Context;
@@ -16,6 +18,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -59,7 +62,7 @@ public class DebianSessionTest {
         assumeTrue("no Debian rootfs asset bundled for this ABI",
                 DebianRootfs.assetAvailable(ctx));
         // One-time per device state: extracts the rootfs on the first test
-        // of the run, no-ops afterwards (marker file).
+        // of the run, no-ops afterwards (the rootfs directory already exists).
         DebianRootfs.install(ctx, null);
         session = new TerminalSession(80, 24, 8, 16, 10_000,
                 DebianRootfs.command(ctx), listener);
@@ -119,5 +122,46 @@ public class DebianSessionTest {
         session.write("exit 7\n");
         assertTrue("onExited delivered", exited.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
         assertEquals(7, exitCode.get());
+    }
+
+    /**
+     * A login shell missing from an installed rootfs (e.g. the user removed
+     * it from the Android shell) must be detected — {@link DebianRootfs#isUsable}
+     * false, {@link DebianRootfs#command} refusing to spawn a doomed PRoot —
+     * but the rootfs must NOT be wiped and rebuilt behind the user's back:
+     * {@link DebianRootfs#install} leaves an installed rootfs untouched.
+     */
+    @Test
+    public void missingShellIsDetectedButRootfsKept() throws IOException {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        // setUp launched a session from this rootfs; stop it before tampering.
+        session.close();
+        assertTrue("usable right after install", DebianRootfs.isUsable(ctx));
+
+        // Hide bash by renaming it aside (usrmerge: the real file is under
+        // usr/bin; bin/bash resolves to it). Renaming, not deleting, lets us
+        // restore the shared rootfs for the other tests without a reinstall.
+        File root = DebianRootfs.dir(ctx);
+        File bash = new File(root, "usr/bin/bash");
+        if (!bash.exists()) bash = new File(root, "bin/bash");
+        File hidden = new File(bash.getParentFile(), "bash.hidden");
+        assertTrue("renamed bash aside", bash.renameTo(hidden));
+        try {
+            assertFalse("missing /bin/bash is detected", DebianRootfs.isUsable(ctx));
+            try {
+                DebianRootfs.command(ctx);
+                fail("command() must reject an incomplete rootfs");
+            } catch (IOException expected) {
+                // expected: spawning here would only die instantly.
+            }
+
+            // install() must short-circuit on the existing rootfs dir, not rebuild.
+            DebianRootfs.install(ctx, null);
+            assertTrue("install() did not wipe the rootfs", hidden.exists());
+            assertFalse("install() did not rebuild", DebianRootfs.isUsable(ctx));
+        } finally {
+            assertTrue("restored bash", hidden.renameTo(bash));
+        }
+        assertTrue("usable again after restore", DebianRootfs.isUsable(ctx));
     }
 }
