@@ -267,7 +267,12 @@ enters `selecting` for search) and follows its text via tracked refs.
 Navigation does not re-scan every time: `terminalFeed` sets a dirty flag, so
 `terminalSearchStep` re-scans only when the buffer actually changed since the
 last scan — idle next/previous is just a viewport move, not an O(buffer)
-walk. Case folding is ASCII (the "Aa" toggle). The whole buffer is always
+walk. Case folding (the "Aa" toggle) is *simple* (1:1) Unicode folding: ASCII
+inline, other BMP letters via a generated table (`case_fold.h`, produced by
+`scripts/gen-case-fold.py` from Python's Unicode database — Latin, Greek,
+Cyrillic, …). It folds to lowercase, so search is case- but not
+accent-insensitive (É == é, é ≠ e), and multi-character folds (ß → ss) are
+omitted to keep the one-codepoint-per-cell match mapping. The whole buffer is always
 scanned for an honest total count, but only the most recent `MAX_MATCHES`
 hits are kept navigable (a ring buffer rotated into order after the scan) —
 this bounds memory on a pathological single-character query while keeping the

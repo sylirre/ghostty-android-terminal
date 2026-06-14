@@ -490,6 +490,25 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void searchUnicodeCaseFolding() {
+        // Non-ASCII letters fold case-insensitively via the generated table:
+        // Latin-1 (E-acute), Latin Extended-A (C-caron), Cyrillic (Ya) and
+        // Greek (Sigma).
+        feed("Café café CAFÉ\r\n"
+                + "Čau čau\r\n"
+                + "Я я\r\n"
+                + "Σ σ");
+        int[] out = new int[2];
+        assertEquals(3, term.searchSet("café", false, out)); // all three
+        assertEquals(1, term.searchSet("café", true, out));  // only lowercase
+        assertEquals(2, term.searchSet("čau", false, out));  // Čau / čau
+        assertEquals(2, term.searchSet("я", false, out));    // Я / я
+        assertEquals(2, term.searchSet("σ", false, out));    // Σ / σ
+        // Folding is case-, not accent-insensitive: "cafe" must not match.
+        assertEquals(0, term.searchSet("cafe", false, out));
+    }
+
+    @Test
     public void searchSpansSoftWrap() {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 18; i++) sb.append('x'); // fill toward the 20th col

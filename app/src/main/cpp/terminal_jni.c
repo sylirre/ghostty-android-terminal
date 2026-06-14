@@ -16,6 +16,7 @@
 
 #include "png_decode.h"
 #include "kitty_unicode.h"
+#include "case_fold.h"
 
 /* Event bits returned by feed(), see TerminalNative.EVENT_*. */
 #define EVENT_BELL 1
@@ -1320,9 +1321,26 @@ static size_t utf8_to_cp(const uint8_t *b, size_t len, uint32_t *out) {
     return n;
 }
 
-/* ASCII case fold for case-insensitive matching. */
-static inline uint32_t fold_cp(uint32_t cp, bool case_sensitive) {
-    if (!case_sensitive && cp >= 'A' && cp <= 'Z') return cp + 32;
+/*
+ * Simple (1:1) case fold for case-insensitive matching. ASCII is folded
+ * inline; other BMP letters fold via the generated CASE_FOLD table (Latin,
+ * Greek, Cyrillic, ...). This is *simple* folding — no multi-character folds
+ * (e.g. SHARP S stays as is), which keeps the one-codepoint-per-cell mapping
+ * intact — and it folds to lowercase, so case-insensitive search is not
+ * accent-insensitive (É == é, but é != e).
+ */
+static uint32_t fold_cp(uint32_t cp, bool case_sensitive) {
+    if (case_sensitive) return cp;
+    if (cp < 0x80) return (cp >= 'A' && cp <= 'Z') ? cp + 32 : cp;
+    if (cp > 0xFFFF) return cp;
+    size_t lo = 0, hi = CASE_FOLD_COUNT;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        uint16_t key = CASE_FOLD[mid][0];
+        if (key < cp) lo = mid + 1;
+        else if (key > cp) hi = mid;
+        else return CASE_FOLD[mid][1];
+    }
     return cp;
 }
 
