@@ -139,4 +139,35 @@
     <string name="key_dash">&#9472;</string>
     <string name="key_slash">/</string>
     <string name="key_pipe">|</string>
+    <string name="key_enter">&#8629;</string>
+    <string name="key_bksp">&#9003;</string>
+    <string name="key_del">DEL</string>
+    <string name="key_ins">INS</string>
+
+    <!-- Settings: Extra keys row -->
+    <string name="setting_extra_keys_title">Extra keys row</string>
+    <string name="setting_extra_keys_summary">Choose, reorder and add the keys shown in the toolbar above the keyboard.</string>
+    <plurals name="extra_keys_count">
+        <item quantity="one">%d key</item>
+        <item quantity="other">%d keys</item>
+    </plurals>
+
+    <!-- Extra-keys editor -->
+    <string name="extra_keys_title">Extra keys row</string>
+    <string name="extra_keys_done">Done</string>
+    <string name="extra_keys_reset">Reset</string>
+    <string name="extra_keys_section_preview">Preview</string>
+    <string name="extra_keys_section_enabled">Enabled keys</string>
+    <string name="extra_keys_section_available">Add keys</string>
+    <string name="extra_keys_empty">No keys. Add some below — the toolbar is hidden while empty.</string>
+    <string name="extra_keys_drag_handle">&#9776;</string>
+    <string name="extra_keys_drag_description">Drag to reorder</string>
+    <string name="extra_keys_remove_label">&#10005;</string>
+    <string name="extra_keys_remove_description">Remove key</string>
+    <string name="extra_keys_add_chip">+ %1$s</string>
+    <string name="extra_keys_add_custom">Add custom text…</string>
+    <string name="extra_keys_add_custom_title">Custom text key</string>
+    <string name="extra_keys_add_custom_hint">Text to insert, e.g. ~ or git </string>
+    <string name="extra_keys_custom_empty">Enter some text.</string>
+    <string name="extra_keys_custom_exists">That key is already in the toolbar.</string>
 </resources>

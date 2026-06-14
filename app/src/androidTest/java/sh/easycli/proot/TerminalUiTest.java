@@ -1,9 +1,12 @@
 package sh.easycli.proot;
 
 import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.Espresso.pressBack;
 import static androidx.test.espresso.action.ViewActions.click;
 import static androidx.test.espresso.action.ViewActions.closeSoftKeyboard;
+import static androidx.test.espresso.action.ViewActions.scrollTo;
 import static androidx.test.espresso.action.ViewActions.typeText;
+import static androidx.test.espresso.assertion.ViewAssertions.doesNotExist;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
 import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static androidx.test.espresso.matcher.RootMatchers.isPlatformPopup;
@@ -55,6 +58,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import sh.easycli.proot.term.ScreenSnapshot;
 import sh.easycli.proot.term.SessionManager;
 import sh.easycli.proot.term.TerminalSession;
+import sh.easycli.proot.ui.ExtraKeysConfig;
 import sh.easycli.proot.ui.MainActivity;
 import sh.easycli.proot.ui.TerminalView;
 
@@ -87,6 +91,8 @@ public class TerminalUiTest {
         for (TerminalSession s : copy) {
             SessionManager.get().close(s);
         }
+        // Don't leak extra-keys edits into other tests / the app's real config.
+        new ExtraKeysConfig(ApplicationProvider.getApplicationContext()).reset();
         scenario.close();
     }
 
@@ -169,6 +175,32 @@ public class TerminalUiTest {
         dispatchText("\n");
         waitFor("toolbar chars echoed", TIMEOUT_MS,
                 () -> currentScreen().contains("/-"), this::diagnose);
+    }
+
+    @Test
+    public void extraKeysSettingOpensEditor() {
+        onView(withId(R.id.settings_button)).perform(click());
+        onView(withText(R.string.setting_extra_keys_title))
+                .inRoot(isDialog()).perform(scrollTo(), click());
+        // The editor's top bar (Done button) is unique to ExtraKeysActivity and
+        // pinned on screen — its presence proves the editor opened.
+        onView(withId(R.id.extra_keys_done)).check(matches(isDisplayed()));
+        pressBack(); // close the editor, back to the terminal
+    }
+
+    @Test
+    public void extraKeysConfigDrivesToolbar() {
+        // Default toolbar shows ESC.
+        onView(withText("ESC")).check(matches(isDisplayed()));
+        // Drop ESC from the config, then recreate so the toolbar rebuilds.
+        ExtraKeysConfig cfg = new ExtraKeysConfig(
+                ApplicationProvider.getApplicationContext());
+        List<String> ids = cfg.order();
+        ids.remove("esc");
+        cfg.setOrder(ids);
+        scenario.recreate();
+        onView(withText("ESC")).check(doesNotExist());
+        onView(withText("CTRL")).check(matches(isDisplayed()));
     }
 
     @Test

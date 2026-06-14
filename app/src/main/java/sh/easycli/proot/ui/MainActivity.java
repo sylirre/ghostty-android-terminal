@@ -57,10 +57,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private TerminalView terminal;
     private TabStripView tabs;
     private SearchBarView searchBar;
+    private ExtraKeysView extraKeys;
     private TextView installStatus;
     private TerminalSession current;
     private AppSettings settings;
     private ThemeStore themeStore;
+    private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
@@ -81,11 +83,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         tabs = findViewById(R.id.tabs);
         installStatus = findViewById(R.id.install_status);
         forceShell = getIntent().getBooleanExtra(EXTRA_FORCE_SHELL, false);
-        ExtraKeysView extraKeys = findViewById(R.id.extra_keys);
+        extraKeys = findViewById(R.id.extra_keys);
         extraKeys.attachTerminal(terminal);
 
         settings = new AppSettings(this);
         themeStore = new ThemeStore(this);
+        extraKeysConfig = new ExtraKeysConfig(this);
+        extraKeys.setConfig(extraKeysConfig);
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
@@ -196,6 +200,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         super.onResume();
         // Pick up theme changes made in ThemeActivity (and seed the first paint).
         applyTheme();
+        // Pick up extra-keys edits made in ExtraKeysActivity.
+        extraKeys.reload();
     }
 
     @Override
@@ -376,6 +382,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setRichKeyboard(enabled);
                     terminal.setRichKeyboard(enabled);
                 }));
+        items.add(new Setting.Action(
+                getString(R.string.setting_extra_keys_title),
+                getString(R.string.setting_extra_keys_summary),
+                () -> getResources().getQuantityString(R.plurals.extra_keys_count,
+                        extraKeysConfig.order().size(), extraKeysConfig.order().size()),
+                () -> startActivity(new Intent(this, ExtraKeysActivity.class))));
         items.add(new Setting.Choice(
                 getString(R.string.setting_scrollback_title),
                 getString(R.string.setting_scrollback_summary),

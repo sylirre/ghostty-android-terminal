@@ -5,73 +5,58 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.Gravity;
-import android.view.KeyEvent;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import sh.easycli.proot.R;
+import java.util.ArrayList;
+import java.util.List;
+
+import sh.easycli.proot.term.TerminalNative;
 
 /**
  * Special-key toolbar shown above the soft keyboard.
  *
- * CTRL and ALT are sticky: they highlight and apply to the next key or
- * typed character (via {@link TerminalView.StickyModifiers}). Everything
- * else sends immediately through the VT key encoder.
+ * The set, order and presence of keys is driven by an {@link ExtraKeysConfig}
+ * (edited in {@link ExtraKeysActivity}); call {@link #setConfig} once and
+ * {@link #reload} whenever the config may have changed.
+ *
+ * CTRL and ALT are sticky: they highlight and apply to the next key or typed
+ * character (via {@link TerminalView.StickyModifiers}). Everything else sends
+ * immediately — non-printable keys through the VT key encoder, literal text
+ * straight to the PTY.
  */
 public class ExtraKeysView extends HorizontalScrollView {
 
     private TerminalView terminal;
     private final TerminalView.StickyModifiers sticky = new TerminalView.StickyModifiers();
-    private TextView ctrlButton;
-    private TextView altButton;
+    private final LinearLayout row;
+    private ExtraKeysConfig config;
+
+    // Sticky-modifier buttons currently on screen, with the bit each toggles, so
+    // updateToggles() can recolor them without knowing the layout in advance.
+    private final List<ModButton> modButtons = new ArrayList<>();
 
     private static final int BG = 0xFF21212A;
     private static final int BG_ACTIVE = 0xFF3D5AFE;
+
+    private static final class ModButton {
+        final TextView view;
+        final int modifier;
+        ModButton(TextView view, int modifier) {
+            this.view = view;
+            this.modifier = modifier;
+        }
+    }
 
     public ExtraKeysView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setBackgroundColor(BG);
         setHorizontalScrollBarEnabled(false);
 
-        LinearLayout row = new LinearLayout(context);
+        row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         addView(row, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
-
-        addKey(row, context.getString(R.string.key_esc),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_ESCAPE));
-        ctrlButton = addKey(row, context.getString(R.string.key_ctrl), () -> {
-            sticky.ctrl = !sticky.ctrl;
-            updateToggles();
-        });
-        altButton = addKey(row, context.getString(R.string.key_alt), () -> {
-            sticky.alt = !sticky.alt;
-            updateToggles();
-        });
-        addKey(row, context.getString(R.string.key_tab),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_TAB));
-        addKey(row, context.getString(R.string.key_up),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_UP));
-        addKey(row, context.getString(R.string.key_down),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_DOWN));
-        addKey(row, context.getString(R.string.key_left),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_LEFT));
-        addKey(row, context.getString(R.string.key_right),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_RIGHT));
-        addKey(row, context.getString(R.string.key_home),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_MOVE_HOME));
-        addKey(row, context.getString(R.string.key_end),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_MOVE_END));
-        addKey(row, context.getString(R.string.key_pgup),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_PAGE_UP));
-        addKey(row, context.getString(R.string.key_pgdn),
-                () -> terminal.dispatchKey(KeyEvent.KEYCODE_PAGE_DOWN));
-        addKey(row, context.getString(R.string.key_dash),
-                () -> terminal.dispatchText("-"));
-        addKey(row, context.getString(R.string.key_slash),
-                () -> terminal.dispatchText("/"));
-        addKey(row, context.getString(R.string.key_pipe),
-                () -> terminal.dispatchText("|"));
 
         sticky.onChanged = this::updateToggles;
     }
@@ -82,26 +67,71 @@ public class ExtraKeysView extends HorizontalScrollView {
         view.setStickyModifiers(sticky);
     }
 
-    private TextView addKey(LinearLayout row, String label, Runnable action) {
-        TextView key = new TextView(getContext());
-        key.setText(label);
-        key.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        key.setTextColor(Color.WHITE);
-        key.setGravity(Gravity.CENTER);
+    /** Binds the config and builds the keys; call once after construction. */
+    public void setConfig(ExtraKeysConfig config) {
+        this.config = config;
+        reload();
+    }
+
+    /** Rebuilds the key row from the current config (call after edits). */
+    public void reload() {
+        row.removeAllViews();
+        modButtons.clear();
+        if (config == null) return;
+        List<ExtraKey> keys = config.enabledKeys(getContext());
+        for (ExtraKey key : keys) addKey(key);
+        // An empty toolbar would leave a thin colored bar; hide it instead.
+        setVisibility(keys.isEmpty() ? GONE : VISIBLE);
+        updateToggles();
+    }
+
+    private void addKey(ExtraKey key) {
+        TextView view = new TextView(getContext());
+        view.setText(key.label);
+        view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        view.setTextColor(Color.WHITE);
+        view.setGravity(Gravity.CENTER);
         int pad = dp(14);
-        key.setPadding(pad, dp(12), pad, dp(12));
-        key.setClickable(true);
-        key.setOnClickListener(v -> {
-            if (terminal != null) action.run();
-        });
-        row.addView(key, new LinearLayout.LayoutParams(
+        view.setPadding(pad, dp(12), pad, dp(12));
+        view.setClickable(true);
+        switch (key.kind) {
+            case MODIFIER:
+                modButtons.add(new ModButton(view, key.modifier));
+                view.setOnClickListener(v -> {
+                    toggleModifier(key.modifier);
+                    updateToggles();
+                });
+                break;
+            case KEY:
+                view.setOnClickListener(v -> {
+                    if (terminal != null) terminal.dispatchKey(key.keyCode);
+                });
+                break;
+            case TEXT:
+                view.setOnClickListener(v -> {
+                    if (terminal != null) terminal.dispatchText(key.text);
+                });
+                break;
+        }
+        row.addView(view, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
-        return key;
+    }
+
+    private void toggleModifier(int modifier) {
+        if (modifier == TerminalNative.MOD_CTRL) sticky.ctrl = !sticky.ctrl;
+        else if (modifier == TerminalNative.MOD_ALT) sticky.alt = !sticky.alt;
+    }
+
+    private boolean modifierActive(int modifier) {
+        if (modifier == TerminalNative.MOD_CTRL) return sticky.ctrl;
+        if (modifier == TerminalNative.MOD_ALT) return sticky.alt;
+        return false;
     }
 
     private void updateToggles() {
-        ctrlButton.setBackgroundColor(sticky.ctrl ? BG_ACTIVE : BG);
-        altButton.setBackgroundColor(sticky.alt ? BG_ACTIVE : BG);
+        for (ModButton b : modButtons) {
+            b.view.setBackgroundColor(modifierActive(b.modifier) ? BG_ACTIVE : BG);
+        }
     }
 
     private int dp(int v) {

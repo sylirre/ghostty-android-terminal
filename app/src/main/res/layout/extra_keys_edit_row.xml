@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One reorderable row in the Extra-keys editor's "Enabled keys" list:
+     a drag handle, the key label, and a remove button. Built/managed by
+     ExtraKeysActivity. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="#FF1A1A22"
+    android:minHeight="52dp"
+    android:layout_marginTop="1dp"
+    android:paddingLeft="8dp"
+    android:paddingRight="8dp">
+
+    <TextView
+        android:id="@+id/row_handle"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="@string/extra_keys_drag_handle"
+        android:textColor="#FF8A8A99"
+        android:textSize="20sp"
+        android:paddingLeft="12dp"
+        android:paddingRight="16dp"
+        android:contentDescription="@string/extra_keys_drag_description" />
+
+    <TextView
+        android:id="@+id/row_label"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:fontFamily="monospace"
+        android:textColor="#FFEAEAF0"
+        android:textSize="16sp" />
+
+    <TextView
+        android:id="@+id/row_remove"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="@string/extra_keys_remove_label"
+        android:textColor="#FFB46A6A"
+        android:textSize="18sp"
+        android:paddingLeft="16dp"
+        android:paddingRight="12dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="@string/extra_keys_remove_description" />
+
+</LinearLayout>
