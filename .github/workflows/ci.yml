@@ -40,7 +40,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          # outputFileName renames this to Terminal_v<version>.apk
+          # (app/build.gradle), so match by glob rather than a fixed name.
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
 
   # Full integration suite on an emulator; see docs/testing.md.
   instrumented-tests:
@@ -80,3 +83,23 @@ jobs:
         with:
           name: androidTest-reports
           path: app/build/reports/androidTests/
+
+  # On a tag push, publish a GitHub release with the debug APK attached,
+  # but only once build and the full instrumented suite have gone green.
+  release:
+    needs: [build, instrumented-tests]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: app-debug
+
+      - name: Create release and attach APK
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.apk"
+          generate_release_notes: true
