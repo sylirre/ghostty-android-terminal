@@ -10,6 +10,8 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import sh.easycli.proot.R;
+
 /**
  * Special-key toolbar shown above the soft keyboard.
  *
@@ -36,27 +38,40 @@ public class ExtraKeysView extends HorizontalScrollView {
         row.setOrientation(LinearLayout.HORIZONTAL);
         addView(row, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
 
-        addKey(row, "ESC", () -> terminal.dispatchKey(KeyEvent.KEYCODE_ESCAPE));
-        ctrlButton = addKey(row, "CTRL", () -> {
+        addKey(row, context.getString(R.string.key_esc),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_ESCAPE));
+        ctrlButton = addKey(row, context.getString(R.string.key_ctrl), () -> {
             sticky.ctrl = !sticky.ctrl;
             updateToggles();
         });
-        altButton = addKey(row, "ALT", () -> {
+        altButton = addKey(row, context.getString(R.string.key_alt), () -> {
             sticky.alt = !sticky.alt;
             updateToggles();
         });
-        addKey(row, "TAB", () -> terminal.dispatchKey(KeyEvent.KEYCODE_TAB));
-        addKey(row, "▲", () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_UP));
-        addKey(row, "▼", () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_DOWN));
-        addKey(row, "◀", () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_LEFT));
-        addKey(row, "▶", () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_RIGHT));
-        addKey(row, "HOME", () -> terminal.dispatchKey(KeyEvent.KEYCODE_MOVE_HOME));
-        addKey(row, "END", () -> terminal.dispatchKey(KeyEvent.KEYCODE_MOVE_END));
-        addKey(row, "PGUP", () -> terminal.dispatchKey(KeyEvent.KEYCODE_PAGE_UP));
-        addKey(row, "PGDN", () -> terminal.dispatchKey(KeyEvent.KEYCODE_PAGE_DOWN));
-        addKey(row, "─", () -> terminal.dispatchText("-"));
-        addKey(row, "/", () -> terminal.dispatchText("/"));
-        addKey(row, "|", () -> terminal.dispatchText("|"));
+        addKey(row, context.getString(R.string.key_tab),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_TAB));
+        addKey(row, context.getString(R.string.key_up),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_UP));
+        addKey(row, context.getString(R.string.key_down),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_DOWN));
+        addKey(row, context.getString(R.string.key_left),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_LEFT));
+        addKey(row, context.getString(R.string.key_right),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_DPAD_RIGHT));
+        addKey(row, context.getString(R.string.key_home),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_MOVE_HOME));
+        addKey(row, context.getString(R.string.key_end),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_MOVE_END));
+        addKey(row, context.getString(R.string.key_pgup),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_PAGE_UP));
+        addKey(row, context.getString(R.string.key_pgdn),
+                () -> terminal.dispatchKey(KeyEvent.KEYCODE_PAGE_DOWN));
+        addKey(row, context.getString(R.string.key_dash),
+                () -> terminal.dispatchText("-"));
+        addKey(row, context.getString(R.string.key_slash),
+                () -> terminal.dispatchText("/"));
+        addKey(row, context.getString(R.string.key_pipe),
+                () -> terminal.dispatchText("|"));
 
         sticky.onChanged = this::updateToggles;
     }

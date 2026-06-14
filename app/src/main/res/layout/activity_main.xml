@@ -28,12 +28,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:gravity="center"
-                android:text="⚙"
+                android:text="@string/settings_button_icon"
                 android:textColor="#FF9999A6"
                 android:textSize="18sp"
                 android:paddingLeft="16dp"
                 android:paddingRight="16dp"
-                android:contentDescription="settings"
+                android:contentDescription="@string/settings_button_description"
                 android:clickable="true"
                 android:focusable="true" />
 

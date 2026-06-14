@@ -10,6 +10,8 @@ import android.widget.TextView;
 
 import java.util.List;
 
+import sh.easycli.proot.R;
+
 /**
  * Session tab bar: one tab per shell, a close (×) on the active tab and a
  * trailing + button. Rebuilt wholesale on every change — the tab count is
@@ -54,13 +56,13 @@ public class TabStripView extends HorizontalScrollView {
             row.addView(tab);
             if (active) {
                 TextView close = makeButton("×", true);
-                close.setContentDescription("close tab");
+                close.setContentDescription(getContext().getString(R.string.tab_close_description));
                 close.setOnClickListener(v -> listener.onTabClosed(index));
                 row.addView(close);
             }
         }
         TextView add = makeButton("+", false);
-        add.setContentDescription("new tab");
+        add.setContentDescription(getContext().getString(R.string.tab_new_description));
         add.setOnClickListener(v -> listener.onNewTab());
         add.setOnLongClickListener(v -> {
             listener.onNewTabLongPress();

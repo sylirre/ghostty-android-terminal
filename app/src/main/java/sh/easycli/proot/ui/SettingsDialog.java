@@ -50,9 +50,9 @@ final class SettingsDialog {
         scroll.addView(list);
 
         new AlertDialog.Builder(context)
-                .setTitle("Settings")
+                .setTitle(R.string.settings_dialog_title)
                 .setView(scroll)
-                .setPositiveButton("Close", null)
+                .setPositiveButton(R.string.settings_dialog_close, null)
                 .show();
     }
 }

@@ -203,7 +203,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             SessionService.refresh(this);
             maybePromptBatteryOptimization();
         } catch (IOException e) {
-            Toast.makeText(this, "Failed to start shell: " + e.getMessage(),
+            Toast.makeText(this, getString(R.string.toast_shell_start_failed, e.getMessage()),
                     Toast.LENGTH_LONG).show();
             if (sessions.isEmpty()) finish();
         }
@@ -215,14 +215,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
      * activity instance at worst waits and then finds it installed.
      */
     private void installDebianThenCreateSession() {
-        installStatus.setText("Installing Debian…");
+        installStatus.setText(R.string.installing_debian);
         installStatus.setVisibility(View.VISIBLE);
         new Thread(() -> {
             IOException failure = null;
             try {
                 DebianRootfs.install(getApplicationContext(), bytes ->
                         runOnUiThread(() -> installStatus.setText(
-                                "Installing Debian… " + (bytes >> 20) + " MB")));
+                                getString(R.string.installing_debian_progress, bytes >> 20))));
             } catch (IOException e) {
                 failure = e;
             }
@@ -233,8 +233,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 if (error == null) {
                     createSession(true);
                 } else {
-                    Toast.makeText(this, "Debian install failed: "
-                            + error.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, getString(R.string.toast_debian_install_failed,
+                            error.getMessage()), Toast.LENGTH_LONG).show();
                     if (sessions.isEmpty()) createSession(false);
                 }
             });
@@ -288,29 +288,26 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private void showSettings(View ignored) {
         List<Setting> items = new ArrayList<>();
         items.add(new Setting.Toggle(
-                "Keep screen on",
-                "Keep the display awake while the terminal is in the foreground.",
+                getString(R.string.setting_keep_screen_on_title),
+                getString(R.string.setting_keep_screen_on_summary),
                 settings::keepScreenOn,
                 enabled -> {
                     settings.setKeepScreenOn(enabled);
                     applyKeepScreenOn(enabled);
                 }));
         items.add(new Setting.Toggle(
-                "Rich keyboard input",
-                "Enable suggestions, autocorrect and swipe typing at the shell "
-                        + "prompt. Falls back to raw keys inside full-screen apps.",
+                getString(R.string.setting_rich_keyboard_title),
+                getString(R.string.setting_rich_keyboard_summary),
                 settings::richKeyboard,
                 enabled -> {
                     settings.setRichKeyboard(enabled);
                     terminal.setRichKeyboard(enabled);
                 }));
         items.add(new Setting.Choice(
-                "Scrollback buffer",
-                "Lines of output kept for scrolling back. Takes effect for "
-                        + "sessions started afterwards.",
-                new int[] {1_000, 5_000, 10_000, 50_000, 100_000},
-                new String[] {"1,000 lines", "5,000 lines", "10,000 lines",
-                        "50,000 lines", "100,000 lines"},
+                getString(R.string.setting_scrollback_title),
+                getString(R.string.setting_scrollback_summary),
+                getResources().getIntArray(R.array.scrollback_option_values),
+                getResources().getStringArray(R.array.scrollback_option_labels),
                 settings::scrollbackLines,
                 settings::setScrollbackLines));
         SettingsDialog.show(this, items);

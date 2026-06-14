@@ -112,14 +112,16 @@ public final class SessionService extends Service {
         NotificationManager nm = getSystemService(NotificationManager.class);
         // IMPORTANCE_LOW: persistent but silent, no heads-up.
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                "Running sessions", NotificationManager.IMPORTANCE_LOW);
+                getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_LOW);
         channel.setShowBadge(false);
         nm.createNotificationChannel(channel);
 
         int count = SessionManager.get().sessions().size();
         boolean held = wakeLock != null && wakeLock.isHeld();
-        String text = count + (count == 1 ? " session running" : " sessions running")
-                + (held ? " · wake lock on" : "");
+        String text = getResources().getQuantityString(
+                R.plurals.notification_sessions_running, count, count)
+                + (held ? getString(R.string.notification_wakelock_active) : "");
 
         PendingIntent content = PendingIntent.getActivity(this, 0,
                 getPackageManager().getLaunchIntentForPackage(getPackageName()),
@@ -135,14 +137,17 @@ public final class SessionService extends Service {
 
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_terminal)
-                .setContentTitle("Terminal")
+                .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .setContentIntent(content)
                 .setOngoing(true)
                 .setShowWhen(false)
                 .addAction(new Notification.Action.Builder(null,
-                        held ? "Release wake lock" : "Acquire wake lock", toggle).build())
-                .addAction(new Notification.Action.Builder(null, "Exit", exit).build())
+                        held ? getString(R.string.notification_action_release_wakelock)
+                             : getString(R.string.notification_action_acquire_wakelock),
+                        toggle).build())
+                .addAction(new Notification.Action.Builder(null,
+                        getString(R.string.notification_action_exit), exit).build())
                 .build();
     }
 

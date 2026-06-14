@@ -1,4 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Terminal</string>
+
+    <!-- Settings button in the top bar -->
+    <string name="settings_button_icon">⚙</string>
+    <string name="settings_button_description">Settings</string>
+
+    <!-- Settings dialog -->
+    <string name="settings_dialog_title">Settings</string>
+    <string name="settings_dialog_close">Close</string>
+
+    <!-- Settings: Keep screen on -->
+    <string name="setting_keep_screen_on_title">Keep screen on</string>
+    <string name="setting_keep_screen_on_summary">Keep the display awake while the terminal is in the foreground.</string>
+
+    <!-- Settings: Rich keyboard -->
+    <string name="setting_rich_keyboard_title">Rich keyboard input</string>
+    <string name="setting_rich_keyboard_summary">Enable suggestions, autocorrect and swipe typing at the shell prompt. Falls back to raw keys inside full-screen apps.</string>
+
+    <!-- Settings: Scrollback buffer -->
+    <string name="setting_scrollback_title">Scrollback buffer</string>
+    <string name="setting_scrollback_summary">Lines of output kept for scrolling back. Takes effect for sessions started afterwards.</string>
+    <string-array name="scrollback_option_labels">
+        <item>1,000 lines</item>
+        <item>5,000 lines</item>
+        <item>10,000 lines</item>
+        <item>50,000 lines</item>
+        <item>100,000 lines</item>
+    </string-array>
+    <integer-array name="scrollback_option_values">
+        <item>1000</item>
+        <item>5000</item>
+        <item>10000</item>
+        <item>50000</item>
+        <item>100000</item>
+    </integer-array>
+
+    <!-- Debian install progress overlay -->
+    <string name="installing_debian">Installing Debian…</string>
+    <string name="installing_debian_progress">Installing Debian… %d MB</string>
+
+    <!-- Toasts -->
+    <string name="toast_shell_start_failed">Failed to start shell: %s</string>
+    <string name="toast_debian_install_failed">Debian install failed: %s</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_channel_name">Running sessions</string>
+    <string name="notification_wakelock_active"> · wake lock on</string>
+    <string name="notification_action_exit">Exit</string>
+    <string name="notification_action_acquire_wakelock">Acquire wake lock</string>
+    <string name="notification_action_release_wakelock">Release wake lock</string>
+    <plurals name="notification_sessions_running">
+        <item quantity="one">%d session running</item>
+        <item quantity="other">%d sessions running</item>
+    </plurals>
+
+    <!-- Tab strip -->
+    <string name="tab_close_description">close tab</string>
+    <string name="tab_new_description">new tab</string>
+
+    <!-- Extra-keys toolbar labels -->
+    <string name="key_esc">ESC</string>
+    <string name="key_ctrl">CTRL</string>
+    <string name="key_alt">ALT</string>
+    <string name="key_tab">TAB</string>
+    <string name="key_up">&#9650;</string>
+    <string name="key_down">&#9660;</string>
+    <string name="key_left">&#9664;</string>
+    <string name="key_right">&#9654;</string>
+    <string name="key_home">HOME</string>
+    <string name="key_end">END</string>
+    <string name="key_pgup">PGUP</string>
+    <string name="key_pgdn">PGDN</string>
+    <string name="key_dash">&#9472;</string>
+    <string name="key_slash">/</string>
+    <string name="key_pipe">|</string>
 </resources>
