@@ -47,6 +47,12 @@ android {
         // The rootfs assets are already xz; don't deflate them again.
         noCompress 'xz'
     }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            outputFileName = "${rootProject.name}_v${variant.versionName}.apk"
+        }
+    }
 }
 
 // Debian rootfs tarballs are bundled as assets when present (they are
