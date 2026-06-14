@@ -466,14 +466,15 @@ public class EmulatorVtTest {
         for (int i = 0; i < 10; i++) {
             feed("filler" + i + "\r\n"); // push "needle" into history
         }
-        int[] init = new int[2];
-        assertEquals(1, term.search("needle", false, init));
+        int[] out = new int[2];
+        assertEquals(1, term.searchSet("needle", false, out));
+        assertEquals(1, out[0]); // current match (1-based)
+        assertEquals(1, out[1]); // navigable count
 
-        assertEquals(0, term.searchShow(0));
+        // searchSet highlights the match and scrolls it back into the viewport.
         assertEquals("needle", term.selectionText());
         ScreenSnapshot s = snapshot();
         assertTrue(s.hasSelection());
-        // searchShow scrolled the match back into the viewport.
         assertTrue(s.selectionStartVisible());
         assertEquals("needle", s.rowText(s.selectionStartY()));
     }
@@ -481,11 +482,11 @@ public class EmulatorVtTest {
     @Test
     public void searchCaseSensitivity() {
         feed("Foo foo FOO");
-        int[] init = new int[2];
-        assertEquals(3, term.search("foo", false, init)); // all three
-        assertEquals(1, term.search("foo", true, init));  // only the lowercase
-        assertEquals(1, term.search("FOO", true, init));
-        assertEquals(0, term.search("bar", false, init));
+        int[] out = new int[2];
+        assertEquals(3, term.searchSet("foo", false, out)); // all three
+        assertEquals(1, term.searchSet("foo", true, out));  // only the lowercase
+        assertEquals(1, term.searchSet("FOO", true, out));
+        assertEquals(0, term.searchSet("bar", false, out));
     }
 
     @Test
@@ -495,42 +496,60 @@ public class EmulatorVtTest {
         sb.append("needle"); // straddles the soft-wrap boundary
         feed(sb.toString());
 
-        int[] init = new int[2];
-        assertEquals(1, term.search("needle", false, init));
-        assertEquals(0, term.searchShow(0));
+        int[] out = new int[2];
+        assertEquals(1, term.searchSet("needle", false, out));
         // The selection spans the wrap; unwrapped text is the whole token.
         assertEquals("needle", term.selectionText());
     }
 
     @Test
-    public void searchNoMatchesLeavesNoSelection() {
+    public void searchNoMatchesClearsSelection() {
         feed("hello world");
-        int[] init = new int[2];
-        assertEquals(0, term.search("zzz", false, init));
-        assertEquals(-1, term.searchShow(0));
+        int[] out = new int[2];
+        // A prior match is highlighted, then a query with no hits clears it.
+        assertEquals(1, term.searchSet("hello", false, out));
+        assertTrue(snapshot().hasSelection());
+        assertEquals(0, term.searchSet("zzz", false, out));
+        assertEquals(0, out[0]);
+        assertEquals(0, out[1]);
         assertFalse(snapshot().hasSelection());
     }
 
     @Test
-    public void searchShowWrapsIndex() {
+    public void searchStepWraps() {
         feed("match\r\nmatch\r\nmatch");
-        int[] init = new int[2];
-        assertEquals(3, term.search("match", false, init));
-        assertEquals(0, term.searchShow(3));  // wraps past the end
-        assertEquals(2, term.searchShow(-1)); // wraps before the start
+        int[] out = new int[2];
+        assertEquals(3, term.searchSet("match", false, out));
+        assertEquals(3, out[0]);             // lands on the last (nearest viewport)
+        term.searchStep(1, out);
+        assertEquals(1, out[0]);             // wraps to the first
+        term.searchStep(-1, out);
+        assertEquals(3, out[0]);             // back to the last
+        assertEquals("match", term.selectionText());
+    }
+
+    @Test
+    public void searchStepRescansAfterOutput() {
+        feed("alpha\r\n");
+        int[] out = new int[2];
+        assertEquals(1, term.searchSet("alpha", false, out));
+        // New output adds a match; stepping must re-scan and count it.
+        feed("alpha\r\n");
+        assertEquals(2, term.searchStep(1, out));
+        assertEquals(2, out[1]);
     }
 
     @Test
     public void searchClearRemovesMatchesAndSelection() {
         feed("hello world");
-        int[] init = new int[2];
-        assertEquals(1, term.search("world", false, init));
-        term.searchShow(0);
+        int[] out = new int[2];
+        assertEquals(1, term.searchSet("world", false, out));
         assertTrue(snapshot().hasSelection());
 
         term.searchClear();
         assertFalse(snapshot().hasSelection());
-        assertEquals(-1, term.searchShow(0)); // matches were freed
+        assertEquals(0, term.searchStep(1, out)); // search state was freed
+        assertEquals(0, out[0]);
     }
 
     @Test
@@ -548,12 +567,11 @@ public class EmulatorVtTest {
             big.feed(b, b.length);
 
             int[] out = new int[2];
-            int total = big.search("x", false, out);
+            int total = big.searchSet("x", false, out);
             assertEquals("every match counted", lines, total);
             assertEquals("navigable window capped", 50_000, out[1]);
-            // The newest hit (bottom of the buffer) is still navigable.
-            int last = out[1] - 1;
-            assertEquals(last, big.searchShow(last));
+            // The newest hit (bottom of the buffer) is current and highlighted.
+            assertEquals("newest match reachable", lines, out[0]);
             assertEquals("x", big.selectionText());
         } finally {
             big.close();

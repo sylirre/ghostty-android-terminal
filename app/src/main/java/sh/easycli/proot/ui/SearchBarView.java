@@ -161,6 +161,9 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
     }
 
     private void setCountText(int current, int total) {
+        // Flag a query that found nothing (but not an empty field) in red.
+        boolean noResults = total == 0 && field.getText().length() > 0;
+        count.setTextColor(noResults ? 0xFFE57373 : 0xFF9999A6);
         count.setText(total == 0
                 ? getContext().getString(R.string.search_no_results)
                 : getContext().getString(R.string.search_count, current, total));

@@ -133,30 +133,37 @@ public final class TerminalEmulator implements AutoCloseable {
                 : new String(utf8, java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    // --- Text search. Matches are screen-coordinate ranges held in the native
-    // context; showing one installs it as the selection (so it highlights and
-    // scrolls into view), which is why search reuses the selection slot. ---
+    // --- Text search. The search state (query, matches, current index) lives
+    // in the native context; set/step scan and highlight in a single locked
+    // call, so they can't race with the reader thread, and the current match is
+    // installed as the selection — which is why search reuses the selection
+    // slot. Each call fills out: out[0] = current position (1-based, 0 if none),
+    // out[1] = navigable match count. ---
 
     /**
-     * Scans the whole screen for {@code query} and records the hits. Returns the
-     * total match count (0 after close); {@code out} (length &ge; 2) receives
-     * the suggested first index nearest the viewport in {@code out[0]} and the
-     * navigable (most-recent) match count in {@code out[1]}.
+     * Sets a new query, scans, and highlights the match nearest the viewport.
+     * Returns the total hit count (0 after close); see the section comment for
+     * {@code out}. An empty query clears the search.
      */
-    public synchronized int search(String query, boolean caseSensitive, int[] out) {
+    public synchronized int searchSet(String query, boolean caseSensitive, int[] out) {
         if (handle == 0) {
             out[0] = 0;
             out[1] = 0;
             return 0;
         }
-        return TerminalNative.terminalSearch(handle,
+        return TerminalNative.terminalSearchSet(handle,
                 query.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                 caseSensitive, out);
     }
 
-    /** Highlights and reveals the indexed match (wraps); returns it, or -1. */
-    public synchronized int searchShow(int index) {
-        return handle == 0 ? -1 : TerminalNative.terminalSearchShow(handle, index);
+    /** Steps to the next (dir &gt; 0) or previous (dir &lt; 0) match; returns the total. */
+    public synchronized int searchStep(int dir, int[] out) {
+        if (handle == 0) {
+            out[0] = 0;
+            out[1] = 0;
+            return 0;
+        }
+        return TerminalNative.terminalSearchStep(handle, dir, out);
     }
 
     public synchronized void searchClear() {

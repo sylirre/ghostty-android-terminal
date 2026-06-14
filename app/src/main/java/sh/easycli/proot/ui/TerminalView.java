@@ -150,21 +150,16 @@ public class TerminalView extends View {
     // onDraw reposition it (invalidateContentRect) only when it actually moves.
     private long toolbarSelGeom = Long.MIN_VALUE;
 
-    // --- Text search. The emulator scans the whole buffer and reuses the
-    // selection slot to highlight/reveal the current match; this view just
-    // tracks the query and the index into the match list, re-running the scan
-    // on each navigation so the count stays valid after new output. The match
-    // highlight deliberately does not enter `selecting`, so no handles or Copy
-    // toolbar appear — it reads as a plain search hit.
-    private String searchQuery = "";
-    private boolean searchCaseSensitive;
-    private int matchTotal;  // all hits; may exceed the navigable window
-    private int matchStored; // navigable matches (the most-recent window)
-    private int matchIndex;  // position within the navigable matches
-    private final int[] searchOut = new int[2]; // [0] initial index, [1] stored
+    // --- Text search. The emulator owns the search state (query, matches,
+    // current index) and reuses the selection slot to highlight/reveal the
+    // current match; this view just relays the query and navigation and reports
+    // the count back to the search UI. The match highlight deliberately does not
+    // enter `selecting`, so no handles or Copy toolbar appear — it reads as a
+    // plain search hit.
+    private final int[] searchOut = new int[2]; // [0] current (1-based), [1] count
     private SearchListener searchListener;
 
-    /** Reports the current match position (1-based) and total to the search UI. */
+    /** Reports the current match position (1-based, 0 if none) and total. */
     public interface SearchListener {
         void onSearchUpdated(int current, int total);
     }
@@ -620,78 +615,49 @@ public class TerminalView extends View {
     }
 
     /**
-     * Runs a fresh query: scans the buffer, jumps to the match nearest the
-     * current viewport, and reports the count to the listener. An empty query
+     * Runs a fresh query: scans the buffer, jumps to and highlights the match
+     * nearest the current viewport, and reports the count. An empty query
      * clears the highlight.
      */
     public void searchSetQuery(String query, boolean caseSensitive) {
-        searchQuery = query == null ? "" : query;
-        searchCaseSensitive = caseSensitive;
-        if (session == null || searchQuery.isEmpty()) {
-            if (session != null) session.emulator.searchClear();
-            matchTotal = 0;
-            matchStored = 0;
-            matchIndex = 0;
-            invalidate();
-            notifySearch();
+        if (session == null) {
+            notifySearch(0, 0);
             return;
         }
-        matchTotal = session.emulator.search(searchQuery, searchCaseSensitive, searchOut);
-        matchStored = searchOut[1];
-        matchIndex = matchStored > 0 ? searchOut[0] : 0;
-        if (matchStored > 0) session.emulator.searchShow(matchIndex);
+        int total = session.emulator.searchSet(
+                query == null ? "" : query, caseSensitive, searchOut);
         invalidate();
-        notifySearch();
+        notifySearch(searchOut[0], total);
     }
 
     /** Moves to the next match (wraps), revealing and highlighting it. */
     public void searchNext() {
-        stepSearch(1);
+        searchStep(1);
     }
 
     /** Moves to the previous match (wraps), revealing and highlighting it. */
     public void searchPrev() {
-        stepSearch(-1);
+        searchStep(-1);
     }
 
-    private void stepSearch(int dir) {
-        if (session == null || searchQuery.isEmpty()) {
-            notifySearch();
+    private void searchStep(int dir) {
+        if (session == null) {
+            notifySearch(0, 0);
             return;
         }
-        // Re-scan so the count and positions stay valid after any new output.
-        matchTotal = session.emulator.search(searchQuery, searchCaseSensitive, searchOut);
-        matchStored = searchOut[1];
-        if (matchStored == 0) {
-            matchIndex = 0;
-            invalidate();
-            notifySearch();
-            return;
-        }
-        matchIndex = ((matchIndex + dir) % matchStored + matchStored) % matchStored;
-        session.emulator.searchShow(matchIndex);
+        int total = session.emulator.searchStep(dir, searchOut);
         invalidate();
-        notifySearch();
+        notifySearch(searchOut[0], total);
     }
 
     /** Ends search mode and clears the match highlight. */
     public void searchClose() {
-        searchQuery = "";
-        matchTotal = 0;
-        matchStored = 0;
-        matchIndex = 0;
         if (session != null) session.emulator.searchClear();
         invalidate();
     }
 
-    private void notifySearch() {
-        if (searchListener == null) return;
-        // The navigable matches are the most-recent window of the total, so the
-        // displayed position is offset by how many older hits were dropped.
-        int current = matchStored > 0
-                ? (matchTotal - matchStored) + matchIndex + 1
-                : 0;
-        searchListener.onSearchUpdated(current, matchTotal);
+    private void notifySearch(int current, int total) {
+        if (searchListener != null) searchListener.onSearchUpdated(current, total);
     }
 
     private final ActionMode.Callback2 selectionActions = new ActionMode.Callback2() {

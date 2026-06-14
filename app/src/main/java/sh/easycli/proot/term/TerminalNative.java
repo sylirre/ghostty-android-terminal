@@ -198,25 +198,27 @@ public final class TerminalNative {
     // --- Text search (state lives in the terminal; matches are screen ranges) ---
 
     /**
-     * Scans the whole screen (scrollback + active area) for {@code query}
-     * (UTF-8) and records the hits. Returns the <em>total</em> match count,
-     * which may exceed the navigable window, and writes two ints to {@code out}:
-     * {@code out[0]} = the suggested initial index (the hit nearest the current
-     * viewport) within the navigable matches, {@code out[1]} = the navigable
-     * match count (the most-recent hits, capped to bound memory). An empty query
-     * clears the matches. Use {@link #terminalSearchShow} to highlight one.
+     * Sets a new search {@code query} (UTF-8), scans the whole screen
+     * (scrollback + active area), and highlights and reveals the match nearest
+     * the viewport — all in one call, so it can't race with PTY output. Returns
+     * the <em>total</em> hit count (which may exceed the navigable window) and
+     * writes two ints to {@code out}: {@code out[0]} = the current match
+     * position (1-based, 0 if none), {@code out[1]} = the navigable match count
+     * (the most-recent hits, capped to bound memory). An empty query clears the
+     * search.
      */
-    public static native int terminalSearch(long handle, byte[] query,
+    public static native int terminalSearchSet(long handle, byte[] query,
             boolean caseSensitive, int[] out);
 
     /**
-     * Installs the indexed match (wrapping into range) as the active selection
-     * and scrolls it into view. Returns the shown index, or -1 if there are no
-     * matches.
+     * Moves to the next ({@code dir > 0}) or previous ({@code dir < 0}) match,
+     * wrapping, and highlights/reveals it. Re-scans first only if the buffer
+     * changed since the last scan, so idle navigation is cheap. Return value and
+     * {@code out} are as in {@link #terminalSearchSet}.
      */
-    public static native int terminalSearchShow(long handle, int index);
+    public static native int terminalSearchStep(long handle, int dir, int[] out);
 
-    /** Frees the stored matches and clears the selection. */
+    /** Frees the search state and clears the selection. */
     public static native void terminalSearchClear(long handle);
 
     /**

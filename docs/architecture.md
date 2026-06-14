@@ -248,26 +248,32 @@ tap outside the handles, or switching sessions dismisses the selection.
 ### Search
 
 libghostty-vt has no built-in string search, so the 🔍 find bar
-(`SearchBarView`, toggled from the top bar) drives a native scan.
-`terminalSearch` walks the whole active screen (scrollback + active area),
-reading each row via one untracked grid ref per row whose column is advanced
-by setting `ref.x` (the grid-ref traverse pattern), concatenating
+(`SearchBarView`, toggled from the top bar) drives a native scan. The search
+state — query, case flag, the match list, and the current index — lives in
+the `TermCtx`, and two operations drive it: `terminalSearchSet` (new query)
+and `terminalSearchStep` (next/previous). Each **scans and highlights in one
+locked call**, so the scan can never race with PTY output landing between two
+JNI calls; `terminalSearchClear` frees it.
+
+The scan walks the whole active screen (scrollback + active area), reading
+each row via one untracked grid ref per row whose column is advanced by
+setting `ref.x` (the grid-ref traverse pattern), and concatenates
 soft-wrapped rows into logical lines so matches that straddle a wrap are
-found. Hits are stored as screen-coordinate ranges in the `TermCtx`;
-`terminalSearchShow` installs the current one as the terminal selection —
-**reusing the selection slot** for the highlight and scroll-into-view — and
-`terminalSearchClear` frees them. The match therefore renders as plain
-inverse video with no handles/Copy toolbar (the view never enters
-`selecting` for search). Navigation re-runs the scan from Java each time, so
-stored screen points never need to survive intervening output and no
-per-match tracked refs are kept; only the *current* match's highlight is a
-tracked selection that follows its text. Case folding is ASCII (the "Aa"
-toggle). The whole buffer is always scanned for an honest total count, but
-only the most recent `MAX_MATCHES` hits are kept navigable (a ring buffer
-rotated into order after the scan) — this bounds memory on a pathological
-single-character query while keeping the newest output reachable, which is
-what a terminal user at the bottom of the buffer wants. The UI numbers the
-current match globally, so the count stays truthful even past the cap.
+found. The current match is installed as the terminal selection —
+**reusing the selection slot** for the highlight and scroll-into-view — so it
+renders as plain inverse video with no handles/Copy toolbar (the view never
+enters `selecting` for search) and follows its text via tracked refs.
+
+Navigation does not re-scan every time: `terminalFeed` sets a dirty flag, so
+`terminalSearchStep` re-scans only when the buffer actually changed since the
+last scan — idle next/previous is just a viewport move, not an O(buffer)
+walk. Case folding is ASCII (the "Aa" toggle). The whole buffer is always
+scanned for an honest total count, but only the most recent `MAX_MATCHES`
+hits are kept navigable (a ring buffer rotated into order after the scan) —
+this bounds memory on a pathological single-character query while keeping the
+newest output reachable, which is what a terminal user at the bottom of the
+buffer wants. The UI numbers the current match globally, so the count stays
+truthful even past the cap.
 
 ### Keyboard and extra keys
 
