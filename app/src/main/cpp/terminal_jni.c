@@ -292,7 +292,27 @@ Java_sh_easycli_proot_term_TerminalNative_terminalFeed(
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
     jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
-    ghostty_terminal_vt_write(c->term, (const uint8_t *)bytes, (size_t)len);
+    /* NUL is an "ignore" control character (ECMA-48). Some producers emit
+     * stray NULs inside APC payloads — notably mpv's --vo=kitty, which appends
+     * one to each frame's final graphics chunk. The VT engine collects APC
+     * bytes verbatim, so a NUL there corrupts the base64 image data and the
+     * whole frame is rejected (a black screen). Strip NULs before feeding; the
+     * common NUL-free case takes the no-copy fast path. */
+    const uint8_t *feed_ptr = (const uint8_t *)bytes;
+    size_t feed_len = (size_t)len;
+    uint8_t *stripped = NULL;
+    if (len > 0 && memchr(bytes, 0, (size_t)len)) {
+        stripped = malloc((size_t)len);
+        if (stripped) {
+            size_t w = 0;
+            for (size_t r = 0; r < (size_t)len; r++)
+                if (bytes[r] != 0) stripped[w++] = (uint8_t)bytes[r];
+            feed_ptr = stripped;
+            feed_len = w;
+        }
+    }
+    ghostty_terminal_vt_write(c->term, feed_ptr, feed_len);
+    free(stripped);
     (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
     /* The buffer changed, so an open search must re-scan before it navigates. */
     c->search_dirty = true;

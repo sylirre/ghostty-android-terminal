@@ -474,6 +474,20 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void kittyStrayNulInPayloadStillStores() {
+        term.resize(20, 5, 10, 20);
+        // mpv's --vo=kitty appends a stray NUL to each frame's final graphics
+        // chunk. NUL is an ignore control character (ECMA-48); it must not
+        // corrupt the base64 payload -- it previously made the engine reject
+        // the whole image (a black screen). terminalFeed strips NULs first.
+        // 1x1 red image (base64 "/wAA") with a NUL before the ST terminator.
+        feed("\u001b_Ga=T,f=24,s=1,v=1;/wAA\u0000\u001b\\");
+        int[] g = new int[TerminalNative.GFX_STRIDE * 4];
+        assertEquals("a stray NUL in a kitty payload must not drop the image",
+                1, term.graphics(g));
+    }
+
+    @Test
     public void xtwinopsSizeReports() {
         term.resize(20, 5, 10, 20); // cell 10x20 -> text area 200x100 px
         // CSI 18 t: text area in cells -> CSI 8 ; rows ; cols t.
