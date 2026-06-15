@@ -149,12 +149,12 @@ public class ExtraKeysView extends HorizontalScrollView {
                 break;
             case KEY:
                 view.setOnClickListener(v -> {
-                    if (terminal != null) terminal.dispatchKey(key.keyCode);
+                    if (terminal != null) terminal.dispatchKey(key.keyCode, key.mods);
                 });
                 break;
             case TEXT:
                 view.setOnClickListener(v -> {
-                    if (terminal != null) terminal.dispatchText(key.text);
+                    if (terminal != null) terminal.dispatchText(key.text, key.mods);
                 });
                 break;
         }

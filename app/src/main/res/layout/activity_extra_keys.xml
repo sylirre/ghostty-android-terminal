@@ -153,6 +153,20 @@
                     android:clickable="true"
                     android:focusable="true" />
 
+                <TextView
+                    android:id="@+id/extra_keys_add_combo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/extra_keys_add_combo"
+                    android:textColor="#FF6E8BFF"
+                    android:textSize="15sp"
+                    android:gravity="center"
+                    android:paddingTop="18dp"
+                    android:paddingBottom="18dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true" />
+
             </LinearLayout>
 
         </ScrollView>

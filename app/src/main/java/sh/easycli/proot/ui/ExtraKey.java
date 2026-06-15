@@ -15,10 +15,18 @@ package sh.easycli.proot.ui;
  *       {@link sh.easycli.proot.term.TerminalNative}{@code .MOD_*} bit).</li>
  * </ul>
  *
+ * A {@link Kind#KEY} or {@link Kind#TEXT} key may also carry a non-zero
+ * {@link #mods} bitmask ({@code TerminalNative.MOD_*}): these are the
+ * single-tap modifier combos (Ctrl-C, Ctrl-→, …). The mask is baked into the
+ * button and applied atomically when tapped — distinct from a sticky
+ * {@link Kind#MODIFIER}, which arms the <em>next</em> key. A combo's mods are
+ * OR-ed with any sticky mods at dispatch time.
+ *
  * {@code id} is the stable token persisted by {@link ExtraKeysConfig}: a catalog
- * key for built-ins (e.g. {@code "esc"}), or {@code "lit:<text>"} for a custom
- * text key. Build instances through the {@link #key}/{@link #text}/
- * {@link #modifier} factories rather than the constructor.
+ * key for built-ins (e.g. {@code "esc"}), {@code "lit:<text>"} for a custom
+ * text key, or {@code "combo:<mods>:<base>"} for a modifier combo. Build
+ * instances through the {@link #key}/{@link #text}/{@link #modifier}/
+ * {@link #comboKey}/{@link #comboText} factories rather than the constructor.
  */
 final class ExtraKey {
 
@@ -30,26 +38,38 @@ final class ExtraKey {
     final int keyCode;   // KEY only
     final String text;   // TEXT only
     final int modifier;  // MODIFIER only (TerminalNative.MOD_*)
+    final int mods;      // KEY/TEXT combos: baked-in TerminalNative.MOD_* bits
 
     private ExtraKey(String id, String label, Kind kind,
-                     int keyCode, String text, int modifier) {
+                     int keyCode, String text, int modifier, int mods) {
         this.id = id;
         this.label = label;
         this.kind = kind;
         this.keyCode = keyCode;
         this.text = text;
         this.modifier = modifier;
+        this.mods = mods;
     }
 
     static ExtraKey key(String id, String label, int keyCode) {
-        return new ExtraKey(id, label, Kind.KEY, keyCode, null, 0);
+        return new ExtraKey(id, label, Kind.KEY, keyCode, null, 0, 0);
     }
 
     static ExtraKey text(String id, String label, String text) {
-        return new ExtraKey(id, label, Kind.TEXT, 0, text, 0);
+        return new ExtraKey(id, label, Kind.TEXT, 0, text, 0, 0);
     }
 
     static ExtraKey modifier(String id, String label, int modifier) {
-        return new ExtraKey(id, label, Kind.MODIFIER, 0, null, modifier);
+        return new ExtraKey(id, label, Kind.MODIFIER, 0, null, modifier, 0);
+    }
+
+    /** A combo over a non-printable key (Ctrl-→, Shift-Tab) — mode-aware encoder. */
+    static ExtraKey comboKey(String id, String label, int keyCode, int mods) {
+        return new ExtraKey(id, label, Kind.KEY, keyCode, null, 0, mods);
+    }
+
+    /** A combo over a printable base char (Ctrl-C, Alt-.) — the dispatchText path. */
+    static ExtraKey comboText(String id, String label, String text, int mods) {
+        return new ExtraKey(id, label, Kind.TEXT, 0, text, 0, mods);
     }
 }

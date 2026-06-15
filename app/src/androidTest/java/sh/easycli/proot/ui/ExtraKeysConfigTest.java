@@ -20,6 +20,8 @@ import org.junit.runner.RunWith;
 import java.util.Arrays;
 import java.util.List;
 
+import sh.easycli.proot.term.TerminalNative;
+
 /**
  * Round-trips the extra-keys configuration model through real SharedPreferences.
  * Lives in {@code sh.easycli.proot.ui} to reach the package-private catalog API.
@@ -92,6 +94,49 @@ public class ExtraKeysConfigTest {
     public void resolveUnknownIsNull() {
         assertNull(ExtraKeysConfig.resolve(context, "no-such-key"));
         assertNull(ExtraKeysConfig.resolve(context, ExtraKeysConfig.CUSTOM_PREFIX)); // empty literal
+    }
+
+    @Test
+    public void comboIdIsCanonical() {
+        // Fixed Ctrl/Alt/Shift letter order regardless of how the bits combine.
+        assertEquals("combo:C:c", ExtraKeysConfig.comboId(TerminalNative.MOD_CTRL, "c"));
+        assertEquals("combo:CA:x", ExtraKeysConfig.comboId(
+                TerminalNative.MOD_ALT | TerminalNative.MOD_CTRL, "x"));
+    }
+
+    @Test
+    public void resolveCharCombo() {
+        // Ctrl-C: a printable base routes through the TEXT (dispatchText) path.
+        ExtraKey k = ExtraKeysConfig.resolve(context, "combo:C:c");
+        assertNotNull(k);
+        assertEquals(ExtraKey.Kind.TEXT, k.kind);
+        assertEquals("c", k.text);
+        assertEquals(TerminalNative.MOD_CTRL, k.mods);
+        assertEquals("^C", k.label);
+    }
+
+    @Test
+    public void resolveSpecialCombo() {
+        // Ctrl-Right: a special base routes through the mode-aware KEY path.
+        ExtraKey k = ExtraKeysConfig.resolve(context, "combo:C:right");
+        assertNotNull(k);
+        assertEquals(ExtraKey.Kind.KEY, k.kind);
+        assertEquals(KeyEvent.KEYCODE_DPAD_RIGHT, k.keyCode);
+        assertEquals(TerminalNative.MOD_CTRL, k.mods);
+    }
+
+    @Test
+    public void comboWithoutModifierIsRejected() {
+        assertNull(ExtraKeysConfig.resolve(context, "combo::c"));
+    }
+
+    @Test
+    public void presetsAreOfferedInPalette() {
+        boolean ctrlCListed = false;
+        for (ExtraKey k : config.availableBuiltins(context)) {
+            if ("combo:C:c".equals(k.id)) ctrlCListed = true;
+        }
+        assertTrue("Ctrl-C preset should appear in the add palette", ctrlCListed);
     }
 
     @Test

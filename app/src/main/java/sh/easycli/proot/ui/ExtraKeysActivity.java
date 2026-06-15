@@ -12,19 +12,25 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import sh.easycli.proot.R;
+import sh.easycli.proot.term.TerminalNative;
 
 /**
  * Full-screen editor for the extra-keys toolbar, reached from Settings. Lets the
@@ -80,6 +86,7 @@ public final class ExtraKeysActivity extends Activity {
         findViewById(R.id.extra_keys_done).setOnClickListener(v -> finish());
         findViewById(R.id.extra_keys_reset).setOnClickListener(v -> resetToDefaults());
         findViewById(R.id.extra_keys_add_custom).setOnClickListener(v -> promptCustom());
+        findViewById(R.id.extra_keys_add_combo).setOnClickListener(v -> promptCombo());
 
         loadIds();
         render();
@@ -149,6 +156,126 @@ public final class ExtraKeysActivity extends Activity {
                 })
                 .setNegativeButton(R.string.theme_color_cancel, null)
                 .show();
+    }
+
+    /**
+     * Builds a single-tap modifier combo (Ctrl-C, Ctrl-→, …): CTRL/ALT/SHIFT
+     * toggles plus a base picker — either a typed character or a special key
+     * from the spinner. Produces a {@code combo:} id via
+     * {@link ExtraKeysConfig#comboId}.
+     */
+    private void promptCombo() {
+        CheckBox ctrl = comboToggle(R.string.key_ctrl);
+        CheckBox alt = comboToggle(R.string.key_alt);
+        CheckBox shift = comboToggle(R.string.key_shift);
+        LinearLayout modsRow = new LinearLayout(this);
+        modsRow.setOrientation(LinearLayout.HORIZONTAL);
+        modsRow.addView(ctrl);
+        modsRow.addView(alt);
+        modsRow.addView(shift);
+
+        TextView baseLabel = new TextView(this);
+        baseLabel.setText(R.string.extra_keys_combo_base_label);
+        baseLabel.setPadding(0, dp(14), 0, dp(4));
+
+        // Base picker: index 0 is "type a character", the rest are special keys.
+        final List<String> labels = new ArrayList<>();
+        final List<String> tokens = new ArrayList<>();  // parallel to labels[1..]
+        labels.add(getString(R.string.extra_keys_combo_base_char));
+        addSpecial(labels, tokens, "← Left", "left");
+        addSpecial(labels, tokens, "→ Right", "right");
+        addSpecial(labels, tokens, "↑ Up", "up");
+        addSpecial(labels, tokens, "↓ Down", "down");
+        addSpecial(labels, tokens, "Home", "home");
+        addSpecial(labels, tokens, "End", "end");
+        addSpecial(labels, tokens, "PgUp", "pgup");
+        addSpecial(labels, tokens, "PgDn", "pgdn");
+        addSpecial(labels, tokens, "Tab", "tab");
+        addSpecial(labels, tokens, "Enter", "enter");
+        addSpecial(labels, tokens, "Esc", "esc");
+        addSpecial(labels, tokens, "Delete", "del");
+        addSpecial(labels, tokens, "Backspace", "bksp");
+        addSpecial(labels, tokens, "Insert", "ins");
+        for (int i = 1; i <= 12; i++) addSpecial(labels, tokens, "F" + i, "f" + i);
+
+        Spinner spinner = new Spinner(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+
+        EditText charInput = new EditText(this);
+        charInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        charInput.setSingleLine(true);
+        charInput.setHint(R.string.extra_keys_combo_char_hint);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                charInput.setEnabled(pos == 0);  // only meaningful for "Character"
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> p) { }
+        });
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int p = dp(20);
+        container.setPadding(p, p / 2, p, 0);
+        container.addView(modsRow);
+        container.addView(baseLabel);
+        container.addView(spinner);
+        container.addView(charInput);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.extra_keys_add_combo_title)
+                .setView(container)
+                .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
+                    int mods = (ctrl.isChecked() ? TerminalNative.MOD_CTRL : 0)
+                            | (alt.isChecked() ? TerminalNative.MOD_ALT : 0)
+                            | (shift.isChecked() ? TerminalNative.MOD_SHIFT : 0);
+                    if (mods == 0) {
+                        toast(R.string.extra_keys_combo_no_mod);
+                        return;
+                    }
+                    int pos = spinner.getSelectedItemPosition();
+                    String base;
+                    if (pos <= 0) {
+                        String t = charInput.getText().toString();
+                        if (t.codePointCount(0, t.length()) != 1) {
+                            toast(R.string.extra_keys_combo_no_char);
+                            return;
+                        }
+                        base = t.toLowerCase(Locale.ROOT);  // canonical: Ctrl-C == Ctrl-c
+                    } else {
+                        base = tokens.get(pos - 1);
+                    }
+                    String id = ExtraKeysConfig.comboId(mods, base);
+                    if (ids.contains(id)) {
+                        toast(R.string.extra_keys_custom_exists);
+                        return;
+                    }
+                    addId(id);
+                })
+                .setNegativeButton(R.string.theme_color_cancel, null)
+                .show();
+    }
+
+    private CheckBox comboToggle(int labelRes) {
+        CheckBox box = new CheckBox(this);
+        box.setText(labelRes);
+        box.setTextColor(0xFFEAEAF0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = dp(12);
+        box.setLayoutParams(lp);
+        return box;
+    }
+
+    private static void addSpecial(List<String> labels, List<String> tokens,
+                                   String label, String token) {
+        labels.add(label);
+        tokens.add(token);
     }
 
     // --- Rendering ---

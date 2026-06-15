@@ -169,6 +169,7 @@
     <string name="key_esc">ESC</string>
     <string name="key_ctrl">CTRL</string>
     <string name="key_alt">ALT</string>
+    <string name="key_shift">SHIFT</string>
     <string name="key_tab">TAB</string>
     <string name="key_up">&#9650;</string>
     <string name="key_down">&#9660;</string>
@@ -216,4 +217,11 @@
     <string name="extra_keys_add_custom_hint">Text; \\n = Enter, \\\\n = literal \\n</string>
     <string name="extra_keys_custom_empty">Enter some text.</string>
     <string name="extra_keys_custom_exists">That key is already in the toolbar.</string>
+    <string name="extra_keys_add_combo">Add modifier combo…</string>
+    <string name="extra_keys_add_combo_title">Modifier combo</string>
+    <string name="extra_keys_combo_base_label">Base key</string>
+    <string name="extra_keys_combo_char_hint">key</string>
+    <string name="extra_keys_combo_base_char">Character (type below)</string>
+    <string name="extra_keys_combo_no_mod">Pick at least one modifier.</string>
+    <string name="extra_keys_combo_no_char">Type a single base character.</string>
 </resources>

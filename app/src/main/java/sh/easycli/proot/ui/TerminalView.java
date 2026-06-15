@@ -1317,12 +1317,21 @@ public class TerminalView extends View {
 
     /** Sends printable text, applying any sticky CTRL/ALT to single chars. */
     public void dispatchText(String text) {
+        dispatchText(text, 0);
+    }
+
+    /**
+     * Sends printable text with {@code extraMods} baked in (a combo key's mask),
+     * OR-ed with any sticky CTRL/ALT. The mask only affects single chars; a
+     * multi-char snippet is always sent verbatim.
+     */
+    public void dispatchText(String text, int extraMods) {
         if (session == null || text.isEmpty()) return;
         if (selecting) finishSelection();
         // This text bypasses the rich-input buffer (hardware key, toolbar, or a
         // modifier combo), so re-sync the mirror from empty afterwards.
         resetRichInput();
-        int mods = sticky.consume();
+        int mods = sticky.consume() | extraMods;
         if (mods == 0 || text.codePointCount(0, text.length()) > 1) {
             session.emulator.scrollToBottom();
             session.write(text);
@@ -1344,12 +1353,21 @@ public class TerminalView extends View {
 
     /** Sends a non-printable key (arrows, ESC, …) through the VT encoder. */
     public void dispatchKey(int androidKeyCode) {
+        dispatchKey(androidKeyCode, 0);
+    }
+
+    /**
+     * Sends a non-printable key with {@code extraMods} baked in (a combo key's
+     * mask, e.g. Ctrl-→), OR-ed with any sticky CTRL/ALT. The encoder honors
+     * the current terminal modes, so modified cursor keys encode correctly.
+     */
+    public void dispatchKey(int androidKeyCode, int extraMods) {
         if (session == null) return;
         if (selecting) finishSelection();
         // A special key may move the remote cursor or trigger completion, so
         // the mirrored input line no longer matches; drop it.
         resetRichInput();
-        session.sendKey(androidKeyCode, sticky.consume(), null, 0);
+        session.sendKey(androidKeyCode, sticky.consume() | extraMods, null, 0);
         invalidate();
     }
 
