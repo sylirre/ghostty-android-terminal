@@ -425,14 +425,6 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     applyKeepScreenOn(enabled);
                 }));
         items.add(new Setting.Toggle(
-                getString(R.string.setting_rich_keyboard_title),
-                getString(R.string.setting_rich_keyboard_summary),
-                settings::richKeyboard,
-                enabled -> {
-                    settings.setRichKeyboard(enabled);
-                    terminal.setRichKeyboard(enabled);
-                }));
-        items.add(new Setting.Toggle(
                 getString(R.string.setting_touch_keyboard_title),
                 getString(R.string.setting_touch_keyboard_summary),
                 settings::touchKeyboard,
@@ -440,6 +432,15 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setTouchKeyboard(enabled);
                     terminal.setTouchKeyboardEnabled(enabled);
                 }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_rich_keyboard_title),
+                getString(R.string.setting_rich_keyboard_summary),
+                settings::richKeyboard,
+                enabled -> {
+                    settings.setRichKeyboard(enabled);
+                    terminal.setRichKeyboard(enabled);
+                })
+                .enabledWhen(settings::touchKeyboard));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),
                 getString(R.string.setting_extra_keys_enabled_summary),
