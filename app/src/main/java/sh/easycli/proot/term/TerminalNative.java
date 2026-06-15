@@ -26,6 +26,22 @@ public final class TerminalNative {
     public static final int ATTR_STRIKE = 8;
     public static final int ATTR_WIDE = 16;
 
+    /**
+     * Underline shape: a 3-bit field in the attrs byte (bits 5-7) holding one
+     * of the {@code UNDERLINE_*} values. {@link #ATTR_UNDERLINE} is set
+     * whenever this field is non-zero. Mask with {@link #ATTR_UL_MASK} before
+     * shifting right by {@link #ATTR_UL_SHIFT} — bit 7 is the byte's sign bit,
+     * so a bare shift would sign-extend.
+     */
+    public static final int ATTR_UL_SHIFT = 5;
+    public static final int ATTR_UL_MASK = 7 << ATTR_UL_SHIFT;
+    public static final int UNDERLINE_NONE = 0;
+    public static final int UNDERLINE_SINGLE = 1;
+    public static final int UNDERLINE_DOUBLE = 2;
+    public static final int UNDERLINE_CURLY = 3;
+    public static final int UNDERLINE_DOTTED = 4;
+    public static final int UNDERLINE_DASHED = 5;
+
     /** Modifier bits for {@link #terminalEncodeKey} (GHOSTTY_MODS_*). */
     public static final int MOD_SHIFT = 1;
     public static final int MOD_CTRL = 1 << 1;

@@ -7,7 +7,9 @@ import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.DashPathEffect;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
@@ -109,6 +111,14 @@ public class TerminalView extends View {
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bgPaint = new Paint();
+    // Stylized underlines (SGR 4:2..4:5) are stroked by hand — Paint only does a
+    // single solid line. The dash effects depend only on the cell metrics, so
+    // they are rebuilt in setTextSizePx and the Path is reused per run.
+    private final Paint underlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Path underlinePath = new Path();
+    private DashPathEffect dottedEffect;
+    private DashPathEffect dashedEffect;
+    private float underlineThickness;
     private float cellWidth;
     private int cellHeight;
     private int baseline;
@@ -367,6 +377,15 @@ public class TerminalView extends View {
         cellWidth = textPaint.measureText("M");
         cellHeight = fm.descent - fm.ascent;
         baseline = -fm.ascent;
+
+        underlineThickness = Math.max(1f, cellHeight / 18f);
+        underlinePaint.setStyle(Paint.Style.STROKE);
+        underlinePaint.setStrokeWidth(underlineThickness);
+        // Short on/off runs read as dots; cell-scaled ones as dashes.
+        dottedEffect = new DashPathEffect(
+                new float[] {underlineThickness, underlineThickness * 2f}, 0f);
+        float dash = Math.max(3f, cellWidth * 0.5f);
+        dashedEffect = new DashPathEffect(new float[] {dash, dash * 0.5f}, 0f);
     }
 
     private float spToPx(float sp) {
@@ -1095,6 +1114,9 @@ public class TerminalView extends View {
                 applyStyle(runFg, runAttr);
                 canvas.drawText(runText, 0, runText.length(),
                         runStart * cellWidth, top + baseline, textPaint);
+                // The run covered cells [runStart, x); underline its full width.
+                drawUnderline(canvas, runFg, runAttr,
+                        runStart * cellWidth, x * cellWidth, top);
                 runStart = -1;
                 runText.setLength(0);
             }
@@ -1103,6 +1125,8 @@ public class TerminalView extends View {
                 applyStyle(fg, attr);
                 String s = new String(Character.toChars(cp));
                 canvas.drawText(s, x * cellWidth, top + baseline, textPaint);
+                drawUnderline(canvas, fg, attr,
+                        x * cellWidth, (x + 2) * cellWidth, top);
                 continue;
             }
             if (runStart < 0) {
@@ -1118,8 +1142,76 @@ public class TerminalView extends View {
         textPaint.setColor(fg);
         textPaint.setFakeBoldText((attr & TerminalNative.ATTR_BOLD) != 0);
         textPaint.setTextSkewX((attr & TerminalNative.ATTR_ITALIC) != 0 ? -0.25f : 0);
-        textPaint.setUnderlineText((attr & TerminalNative.ATTR_UNDERLINE) != 0);
+        // Underlines are stroked separately by drawUnderline so the engine's
+        // 4:2..4:5 styles render; Paint's underline only does a solid line.
         textPaint.setStrikeThruText((attr & TerminalNative.ATTR_STRIKE) != 0);
+    }
+
+    /**
+     * Strokes the cell underline for a run spanning the pixels [left, right) at
+     * row top {@code top}, in the style encoded in the attrs byte. Single is a
+     * plain line; double is a stacked pair; curly is a stroked sine; dotted and
+     * dashed reuse the cached {@link DashPathEffect}s. No-op when the run has no
+     * underline. The line color matches the run's foreground.
+     */
+    private void drawUnderline(Canvas canvas, int color, int attr,
+            float left, float right, float top) {
+        int style = (attr & TerminalNative.ATTR_UL_MASK) >> TerminalNative.ATTR_UL_SHIFT;
+        if (style == TerminalNative.UNDERLINE_NONE) return;
+
+        // Sit the line within the descent, below the glyph baseline.
+        float descent = cellHeight - baseline;
+        float y = top + baseline + descent * 0.45f;
+        underlinePaint.setColor(color);
+        underlinePaint.setPathEffect(null);
+
+        switch (style) {
+            case TerminalNative.UNDERLINE_DOUBLE: {
+                float half = Math.max(underlineThickness, descent * 0.18f);
+                float y1 = y - half;
+                float y2 = Math.min(y + half, top + cellHeight - underlineThickness * 0.5f);
+                canvas.drawLine(left, y1, right, y1, underlinePaint);
+                canvas.drawLine(left, y2, right, y2, underlinePaint);
+                break;
+            }
+            case TerminalNative.UNDERLINE_CURLY:
+                drawCurlyUnderline(canvas, left, right, y, top);
+                break;
+            case TerminalNative.UNDERLINE_DOTTED:
+                underlinePaint.setPathEffect(dottedEffect);
+                canvas.drawLine(left, y, right, y, underlinePaint);
+                break;
+            case TerminalNative.UNDERLINE_DASHED:
+                underlinePaint.setPathEffect(dashedEffect);
+                canvas.drawLine(left, y, right, y, underlinePaint);
+                break;
+            default: // UNDERLINE_SINGLE
+                canvas.drawLine(left, y, right, y, underlinePaint);
+                break;
+        }
+    }
+
+    /**
+     * Strokes a sine-like curl centered on {@code y} across [left, right), one
+     * wave per cell, with its amplitude clamped so the curl stays between the
+     * baseline and the cell bottom. Reuses {@link #underlinePath}.
+     */
+    private void drawCurlyUnderline(Canvas canvas, float left, float right,
+            float y, float top) {
+        // A quad bezier peaks at half its control offset, so double the target.
+        float peak = Math.min(y - (top + baseline), top + cellHeight - y);
+        float ctrl = Math.max(2f, Math.min((cellHeight - baseline) * 0.6f, peak * 2f));
+        float half = Math.max(2f, cellWidth * 0.5f); // half-wavelength
+        underlinePath.rewind();
+        underlinePath.moveTo(left, y);
+        boolean up = true;
+        for (float x = left; x < right; x += half) {
+            float nx = Math.min(x + half, right);
+            float cx = (x + nx) * 0.5f;
+            underlinePath.quadTo(cx, up ? y - ctrl : y + ctrl, nx, y);
+            up = !up;
+        }
+        canvas.drawPath(underlinePath, underlinePaint);
     }
 
     /**

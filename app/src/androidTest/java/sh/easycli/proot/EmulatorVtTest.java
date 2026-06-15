@@ -127,6 +127,32 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void sgrUnderlineStyles() {
+        // SGR 4:n selects the underline shape: 1 single, 2 double, 3 curly,
+        // 4 dotted, 5 dashed, 0 off. Each char carries the style in effect.
+        feed("\u001b[4:1ma\u001b[4:2mb\u001b[4:3mc"
+                + "\u001b[4:4md\u001b[4:5me\u001b[4:0mf");
+        ScreenSnapshot s = snapshot();
+        assertEquals(TerminalNative.UNDERLINE_SINGLE, underlineStyle(s, 0));
+        assertEquals(TerminalNative.UNDERLINE_DOUBLE, underlineStyle(s, 1));
+        assertEquals(TerminalNative.UNDERLINE_CURLY, underlineStyle(s, 2));
+        assertEquals(TerminalNative.UNDERLINE_DOTTED, underlineStyle(s, 3));
+        assertEquals(TerminalNative.UNDERLINE_DASHED, underlineStyle(s, 4));
+        assertEquals(TerminalNative.UNDERLINE_NONE, underlineStyle(s, 5));
+        // The presence bit tracks the field: set for the curl, clear once off.
+        assertTrue((s.attrs[cell(2, 0)] & TerminalNative.ATTR_UNDERLINE) != 0);
+        assertFalse((s.attrs[cell(5, 0)] & TerminalNative.ATTR_UNDERLINE) != 0);
+        // Legacy SGR 4 still maps to a single underline.
+        feed("\u001b[H\u001b[4mg");
+        assertEquals(TerminalNative.UNDERLINE_SINGLE, underlineStyle(snapshot(), 0));
+    }
+
+    private int underlineStyle(ScreenSnapshot s, int x) {
+        return (s.attrs[cell(x, 0)] & TerminalNative.ATTR_UL_MASK)
+                >> TerminalNative.ATTR_UL_SHIFT;
+    }
+
+    @Test
     public void themeColorsApply() {
         // A palette where ANSI red (index 1) is a recognizable color; the rest
         // are black. fg/bg/cursor are distinct so each meta slot is testable.

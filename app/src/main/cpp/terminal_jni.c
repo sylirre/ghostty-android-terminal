@@ -391,6 +391,12 @@ static jint pack_rgb(GhosttyColorRgb c) {
 #define ATTR_UNDERLINE 4
 #define ATTR_STRIKE 8
 #define ATTR_WIDE 16
+/* Underline shape: a 3-bit field (the GhosttySgrUnderline value, 0..5) packed
+   into bits 5-7. ATTR_UNDERLINE flags presence; this field names the style
+   (single/double/curly/dotted/dashed). Bit 7 is the sign bit of the signed
+   Java byte, so consumers mask with ATTR_UL_MASK before shifting down. */
+#define ATTR_UL_SHIFT 5
+#define ATTR_UL_MASK (7 << ATTR_UL_SHIFT)
 
 /* Selection flag bits in meta[9], mirrored in ScreenSnapshot. */
 #define SEL_ACTIVE 1
@@ -614,7 +620,9 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
             jbyte attr = 0;
             if (style.bold) attr |= ATTR_BOLD;
             if (style.italic) attr |= ATTR_ITALIC;
-            if (style.underline) attr |= ATTR_UNDERLINE;
+            if (style.underline)
+                attr |= ATTR_UNDERLINE |
+                        (jbyte)((style.underline & 7) << ATTR_UL_SHIFT);
             if (style.strikethrough) attr |= ATTR_STRIKE;
             if (wide == GHOSTTY_CELL_WIDE_WIDE) attr |= ATTR_WIDE;
 
