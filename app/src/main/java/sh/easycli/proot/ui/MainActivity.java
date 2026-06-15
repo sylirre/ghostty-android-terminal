@@ -245,7 +245,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         Bitmap bmp = null;
         if (path != null) {
             DisplayMetrics dm = getResources().getDisplayMetrics();
-            bmp = BackgroundImageStore.decode(path, dm.widthPixels, dm.heightPixels);
+            bmp = BackgroundImageStore.decode(path, dm.widthPixels, dm.heightPixels,
+                    settings.backgroundImageBlur());
             if (bmp == null) settings.setBackgroundImagePath(null); // stale/corrupt
         }
         int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);

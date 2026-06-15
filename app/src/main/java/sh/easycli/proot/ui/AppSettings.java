@@ -23,6 +23,7 @@ public final class AppSettings {
     private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
     private static final String KEY_BG_IMAGE_PATH = "bg_image_path";
     private static final String KEY_BG_IMAGE_OPACITY = "bg_image_opacity";
+    private static final String KEY_BG_IMAGE_BLUR = "bg_image_blur";
     private static final String KEY_CURSOR_STYLE = "cursor_style";
     private static final String KEY_CURSOR_BLINK = "cursor_blink";
 
@@ -121,6 +122,22 @@ public final class AppSettings {
     public void setBackgroundImageOpacity(int percent) {
         int clamped = Math.max(0, Math.min(100, percent));
         prefs.edit().putInt(KEY_BG_IMAGE_OPACITY, clamped).apply();
+    }
+
+    /**
+     * How much the background image is blurred, 0–100 percent. Unlike opacity
+     * (a draw-time alpha), blur is baked into the decoded bitmap by
+     * {@link BackgroundImageStore#decode}, so changing it re-decodes the image.
+     * 0 leaves the photo sharp; higher values soften it so foreground text
+     * stands out. Defaults to no blur.
+     */
+    public int backgroundImageBlur() {
+        return prefs.getInt(KEY_BG_IMAGE_BLUR, 0);
+    }
+
+    public void setBackgroundImageBlur(int percent) {
+        int clamped = Math.max(0, Math.min(100, percent));
+        prefs.edit().putInt(KEY_BG_IMAGE_BLUR, clamped).apply();
     }
 
     /**

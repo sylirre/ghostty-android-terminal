@@ -109,6 +109,30 @@
 
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/theme_bg_blur_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_bg_image_blur"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <SeekBar
+                    android:id="@+id/theme_bg_blur"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginLeft="8dp"
+                    android:max="100" />
+
+            </LinearLayout>
+
             <!-- Cursor shape + blink. Global, like the background image, not
                  part of the theme color working copy; a running program can
                  still override the shape (e.g. a bar in vim insert mode). -->

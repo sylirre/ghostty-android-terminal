@@ -25,6 +25,15 @@ final class BackgroundImageStore {
 
     private static final String FILE = "terminal_background";
 
+    // Blur tuning. The blur is run on a copy no larger than BLUR_MAX_DIM on its
+    // longest side (it is upscaled when drawn, and blur discards detail anyway),
+    // which keeps the pixel passes and their temporary buffers cheap. At 100%
+    // the radius is BLUR_MAX_FRACTION of the working bitmap's shorter side;
+    // BLUR_PASSES box-blur iterations approximate a Gaussian.
+    private static final int BLUR_MAX_DIM = 1080;
+    private static final float BLUR_MAX_FRACTION = 0.05f;
+    private static final int BLUR_PASSES = 2;
+
     private BackgroundImageStore() {}
 
     static File file(Context context) {
@@ -58,9 +67,10 @@ final class BackgroundImageStore {
     /**
      * Decodes the stored image downsampled so its dimensions stay at or above
      * {@code reqW}×{@code reqH} (a power-of-two subsample, the cheapest path),
-     * or null if the file is missing or undecodable.
+     * then blurs it by {@code blurPercent} (0–100; 0 leaves it sharp). Returns
+     * null if the file is missing or undecodable.
      */
-    static Bitmap decode(String path, int reqW, int reqH) {
+    static Bitmap decode(String path, int reqW, int reqH, int blurPercent) {
         if (path == null) return null;
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
@@ -70,7 +80,9 @@ final class BackgroundImageStore {
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight,
                 Math.max(1, reqW), Math.max(1, reqH));
-        return BitmapFactory.decodeFile(path, opts);
+        Bitmap bmp = BitmapFactory.decodeFile(path, opts);
+        if (bmp == null || blurPercent <= 0) return bmp;
+        return blur(bmp, reqW, reqH, blurPercent);
     }
 
     private static int sampleSize(int w, int h, int reqW, int reqH) {
@@ -79,5 +91,81 @@ final class BackgroundImageStore {
             sample *= 2;
         }
         return sample;
+    }
+
+    /**
+     * Returns a blurred copy of {@code src} (recycling {@code src} once it is no
+     * longer needed) sized for at most {@code reqW}×{@code reqH}. The blur runs
+     * as repeated box blurs over the pixel buffer, which is portable across all
+     * supported API levels (no RenderScript/RenderEffect version split).
+     */
+    private static Bitmap blur(Bitmap src, int reqW, int reqH, int percent) {
+        int cap = Math.min(Math.max(reqW, reqH), BLUR_MAX_DIM);
+        Bitmap work = scaleDown(src, cap); // recycles src if it shrinks it
+        int w = work.getWidth(), h = work.getHeight();
+        int radius = Math.round(percent / 100f * BLUR_MAX_FRACTION * Math.min(w, h));
+        if (radius < 1) return work;
+
+        int[] a = new int[w * h];
+        int[] b = new int[w * h];
+        work.getPixels(a, 0, w, 0, 0, w, h);
+        for (int pass = 0; pass < BLUR_PASSES; pass++) {
+            boxBlur(a, b, w, h, radius, true);  // horizontal: a -> b
+            boxBlur(b, a, w, h, radius, false); // vertical:   b -> a
+        }
+
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        out.setPixels(a, 0, w, 0, 0, w, h);
+        work.recycle();
+        return out;
+    }
+
+    /** Scales {@code src} so its longest side is at most {@code cap}, recycling
+     *  the original; returns it unchanged when already within {@code cap}. */
+    private static Bitmap scaleDown(Bitmap src, int cap) {
+        int w = src.getWidth(), h = src.getHeight();
+        int longest = Math.max(w, h);
+        if (longest <= cap) return src;
+        float s = cap / (float) longest;
+        Bitmap scaled = Bitmap.createScaledBitmap(
+                src, Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)), true);
+        if (scaled != src) src.recycle();
+        return scaled;
+    }
+
+    /**
+     * One box-blur pass over ARGB pixels with a sliding window of width
+     * {@code 2*radius+1}, edges extended by clamping. Reads {@code in}, writes
+     * {@code out}; {@code horizontal} selects the axis.
+     */
+    private static void boxBlur(int[] in, int[] out, int w, int h, int radius,
+            boolean horizontal) {
+        int div = 2 * radius + 1;
+        int lines = horizontal ? h : w;
+        int span = horizontal ? w : h;
+        int step = horizontal ? 1 : w;
+        for (int line = 0; line < lines; line++) {
+            int base = horizontal ? line * w : line;
+            int sa = 0, sr = 0, sg = 0, sb = 0;
+            for (int d = -radius; d <= radius; d++) {
+                int p = in[base + clamp(d, span) * step];
+                sa += p >>> 24; sr += (p >> 16) & 0xFF;
+                sg += (p >> 8) & 0xFF; sb += p & 0xFF;
+            }
+            for (int i = 0; i < span; i++) {
+                out[base + i * step] = ((sa / div) << 24) | ((sr / div) << 16)
+                        | ((sg / div) << 8) | (sb / div);
+                int pa = in[base + clamp(i + radius + 1, span) * step];
+                int ps = in[base + clamp(i - radius, span) * step];
+                sa += (pa >>> 24) - (ps >>> 24);
+                sr += ((pa >> 16) & 0xFF) - ((ps >> 16) & 0xFF);
+                sg += ((pa >> 8) & 0xFF) - ((ps >> 8) & 0xFF);
+                sb += (pa & 0xFF) - (ps & 0xFF);
+            }
+        }
+    }
+
+    private static int clamp(int i, int span) {
+        return i < 0 ? 0 : (i >= span ? span - 1 : i);
     }
 }

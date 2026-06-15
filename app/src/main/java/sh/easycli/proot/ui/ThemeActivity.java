@@ -71,8 +71,8 @@ public final class ThemeActivity extends Activity {
     // color working copy). bgPreviewBitmap is owned here and drawn in the
     // preview; the live terminal gets its own copy from MainActivity.
     private Button btnBgChoose, btnBgRemove;
-    private View bgOpacityRow;
-    private SeekBar bgOpacity;
+    private View bgOpacityRow, bgBlurRow;
+    private SeekBar bgOpacity, bgBlur;
     private Bitmap bgPreviewBitmap;
 
     // Cursor shape + blink: global settings (like the background image), not
@@ -206,6 +206,8 @@ public final class ThemeActivity extends Activity {
         btnBgRemove = findViewById(R.id.theme_bg_remove);
         bgOpacityRow = findViewById(R.id.theme_bg_opacity_row);
         bgOpacity = findViewById(R.id.theme_bg_opacity);
+        bgBlurRow = findViewById(R.id.theme_bg_blur_row);
+        bgBlur = findViewById(R.id.theme_bg_blur);
 
         btnBgChoose.setOnClickListener(v -> pickBackgroundImage());
         btnBgRemove.setOnClickListener(v -> removeBackgroundImage());
@@ -219,6 +221,19 @@ public final class ThemeActivity extends Activity {
             }
             @Override public void onStartTrackingTouch(SeekBar sb) {}
             @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        // Blur is baked into the decoded bitmap, so re-decode only when the
+        // user lifts their finger rather than on every drag tick.
+        bgBlur.setProgress(settings.backgroundImageBlur());
+        bgBlur.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (fromUser) settings.setBackgroundImageBlur(progress);
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {
+                reloadBackgroundBitmap();
+            }
         });
         reloadBackgroundBitmap();
     }
@@ -272,7 +287,8 @@ public final class ThemeActivity extends Activity {
         String path = settings.backgroundImagePath();
         if (path != null) {
             DisplayMetrics dm = getResources().getDisplayMetrics();
-            bgPreviewBitmap = BackgroundImageStore.decode(path, dm.widthPixels, dm.heightPixels);
+            bgPreviewBitmap = BackgroundImageStore.decode(path, dm.widthPixels,
+                    dm.heightPixels, settings.backgroundImageBlur());
             if (bgPreviewBitmap == null) {
                 // The file went missing or is corrupt: forget it.
                 settings.setBackgroundImagePath(null);
@@ -289,6 +305,7 @@ public final class ThemeActivity extends Activity {
                 ? R.string.theme_bg_image_change : R.string.theme_bg_image_choose);
         btnBgRemove.setVisibility(hasImage ? View.VISIBLE : View.GONE);
         bgOpacityRow.setVisibility(hasImage ? View.VISIBLE : View.GONE);
+        bgBlurRow.setVisibility(hasImage ? View.VISIBLE : View.GONE);
     }
 
     // --- Cursor shape + blink (global, like the wallpaper) ---
