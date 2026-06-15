@@ -3,6 +3,7 @@ package sh.easycli.proot.ui;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -138,7 +139,10 @@ abstract class Setting {
     /**
      * A row that opens something else (a screen or sub-dialog) when tapped.
      * The trailing control is a label showing the current value (e.g. the
-     * active theme name), refreshed each time the settings dialog is built.
+     * active theme name). The opened screen (theme editor, extra-keys editor)
+     * can change that value while this dialog stays up underneath, so the
+     * label re-reads the value whenever the dialog regains window focus on
+     * return — otherwise it would keep the snapshot taken when it was built.
      */
     static final class Action extends Setting {
 
@@ -155,6 +159,25 @@ abstract class Setting {
         View createControl(Context context) {
             TextView label = new TextView(context);
             label.setText(value.get());
+            // Refresh on return from the screen this row opens: when that
+            // screen finishes, the dialog window regains focus and we re-read
+            // the (possibly changed) value rather than showing a stale name.
+            label.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                private final ViewTreeObserver.OnWindowFocusChangeListener onFocus =
+                        hasFocus -> {
+                            if (hasFocus) label.setText(value.get());
+                        };
+
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                    v.getViewTreeObserver().addOnWindowFocusChangeListener(onFocus);
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    v.getViewTreeObserver().removeOnWindowFocusChangeListener(onFocus);
+                }
+            });
             return label;
         }
 
