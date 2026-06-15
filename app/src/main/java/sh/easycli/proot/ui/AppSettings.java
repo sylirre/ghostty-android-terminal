@@ -29,6 +29,7 @@ public final class AppSettings {
     private static final String KEY_TOUCH_KEYBOARD = "touch_keyboard";
     private static final String KEY_TEXT_MARGIN_LEFT = "text_margin_left";
     private static final String KEY_TEXT_MARGIN_RIGHT = "text_margin_right";
+    private static final String KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN = "hide_extra_keys_when_kb_hidden";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -205,5 +206,18 @@ public final class AppSettings {
 
     public void setTextMarginRight(int dp) {
         prefs.edit().putInt(KEY_TEXT_MARGIN_RIGHT, Math.max(0, dp)).apply();
+    }
+
+    /**
+     * When true, the extra-keys toolbar is hidden whenever the soft keyboard is
+     * not visible, reclaiming that vertical space while the keyboard is down.
+     * Off by default so the toolbar always shows (the historical behaviour).
+     */
+    public boolean hideExtraKeysWhenKeyboardHidden() {
+        return prefs.getBoolean(KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN, false);
+    }
+
+    public void setHideExtraKeysWhenKeyboardHidden(boolean hide) {
+        prefs.edit().putBoolean(KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN, hide).apply();
     }
 }

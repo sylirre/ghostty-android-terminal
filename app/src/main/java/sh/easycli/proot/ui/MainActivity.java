@@ -94,6 +94,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeysConfig = new ExtraKeysConfig(this);
         extraKeys.setConfig(extraKeysConfig);
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
+        extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
@@ -117,16 +118,23 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
+            boolean imeVisible;
             if (Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets bars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                imeVisible = insets.isVisible(WindowInsets.Type.ime());
             } else {
                 v.setPadding(insets.getSystemWindowInsetLeft(),
                         insets.getSystemWindowInsetTop(),
                         insets.getSystemWindowInsetRight(),
                         insets.getSystemWindowInsetBottom());
+                // On API 29, the stable bottom inset is the nav bar; any extra
+                // bottom space in the system-window insets is the IME.
+                imeVisible = insets.getSystemWindowInsetBottom()
+                        > insets.getStableInsetBottom();
             }
+            extraKeys.setKeyboardVisible(imeVisible);
             return WindowInsets.CONSUMED;
         });
 
@@ -211,6 +219,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
+        extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         if (current != null && settings.touchKeyboard()) showKeyboard();
     }
@@ -450,6 +459,15 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setExtraKeysEnabled(enabled);
                     extraKeys.setRowEnabled(enabled);
                 }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_extra_keys_hide_when_kb_hidden_title),
+                getString(R.string.setting_extra_keys_hide_when_kb_hidden_summary),
+                settings::hideExtraKeysWhenKeyboardHidden,
+                hide -> {
+                    settings.setHideExtraKeysWhenKeyboardHidden(hide);
+                    extraKeys.setHideWhenKeyboardHidden(hide);
+                })
+                .enabledWhen(settings::extraKeysEnabled));
         // Greyed out while the toolbar is off — its keys are kept, just hidden,
         // so there is nothing to edit until it is shown again.
         items.add(new Setting.Action(

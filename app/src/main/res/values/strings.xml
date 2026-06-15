@@ -189,6 +189,8 @@
     <!-- Settings: Extra keys row -->
     <string name="setting_extra_keys_enabled_title">Extra keys row</string>
     <string name="setting_extra_keys_enabled_summary">Show the special-keys toolbar above the keyboard. Hiding it keeps your configured keys.</string>
+    <string name="setting_extra_keys_hide_when_kb_hidden_title">Hide row when keyboard is closed</string>
+    <string name="setting_extra_keys_hide_when_kb_hidden_summary">Automatically hide the extra-keys toolbar when the touch keyboard is not visible.</string>
     <string name="setting_extra_keys_title">Configure keys</string>
     <string name="setting_extra_keys_summary">Choose, reorder and add the keys shown in the toolbar above the keyboard.</string>
     <plurals name="extra_keys_count">

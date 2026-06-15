@@ -37,6 +37,14 @@ public class ExtraKeysView extends HorizontalScrollView {
     // keys themselves are untouched, so flipping this back shows them as before.
     private boolean enabledRow = true;
 
+    // When true, the toolbar additionally hides while the soft keyboard is down.
+    private boolean hideWhenKeyboardHidden = false;
+    // Tracks the last known IME visibility so we can react without a full reload.
+    private boolean keyboardVisible = true;
+    // Set by reload(); needed so applyVisibility() can check emptiness without
+    // re-querying the config.
+    private boolean hasKeys = false;
+
     // Sticky-modifier buttons currently on screen, with the bit each toggles, so
     // updateToggles() can recolor them without knowing the layout in advance.
     private final List<ModButton> modButtons = new ArrayList<>();
@@ -86,17 +94,40 @@ public class ExtraKeysView extends HorizontalScrollView {
         reload();
     }
 
+    /**
+     * When {@code hide} is true, the toolbar additionally hides while the soft
+     * keyboard is not visible (as reported by {@link #setKeyboardVisible}).
+     */
+    public void setHideWhenKeyboardHidden(boolean hide) {
+        hideWhenKeyboardHidden = hide;
+        applyVisibility();
+    }
+
+    /**
+     * Called by the activity whenever the IME appears or disappears so the
+     * toolbar can react when {@link #setHideWhenKeyboardHidden} is on.
+     */
+    public void setKeyboardVisible(boolean visible) {
+        if (keyboardVisible == visible) return;
+        keyboardVisible = visible;
+        applyVisibility();
+    }
+
     /** Rebuilds the key row from the current config (call after edits). */
     public void reload() {
         row.removeAllViews();
         modButtons.clear();
         if (config == null) return;
         List<ExtraKey> keys = config.enabledKeys(getContext());
+        hasKeys = !keys.isEmpty();
         for (ExtraKey key : keys) addKey(key);
-        // Hidden when disabled, or when empty (an empty toolbar is just a thin
-        // colored bar). The keys are still built so re-enabling is instant.
-        setVisibility(enabledRow && !keys.isEmpty() ? VISIBLE : GONE);
+        applyVisibility();
         updateToggles();
+    }
+
+    private void applyVisibility() {
+        boolean show = enabledRow && hasKeys && (!hideWhenKeyboardHidden || keyboardVisible);
+        setVisibility(show ? VISIBLE : GONE);
     }
 
     private void addKey(ExtraKey key) {
