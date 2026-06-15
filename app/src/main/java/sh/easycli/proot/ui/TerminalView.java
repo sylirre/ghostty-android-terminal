@@ -12,6 +12,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
@@ -30,7 +31,6 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.OverScroller;
-import android.widget.Toast;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -113,9 +113,20 @@ public class TerminalView extends View {
     private int cellHeight;
     private int baseline;
     private int cols = 80, rows = 24;
-    // Reused so rapid pinch-zoom ticks replace the visible toast instead of
-    // queueing a trail of stale dimensions behind it.
-    private Toast sizeToast;
+
+    // --- Grid-size HUD. A transient COLSxROWS chip drawn in onDraw while
+    // pinch-zooming and held briefly after. Drawn in-view (rather than as a
+    // Toast) so it reads cols/rows live every frame — a reused Toast on
+    // targetSdk >= 30 freezes its text at the first show() of a rapid burst,
+    // showing a stale size for the whole gesture. uptimeMillis of the last
+    // announce, 0 when idle; the overlay holds opaque then fades out.
+    private final Paint overlayTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint overlayBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF overlayRect = new RectF();
+    private float overlayPadding, overlayRadius;
+    private long sizeOverlayShownAt;
+    private static final long SIZE_OVERLAY_HOLD_MS = 750;
+    private static final long SIZE_OVERLAY_FADE_MS = 350;
 
     // --- Kitty graphics. Placement geometry is re-read every frame into gfx
     // (GFX_STRIDE ints each); decoded bitmaps are cached by image id and
@@ -209,6 +220,12 @@ public class TerminalView extends View {
         fontSizeSp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getFloat(PREF_FONT_SP, DEFAULT_FONT_SP);
         setTextSizePx(spToPx(fontSizeSp));
+
+        overlayTextPaint.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
+        overlayTextPaint.setTextAlign(Paint.Align.CENTER);
+        overlayTextPaint.setTextSize(spToPx(16f));
+        overlayPadding = spToPx(12f);
+        overlayRadius = spToPx(8f);
 
         scroller = new OverScroller(context);
         // The vertical scrollbar is declared in the layout (android:scrollbars)
@@ -375,7 +392,7 @@ public class TerminalView extends View {
             updateGridSize(getWidth(), getHeight());
             // Announce the new grid only for zoom-driven resizes; layout
             // changes (keyboard show/hide) go through onSizeChanged silently.
-            if (session != null) showSizeToast();
+            if (session != null) showSizeOverlay();
         }
         invalidate();
     }
@@ -471,15 +488,51 @@ public class TerminalView extends View {
         }
     }
 
-    /** Flashes the current grid dimensions, reusing one toast to avoid spam. */
-    private void showSizeToast() {
-        String text = getResources().getString(R.string.toast_grid_size, cols, rows);
-        if (sizeToast == null) {
-            sizeToast = Toast.makeText(getContext(), text, Toast.LENGTH_SHORT);
-        } else {
-            sizeToast.setText(text);
+    /** (Re)arms the in-view grid-size HUD; onDraw renders and fades it. */
+    private void showSizeOverlay() {
+        sizeOverlayShownAt = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
+    /**
+     * Draws the transient COLSxROWS HUD over everything else. Reads cols/rows
+     * live, so the number always matches the current grid. Held opaque for
+     * {@link #SIZE_OVERLAY_HOLD_MS} after the last announce, then faded over
+     * {@link #SIZE_OVERLAY_FADE_MS}, self-scheduling frames during the fade.
+     */
+    private void drawSizeOverlay(Canvas canvas) {
+        if (sizeOverlayShownAt == 0) return;
+        long elapsed = SystemClock.uptimeMillis() - sizeOverlayShownAt;
+        if (elapsed >= SIZE_OVERLAY_HOLD_MS + SIZE_OVERLAY_FADE_MS) {
+            sizeOverlayShownAt = 0;
+            return;
         }
-        sizeToast.show();
+        float fade = elapsed <= SIZE_OVERLAY_HOLD_MS ? 1f
+                : 1f - (elapsed - SIZE_OVERLAY_HOLD_MS) / (float) SIZE_OVERLAY_FADE_MS;
+
+        String text = getResources().getString(R.string.grid_size_overlay, cols, rows);
+        // Inverse chip: fill with the default fg, paint text in the default bg.
+        // Those two are guaranteed to contrast, so the HUD stays legible on
+        // any theme and against any cell content underneath it.
+        int chip = snapshot.defaultFg();
+        int ink = snapshot.defaultBg();
+
+        float tw = overlayTextPaint.measureText(text);
+        Paint.FontMetrics fm = overlayTextPaint.getFontMetrics();
+        float boxW = tw + overlayPadding * 2;
+        float boxH = (fm.descent - fm.ascent) + overlayPadding * 2;
+        float cx = getWidth() / 2f, cy = getHeight() / 2f;
+        overlayRect.set(cx - boxW / 2, cy - boxH / 2, cx + boxW / 2, cy + boxH / 2);
+
+        overlayBgPaint.setColor(chip);
+        overlayBgPaint.setAlpha((int) (0xE6 * fade));
+        canvas.drawRoundRect(overlayRect, overlayRadius, overlayRadius, overlayBgPaint);
+
+        overlayTextPaint.setColor(ink);
+        overlayTextPaint.setAlpha((int) (0xFF * fade));
+        canvas.drawText(text, cx, cy - (fm.ascent + fm.descent) / 2f, overlayTextPaint);
+
+        postInvalidateOnAnimation();
     }
 
     @Override
@@ -847,6 +900,7 @@ public class TerminalView extends View {
             drawRowText(canvas, y, sc);
         }
         drawImages(canvas, false); // z >= 0: above text (the Kitty default)
+        drawSizeOverlay(canvas); // grid-size HUD sits above all cell content
         drawSelectionHandles(canvas);
         if (selecting && !snapshot.hasSelection()) {
             // The selected text scrolled out of existence (scrollback
