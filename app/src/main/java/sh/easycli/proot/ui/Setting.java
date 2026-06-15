@@ -30,9 +30,40 @@ abstract class Setting {
     final String title;
     final String summary;
 
+    /**
+     * Gates whether this row is interactive. When it returns false the dialog
+     * greys the row out and ignores taps (see {@link SettingsDialog}). Null
+     * means always enabled. Re-evaluated whenever any row reports a change, so
+     * one toggle can disable another live (e.g. hiding the extra-keys toolbar
+     * greys out its editor row).
+     */
+    private BooleanSupplier enabledWhen;
+
+    /**
+     * Set by the dialog; a row calls it after mutating a value so the dialog
+     * can re-apply enabled state across all rows. Null until hosted.
+     */
+    Runnable onChanged;
+
     Setting(String title, String summary) {
         this.title = title;
         this.summary = summary;
+    }
+
+    /** Restricts this row to being interactive only while {@code gate} is true. */
+    Setting enabledWhen(BooleanSupplier gate) {
+        this.enabledWhen = gate;
+        return this;
+    }
+
+    /** Whether the row is currently interactive (ungated rows always are). */
+    boolean isEnabled() {
+        return enabledWhen == null || enabledWhen.getAsBoolean();
+    }
+
+    /** Subclasses call this after changing a value so dependents can refresh. */
+    void notifyChanged() {
+        if (onChanged != null) onChanged.run();
     }
 
     /**
@@ -66,7 +97,10 @@ abstract class Setting {
             Switch sw = new Switch(context);
             // Seed state before wiring the listener so this is silent.
             sw.setChecked(value.getAsBoolean());
-            sw.setOnCheckedChangeListener((btn, checked) -> onChange.accept(checked));
+            sw.setOnCheckedChangeListener((btn, checked) -> {
+                onChange.accept(checked);
+                notifyChanged(); // a dependent row may need to grey out/in
+            });
             return sw;
         }
 

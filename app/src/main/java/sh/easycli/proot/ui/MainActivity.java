@@ -90,6 +90,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         themeStore = new ThemeStore(this);
         extraKeysConfig = new ExtraKeysConfig(this);
         extraKeys.setConfig(extraKeysConfig);
+        extraKeys.setRowEnabled(settings.extraKeysEnabled());
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
@@ -200,8 +201,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         super.onResume();
         // Pick up theme changes made in ThemeActivity (and seed the first paint).
         applyTheme();
-        // Pick up extra-keys edits made in ExtraKeysActivity.
-        extraKeys.reload();
+        // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
+        // the show/hide toggle.
+        extraKeys.setRowEnabled(settings.extraKeysEnabled());
     }
 
     @Override
@@ -382,12 +384,23 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setRichKeyboard(enabled);
                     terminal.setRichKeyboard(enabled);
                 }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_extra_keys_enabled_title),
+                getString(R.string.setting_extra_keys_enabled_summary),
+                settings::extraKeysEnabled,
+                enabled -> {
+                    settings.setExtraKeysEnabled(enabled);
+                    extraKeys.setRowEnabled(enabled);
+                }));
+        // Greyed out while the toolbar is off — its keys are kept, just hidden,
+        // so there is nothing to edit until it is shown again.
         items.add(new Setting.Action(
                 getString(R.string.setting_extra_keys_title),
                 getString(R.string.setting_extra_keys_summary),
                 () -> getResources().getQuantityString(R.plurals.extra_keys_count,
                         extraKeysConfig.order().size(), extraKeysConfig.order().size()),
-                () -> startActivity(new Intent(this, ExtraKeysActivity.class))));
+                () -> startActivity(new Intent(this, ExtraKeysActivity.class)))
+                .enabledWhen(settings::extraKeysEnabled));
         items.add(new Setting.Choice(
                 getString(R.string.setting_scrollback_title),
                 getString(R.string.setting_scrollback_summary),

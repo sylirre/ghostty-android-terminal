@@ -17,6 +17,7 @@ public final class AppSettings {
     private static final String FILE = "settings";
     private static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
     private static final String KEY_RICH_KEYBOARD = "rich_keyboard";
+    private static final String KEY_EXTRA_KEYS_ENABLED = "extra_keys_enabled";
     private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
 
     /** Default scrollback depth used until the user changes it. */
@@ -51,6 +52,19 @@ public final class AppSettings {
 
     public void setRichKeyboard(boolean enabled) {
         prefs.edit().putBoolean(KEY_RICH_KEYBOARD, enabled).apply();
+    }
+
+    /**
+     * When true, the extra-keys toolbar is shown above the soft keyboard.
+     * Disabling it only hides the toolbar — the configured key layout is kept
+     * (in {@link ExtraKeysConfig}) and reappears unchanged when re-enabled.
+     */
+    public boolean extraKeysEnabled() {
+        return prefs.getBoolean(KEY_EXTRA_KEYS_ENABLED, true);
+    }
+
+    public void setExtraKeysEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_EXTRA_KEYS_ENABLED, enabled).apply();
     }
 
     /**

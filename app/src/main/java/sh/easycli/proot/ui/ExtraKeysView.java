@@ -33,6 +33,10 @@ public class ExtraKeysView extends HorizontalScrollView {
     private final LinearLayout row;
     private ExtraKeysConfig config;
 
+    // When false the toolbar is hidden regardless of the configured keys; the
+    // keys themselves are untouched, so flipping this back shows them as before.
+    private boolean enabledRow = true;
+
     // Sticky-modifier buttons currently on screen, with the bit each toggles, so
     // updateToggles() can recolor them without knowing the layout in advance.
     private final List<ModButton> modButtons = new ArrayList<>();
@@ -73,6 +77,15 @@ public class ExtraKeysView extends HorizontalScrollView {
         reload();
     }
 
+    /**
+     * Shows or hides the whole toolbar without touching the configured keys.
+     * Rebuilds so the change applies immediately.
+     */
+    public void setRowEnabled(boolean enabled) {
+        enabledRow = enabled;
+        reload();
+    }
+
     /** Rebuilds the key row from the current config (call after edits). */
     public void reload() {
         row.removeAllViews();
@@ -80,8 +93,9 @@ public class ExtraKeysView extends HorizontalScrollView {
         if (config == null) return;
         List<ExtraKey> keys = config.enabledKeys(getContext());
         for (ExtraKey key : keys) addKey(key);
-        // An empty toolbar would leave a thin colored bar; hide it instead.
-        setVisibility(keys.isEmpty() ? GONE : VISIBLE);
+        // Hidden when disabled, or when empty (an empty toolbar is just a thin
+        // colored bar). The keys are still built so re-enabling is instant.
+        setVisibility(enabledRow && !keys.isEmpty() ? VISIBLE : GONE);
         updateToggles();
     }
 

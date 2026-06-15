@@ -58,6 +58,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import sh.easycli.proot.term.ScreenSnapshot;
 import sh.easycli.proot.term.SessionManager;
 import sh.easycli.proot.term.TerminalSession;
+import sh.easycli.proot.ui.AppSettings;
 import sh.easycli.proot.ui.ExtraKeysConfig;
 import sh.easycli.proot.ui.MainActivity;
 import sh.easycli.proot.ui.TerminalView;
@@ -93,6 +94,8 @@ public class TerminalUiTest {
         }
         // Don't leak extra-keys edits into other tests / the app's real config.
         new ExtraKeysConfig(ApplicationProvider.getApplicationContext()).reset();
+        new AppSettings(ApplicationProvider.getApplicationContext())
+                .setExtraKeysEnabled(true);
         scenario.close();
     }
 
@@ -186,6 +189,28 @@ public class TerminalUiTest {
         // pinned on screen — its presence proves the editor opened.
         onView(withId(R.id.extra_keys_done)).check(matches(isDisplayed()));
         pressBack(); // close the editor, back to the terminal
+    }
+
+    @Test
+    public void extraKeysToggleHidesToolbarButKeepsConfig() {
+        // Toolbar visible by default; remember how many keys are configured.
+        onView(withText("ESC")).check(matches(isDisplayed()));
+        int keyCount = new ExtraKeysConfig(
+                ApplicationProvider.getApplicationContext()).order().size();
+
+        // Turn the row off via the settings toggle, then close the dialog.
+        onView(withId(R.id.settings_button)).perform(click());
+        onView(withText(R.string.setting_extra_keys_enabled_title))
+                .inRoot(isDialog()).perform(scrollTo(), click());
+        onView(withText(R.string.settings_dialog_close))
+                .inRoot(isDialog()).perform(click());
+
+        // The toolbar is gone, but the configured keys are untouched.
+        onView(withText("ESC")).check(doesNotExist());
+        scenario.onActivity(a -> assertEquals(View.GONE,
+                a.findViewById(R.id.extra_keys).getVisibility()));
+        assertEquals(keyCount, new ExtraKeysConfig(
+                ApplicationProvider.getApplicationContext()).order().size());
     }
 
     @Test
