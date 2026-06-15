@@ -352,9 +352,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     /** Collapses the find bar and clears its match highlight. */
     private void hideSearch() {
+        boolean wasOpen = searchBar.isOpen();
         searchBar.hide();
         terminal.searchClose();
-        showKeyboard();
+        // Always restore the keyboard when search was actually open; search
+        // requires it and the user expects it back when dismissing the bar.
+        // When called from switchTo() with a closed bar, skip it — the caller
+        // handles keyboard visibility based on the touch-keyboard setting.
+        if (wasOpen) showKeyboard();
     }
 
     @Override
