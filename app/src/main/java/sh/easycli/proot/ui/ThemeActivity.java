@@ -19,6 +19,7 @@ import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import sh.easycli.proot.R;
+import sh.easycli.proot.term.TerminalNative;
 
 /**
  * Full-screen terminal theme editor reached from Settings. Lets the user pick
@@ -73,6 +75,18 @@ public final class ThemeActivity extends Activity {
     private SeekBar bgOpacity;
     private Bitmap bgPreviewBitmap;
 
+    // Cursor shape + blink: global settings (like the background image), not
+    // part of the color working copy, so editing them never marks the theme
+    // dirty. The picker offers block/underline/bar; the hollow block the engine
+    // supports is intentionally not exposed.
+    private static final int[] CURSOR_STYLES = {
+            TerminalNative.CURSOR_BLOCK,
+            TerminalNative.CURSOR_UNDERLINE,
+            TerminalNative.CURSOR_BAR,
+    };
+    private Button btnCursorStyle;
+    private Switch cursorBlink;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -112,6 +126,7 @@ public final class ThemeActivity extends Activity {
         btnDelete.setOnClickListener(v -> deleteCurrent());
 
         setupBackgroundControls();
+        setupCursorControls();
         buildSwatchGrid();
         loadInto(store.current());
     }
@@ -274,6 +289,65 @@ public final class ThemeActivity extends Activity {
                 ? R.string.theme_bg_image_change : R.string.theme_bg_image_choose);
         btnBgRemove.setVisibility(hasImage ? View.VISIBLE : View.GONE);
         bgOpacityRow.setVisibility(hasImage ? View.VISIBLE : View.GONE);
+    }
+
+    // --- Cursor shape + blink (global, like the wallpaper) ---
+
+    private void setupCursorControls() {
+        btnCursorStyle = findViewById(R.id.theme_cursor_style);
+        cursorBlink = findViewById(R.id.theme_cursor_blink);
+
+        btnCursorStyle.setOnClickListener(v -> showCursorStylePicker());
+        cursorBlink.setChecked(settings.cursorBlink());
+        cursorBlink.setOnCheckedChangeListener((btn, checked) -> {
+            settings.setCursorBlink(checked);
+            applyCursorToPreview();
+        });
+        updateCursorStyleLabel();
+        applyCursorToPreview();
+    }
+
+    private void showCursorStylePicker() {
+        String[] labels = cursorStyleLabels();
+        int current = settings.cursorStyle();
+        int checked = 0;
+        for (int i = 0; i < CURSOR_STYLES.length; i++) {
+            if (CURSOR_STYLES[i] == current) checked = i;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.theme_cursor_style)
+                .setSingleChoiceItems(labels, checked, (d, which) -> {
+                    settings.setCursorStyle(CURSOR_STYLES[which]);
+                    updateCursorStyleLabel();
+                    applyCursorToPreview();
+                    d.dismiss();
+                })
+                .setNegativeButton(R.string.theme_color_cancel, null)
+                .show();
+    }
+
+    private void updateCursorStyleLabel() {
+        String[] labels = cursorStyleLabels();
+        int current = settings.cursorStyle();
+        for (int i = 0; i < CURSOR_STYLES.length; i++) {
+            if (CURSOR_STYLES[i] == current) {
+                btnCursorStyle.setText(labels[i]);
+                return;
+            }
+        }
+        btnCursorStyle.setText(labels[0]);
+    }
+
+    private String[] cursorStyleLabels() {
+        return new String[] {
+                getString(R.string.theme_cursor_block),
+                getString(R.string.theme_cursor_underline),
+                getString(R.string.theme_cursor_bar),
+        };
+    }
+
+    private void applyCursorToPreview() {
+        preview.setCursor(settings.cursorStyle(), settings.cursorBlink());
     }
 
     // --- Swatch grid ---

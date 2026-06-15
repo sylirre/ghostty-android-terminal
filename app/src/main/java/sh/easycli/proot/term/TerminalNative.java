@@ -133,6 +133,16 @@ public final class TerminalNative {
     public static native void terminalSetColors(long handle, int fg, int bg,
             int cursor, int[] palette256);
 
+    /**
+     * Sets the default cursor style ({@code CURSOR_*}) and whether it blinks.
+     * These are the values the cursor resets to on DECSCUSR (CSI 0 q); the
+     * engine also pushes them to the live cursor immediately when no program
+     * override is active. Effective style/blink appear in
+     * {@link #terminalSnapshot} (meta[3]/meta[5]).
+     */
+    public static native void terminalSetCursorStyle(long handle, int style,
+            boolean blink);
+
     /** mode: 0 = top, 1 = bottom, 2 = by delta rows (negative is up). */
     public static native void terminalScroll(long handle, int mode, int delta);
 

@@ -86,6 +86,11 @@
     <string name="theme_bg_image_opacity">Opacity</string>
     <string name="theme_bg_image_failed">Couldn\'t load that image.</string>
     <string name="theme_bg_image_removed">Background image removed</string>
+    <string name="theme_cursor_style">Cursor style</string>
+    <string name="theme_cursor_blink">Blink cursor</string>
+    <string name="theme_cursor_block">Block</string>
+    <string name="theme_cursor_underline">Underline</string>
+    <string name="theme_cursor_bar">Bar</string>
     <string-array name="theme_ansi_names">
         <item>Black</item>
         <item>Red</item>

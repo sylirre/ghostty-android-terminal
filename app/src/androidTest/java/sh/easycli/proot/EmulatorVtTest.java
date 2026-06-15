@@ -145,6 +145,39 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void cursorStyleDefaultApplies() {
+        // A fresh terminal has no program cursor override, so the default style
+        // and blink we push show up immediately in the snapshot.
+        term.setCursorStyle(TerminalNative.CURSOR_BAR, true);
+        ScreenSnapshot s = snapshot();
+        assertEquals(TerminalNative.CURSOR_BAR, s.cursorStyle());
+        assertTrue(s.cursorBlinking());
+
+        // Changing it again still applies while nothing has overridden it.
+        term.setCursorStyle(TerminalNative.CURSOR_UNDERLINE, false);
+        s = snapshot();
+        assertEquals(TerminalNative.CURSOR_UNDERLINE, s.cursorStyle());
+        assertFalse(s.cursorBlinking());
+    }
+
+    @Test
+    public void programCursorStyleOverridesDefaultUntilReset() {
+        term.setCursorStyle(TerminalNative.CURSOR_BAR, true);
+        // DECSCUSR steady block (CSI 2 q): a program override wins over the
+        // default we set, both for shape and blink.
+        feed("\u001b[2 q");
+        ScreenSnapshot s = snapshot();
+        assertEquals(TerminalNative.CURSOR_BLOCK, s.cursorStyle());
+        assertFalse(s.cursorBlinking());
+
+        // DECSCUSR reset (CSI 0 q) falls back to our default again.
+        feed("\u001b[0 q");
+        s = snapshot();
+        assertEquals(TerminalNative.CURSOR_BAR, s.cursorStyle());
+        assertTrue(s.cursorBlinking());
+    }
+
+    @Test
     public void inverseIsResolvedNatively() {
         feed("\u001b[7mX");
         ScreenSnapshot s = snapshot();

@@ -216,12 +216,20 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         unregisterReceiver(exitReceiver);
     }
 
-    /** Pushes the selected theme to every open session and repaints. */
+    /**
+     * Pushes the selected theme colors and the global cursor style/blink
+     * preference to every open session, then repaints. Called on resume (to
+     * pick up edits made in {@link ThemeActivity}) and after creating a session
+     * (to style it before any output arrives).
+     */
     private void applyTheme() {
         TerminalTheme theme = themeStore.current();
         int[] palette = theme.toPalette256();
+        int cursorStyle = settings.cursorStyle();
+        boolean cursorBlink = settings.cursorBlink();
         for (TerminalSession s : sessions.sessions()) {
             s.emulator.setColors(theme.foreground, theme.background, theme.cursor, palette);
+            s.emulator.setCursorStyle(cursorStyle, cursorBlink);
         }
         terminal.invalidate();
     }

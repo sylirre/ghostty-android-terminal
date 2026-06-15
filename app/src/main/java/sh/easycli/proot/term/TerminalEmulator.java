@@ -47,6 +47,18 @@ public final class TerminalEmulator implements AutoCloseable {
         }
     }
 
+    /**
+     * Sets the default cursor style ({@link TerminalNative}.CURSOR_*) and whether
+     * it blinks. Safe to call at any time; takes effect on the next snapshot.
+     * A program's DECSCUSR override still wins until it resets the cursor.
+     * No-op after {@link #close}.
+     */
+    public synchronized void setCursorStyle(int style, boolean blink) {
+        if (handle != 0) {
+            TerminalNative.terminalSetCursorStyle(handle, style, blink);
+        }
+    }
+
     public synchronized void scrollToBottom() {
         if (handle != 0) TerminalNative.terminalScroll(handle, 1, 0);
     }

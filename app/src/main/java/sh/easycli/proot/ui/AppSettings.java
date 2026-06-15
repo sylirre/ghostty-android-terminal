@@ -3,6 +3,8 @@ package sh.easycli.proot.ui;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import sh.easycli.proot.term.TerminalNative;
+
 /**
  * App-wide user settings, persisted in a named SharedPreferences file so
  * they survive process death and Activity recreation (unlike the
@@ -21,6 +23,8 @@ public final class AppSettings {
     private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
     private static final String KEY_BG_IMAGE_PATH = "bg_image_path";
     private static final String KEY_BG_IMAGE_OPACITY = "bg_image_opacity";
+    private static final String KEY_CURSOR_STYLE = "cursor_style";
+    private static final String KEY_CURSOR_BLINK = "cursor_blink";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -117,5 +121,30 @@ public final class AppSettings {
     public void setBackgroundImageOpacity(int percent) {
         int clamped = Math.max(0, Math.min(100, percent));
         prefs.edit().putInt(KEY_BG_IMAGE_OPACITY, clamped).apply();
+    }
+
+    /**
+     * Preferred cursor shape: one of {@link TerminalNative}.CURSOR_BLOCK,
+     * CURSOR_UNDERLINE or CURSOR_BAR. Pushed as the terminal's default cursor
+     * style, so a full-screen program may still override it (e.g. a bar in
+     * vim's insert mode) until it resets the cursor. Defaults to a block,
+     * matching the engine's built-in default. A global choice, independent of
+     * the color theme.
+     */
+    public int cursorStyle() {
+        return prefs.getInt(KEY_CURSOR_STYLE, TerminalNative.CURSOR_BLOCK);
+    }
+
+    public void setCursorStyle(int style) {
+        prefs.edit().putInt(KEY_CURSOR_STYLE, style).apply();
+    }
+
+    /** When true, the cursor blinks unless a running program overrides it. */
+    public boolean cursorBlink() {
+        return prefs.getBoolean(KEY_CURSOR_BLINK, false);
+    }
+
+    public void setCursorBlink(boolean blink) {
+        prefs.edit().putBoolean(KEY_CURSOR_BLINK, blink).apply();
     }
 }

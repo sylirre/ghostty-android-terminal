@@ -261,6 +261,28 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSetColors(
 }
 
 /*
+ * Sets the default cursor style and blink. style is a GhosttyTerminalCursorStyle
+ * (bar=0, block=1, underline=2, block_hollow=3 — same numbering as the CURSOR_*
+ * constants and the snapshot's meta[3]). These are *defaults* applied on DECSCUSR
+ * reset (CSI 0 q); libghostty-vt also pushes them to the live cursor immediately
+ * when no program override is active, so a change at a shell prompt takes effect
+ * at once but won't fight a full-screen app's cursor. Under the TerminalEmulator
+ * lock like every other call.
+ */
+JNIEXPORT void JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalSetCursorStyle(
+    JNIEnv *env, jclass clazz, jlong h, jint style, jboolean blink) {
+    (void)env;
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+
+    GhosttyTerminalCursorStyle s = (GhosttyTerminalCursorStyle)style;
+    bool b = blink == JNI_TRUE;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE, &s);
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK, &b);
+}
+
+/*
  * Feeds PTY output through the VT parser. Returns bytes the terminal wants
  * written back to the PTY (e.g. DA/DSR responses), or null if none.
  */

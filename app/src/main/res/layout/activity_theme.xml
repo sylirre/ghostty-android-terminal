@@ -109,6 +109,51 @@
 
             </LinearLayout>
 
+            <!-- Cursor shape + blink. Global, like the background image, not
+                 part of the theme color working copy; a running program can
+                 still override the shape (e.g. a bar in vim insert mode). -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/theme_cursor_style"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <Button
+                    android:id="@+id/theme_cursor_style"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/theme_cursor_blink"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <Switch
+                    android:id="@+id/theme_cursor_blink"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
+
             <!-- Active theme + switcher. -->
             <LinearLayout
                 android:layout_width="match_parent"

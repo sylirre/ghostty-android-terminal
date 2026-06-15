@@ -9,17 +9,23 @@ import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.View;
 
+import sh.easycli.proot.term.TerminalNative;
+
 /**
  * A non-interactive sample of a {@link TerminalTheme}, drawn the way
  * {@link TerminalView} draws real output (monospace glyphs on the theme
  * background) so the editor shows what a theme actually looks like. It draws a
- * mock shell prompt, a colored file listing, error/warning lines, a block
- * cursor in the cursor color, and a strip of all 16 ANSI swatches.
+ * mock shell prompt, a colored file listing, error/warning lines, a cursor in
+ * the cursor color (shape and blink mirror the global cursor setting), and a
+ * strip of all 16 ANSI swatches.
  *
  * Purely self-contained — it needs no terminal engine. Call {@link #setTheme}
  * after every edit to repaint.
  */
 public final class ThemePreviewView extends View {
+
+    /** Blink half-period (ms); the cursor toggles on/off at this cadence. */
+    private static final long BLINK_MS = 530;
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fillPaint = new Paint();
@@ -29,6 +35,19 @@ public final class ThemePreviewView extends View {
     private TerminalTheme theme;
     private Bitmap backgroundImage;
     private int backgroundImageAlpha = 255;
+
+    private int cursorStyle = TerminalNative.CURSOR_BLOCK;
+    private boolean cursorBlink;
+    // Current blink phase; always true (cursor shown) when blink is off.
+    private boolean blinkOn = true;
+    private final Runnable blinkTick = new Runnable() {
+        @Override
+        public void run() {
+            blinkOn = !blinkOn;
+            invalidate();
+            postDelayed(this, BLINK_MS);
+        }
+    };
 
     public ThemePreviewView(Context context) {
         this(context, null);
@@ -55,6 +74,41 @@ public final class ThemePreviewView extends View {
         this.backgroundImage = bmp;
         this.backgroundImageAlpha = alpha;
         invalidate();
+    }
+
+    /**
+     * Sets the cursor shape ({@link TerminalNative}.CURSOR_*) and whether it
+     * blinks, so the preview matches the global cursor setting. Blinking is
+     * animated for live feedback while this view is attached.
+     */
+    public void setCursor(int style, boolean blink) {
+        this.cursorStyle = style;
+        this.cursorBlink = blink;
+        this.blinkOn = true;
+        updateBlinkAnimation();
+        invalidate();
+    }
+
+    /** Starts the blink loop when blinking and attached; stops it otherwise. */
+    private void updateBlinkAnimation() {
+        removeCallbacks(blinkTick);
+        if (cursorBlink && isAttachedToWindow()) {
+            postDelayed(blinkTick, BLINK_MS);
+        } else {
+            blinkOn = true; // a steady cursor is always shown
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        updateBlinkAnimation();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        removeCallbacks(blinkTick);
     }
 
     /** One colored, optionally-bold run of text on a preview line. */
@@ -103,10 +157,10 @@ public final class ThemePreviewView extends View {
                 canvas.drawText(s.text, x, y, textPaint);
                 x += textPaint.measureText(s.text);
             }
-            // A block cursor trailing the prompt line, in the cursor color.
+            // A cursor trailing the prompt line, in the cursor color; its shape
+            // and blink mirror the global cursor setting.
             if (line == lines[0]) {
-                fillPaint.setColor(theme.cursor);
-                canvas.drawRect(x, y + fm.ascent, x + charW, y + fm.descent, fillPaint);
+                drawCursor(canvas, x, y + fm.ascent, y + fm.descent, charW);
             }
             y += lineHeight;
         }
@@ -121,6 +175,28 @@ public final class ThemePreviewView extends View {
             fillPaint.setColor(a[i]);
             float left = pad + i * sw;
             canvas.drawRect(left, y, left + sw - dp(1), y + stripH, fillPaint);
+        }
+    }
+
+    /**
+     * Draws the cursor in one cell (left..left+width, top..bottom). Bar and
+     * underline use the same proportions as {@link TerminalView}; while
+     * blinking, nothing is drawn on the "off" phase.
+     */
+    private void drawCursor(Canvas canvas, float left, float top, float bottom, float width) {
+        if (cursorBlink && !blinkOn) return;
+        fillPaint.setColor(theme.cursor);
+        switch (cursorStyle) {
+            case TerminalNative.CURSOR_BAR:
+                canvas.drawRect(left, top, left + Math.max(1f, width / 4f), bottom, fillPaint);
+                break;
+            case TerminalNative.CURSOR_UNDERLINE:
+                canvas.drawRect(left, bottom - Math.max(1f, (bottom - top) / 8f),
+                        left + width, bottom, fillPaint);
+                break;
+            default: // block
+                canvas.drawRect(left, top, left + width, bottom, fillPaint);
+                break;
         }
     }
 
