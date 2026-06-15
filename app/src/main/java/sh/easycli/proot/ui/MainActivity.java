@@ -96,6 +96,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
+        terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
 
         searchBar = findViewById(R.id.search_bar);
@@ -209,7 +210,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
-        if (current != null) showKeyboard();
+        terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        if (current != null && settings.touchKeyboard()) showKeyboard();
     }
 
     @Override
@@ -282,7 +284,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.scrollbackLines(), debian, this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
-            showKeyboard();
+            if (settings.touchKeyboard()) showKeyboard();
             // Promote the process to foreground priority so the shell
             // survives backgrounding; refresh updates the session count.
             SessionService.refresh(this);
@@ -424,6 +426,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 enabled -> {
                     settings.setRichKeyboard(enabled);
                     terminal.setRichKeyboard(enabled);
+                }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_touch_keyboard_title),
+                getString(R.string.setting_touch_keyboard_summary),
+                settings::touchKeyboard,
+                enabled -> {
+                    settings.setTouchKeyboard(enabled);
+                    terminal.setTouchKeyboardEnabled(enabled);
                 }));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),

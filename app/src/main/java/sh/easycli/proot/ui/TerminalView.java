@@ -105,6 +105,7 @@ public class TerminalView extends View {
     // key, line submit, or terminal mode change resets it (see resetRichInput).
     private boolean richKeyboardEnabled;
     private boolean richInputActive; // enabled AND terminal currently safe
+    private boolean touchKeyboardEnabled = true;
     private Editable richEditable;   // the active composing connection's buffer
     private String richSent = "";    // text already forwarded for this line
     private boolean restartInputPending; // a debounced restartInput is queued
@@ -273,8 +274,10 @@ public class TerminalView extends View {
                     return true;
                 }
                 requestFocus();
-                InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
-                imm.showSoftInput(TerminalView.this, 0);
+                if (touchKeyboardEnabled) {
+                    InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
+                    imm.showSoftInput(TerminalView.this, 0);
+                }
                 return true;
             }
 
@@ -1387,6 +1390,11 @@ public class TerminalView extends View {
      * Enables/disables rich (composing-mode) soft input and recreates the
      * input connection so an open keyboard switches modes immediately.
      */
+    /** Controls whether tapping the terminal raises the soft keyboard. */
+    public void setTouchKeyboardEnabled(boolean enabled) {
+        touchKeyboardEnabled = enabled;
+    }
+
     public void setRichKeyboard(boolean enabled) {
         if (richKeyboardEnabled == enabled) return;
         richKeyboardEnabled = enabled;

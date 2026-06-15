@@ -33,6 +33,10 @@
     <string name="setting_rich_keyboard_title">Rich keyboard input</string>
     <string name="setting_rich_keyboard_summary">Enable suggestions, autocorrect and swipe typing at the shell prompt. Falls back to raw keys inside full-screen apps.</string>
 
+    <!-- Settings: Touch keyboard -->
+    <string name="setting_touch_keyboard_title">Show touch keyboard</string>
+    <string name="setting_touch_keyboard_summary">Automatically raise the soft keyboard when opening the app, creating a session, or tapping the terminal. Search always shows the keyboard regardless.</string>
+
     <!-- Settings: Scrollback buffer -->
     <string name="setting_scrollback_title">Scrollback buffer</string>
     <string name="setting_scrollback_summary">Lines of output kept for scrolling back. Takes effect for sessions started afterwards.</string>

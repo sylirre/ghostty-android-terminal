@@ -26,6 +26,7 @@ public final class AppSettings {
     private static final String KEY_BG_IMAGE_BLUR = "bg_image_blur";
     private static final String KEY_CURSOR_STYLE = "cursor_style";
     private static final String KEY_CURSOR_BLINK = "cursor_blink";
+    private static final String KEY_TOUCH_KEYBOARD = "touch_keyboard";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -163,5 +164,19 @@ public final class AppSettings {
 
     public void setCursorBlink(boolean blink) {
         prefs.edit().putBoolean(KEY_CURSOR_BLINK, blink).apply();
+    }
+
+    /**
+     * When true (default), tapping the terminal surface, resuming the app, and
+     * opening a new session all raise the soft keyboard automatically. When
+     * false, the keyboard only appears when the search bar is closed (search
+     * always needs it) or when the user opens it manually via the system gesture.
+     */
+    public boolean touchKeyboard() {
+        return prefs.getBoolean(KEY_TOUCH_KEYBOARD, true);
+    }
+
+    public void setTouchKeyboard(boolean enabled) {
+        prefs.edit().putBoolean(KEY_TOUCH_KEYBOARD, enabled).apply();
     }
 }
