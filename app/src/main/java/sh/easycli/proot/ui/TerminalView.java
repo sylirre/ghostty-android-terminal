@@ -75,6 +75,24 @@ public class TerminalView extends View {
     private final ScreenSnapshot snapshot = new ScreenSnapshot();
     private StickyModifiers sticky = new StickyModifiers();
 
+    // Cursor blink. The VT engine only reports whether the cursor *should*
+    // blink (snapshot.cursorBlinking(), driven by the user's setting and any
+    // program DECSCUSR); the renderer does the on/off animation. The phase is
+    // reset to "on" whenever the cursor moves, so it stays solid while typing
+    // and scrolling and only blinks when idle. See updateCursorBlink/drawCursor.
+    private static final long CURSOR_BLINK_MS = 530;
+    private boolean cursorBlinkOn = true;
+    private boolean cursorBlinkRunning;
+    private int lastCursorX = -1, lastCursorY = -1;
+    private final Runnable cursorBlinkTick = new Runnable() {
+        @Override
+        public void run() {
+            cursorBlinkOn = !cursorBlinkOn;
+            invalidate();
+            postDelayed(this, CURSOR_BLINK_MS);
+        }
+    };
+
     // --- Rich keyboard input (opt-in; AppSettings.richKeyboard). When on AND
     // the terminal is in a plain line-editing state, the soft keyboard runs in
     // composing mode (TYPE_CLASS_TEXT) so suggestions/autocorrect/swipe work.
@@ -436,6 +454,8 @@ public class TerminalView extends View {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        removeCallbacks(cursorBlinkTick);
+        cursorBlinkRunning = false;
         clearImageCache(); // release decoded bitmaps; rebuilt on next draw
         if (backgroundImage != null) {
             backgroundImage.recycle();
@@ -821,6 +841,7 @@ public class TerminalView extends View {
         }
         updateGraphics();
         drawImages(canvas, true); // z < 0: above background, below text
+        updateCursorBlink();
         drawCursor(canvas);
         for (int y = 0; y < sr; y++) {
             drawRowText(canvas, y, sc);
@@ -1047,8 +1068,42 @@ public class TerminalView extends View {
         textPaint.setStrikeThruText((attr & TerminalNative.ATTR_STRIKE) != 0);
     }
 
+    /**
+     * Starts/stops the blink loop to match the current snapshot and resets the
+     * phase to "on" when the cursor moves, so it stays solid during typing and
+     * scrolling and blinks only when idle. Called every frame from onDraw.
+     */
+    private void updateCursorBlink() {
+        boolean shouldBlink = snapshot.cursorBlinking()
+                && snapshot.cursorVisible()
+                && snapshot.cursorInViewport();
+        int cx = snapshot.cursorX(), cy = snapshot.cursorY();
+        boolean moved = cx != lastCursorX || cy != lastCursorY;
+        lastCursorX = cx;
+        lastCursorY = cy;
+
+        if (!shouldBlink) {
+            if (cursorBlinkRunning) {
+                cursorBlinkRunning = false;
+                removeCallbacks(cursorBlinkTick);
+            }
+            cursorBlinkOn = true; // a steady cursor is always shown
+            return;
+        }
+        if (!cursorBlinkRunning || moved) {
+            cursorBlinkRunning = true;
+            cursorBlinkOn = true; // solid right after (re)start or a move
+            removeCallbacks(cursorBlinkTick);
+            postDelayed(cursorBlinkTick, CURSOR_BLINK_MS);
+        }
+    }
+
     private void drawCursor(Canvas canvas) {
         if (!snapshot.cursorInViewport() || !snapshot.cursorVisible()) return;
+        // On the blink "off" phase, skip drawing. For the block cursor this
+        // leaves the cell glyph to be drawn normally by the text pass (it is
+        // only nulled below when the inverse cursor actually paints).
+        if (snapshot.cursorBlinking() && !cursorBlinkOn) return;
         float left = snapshot.cursorX() * cellWidth;
         float top = snapshot.cursorY() * cellHeight;
         boolean wide = snapshot.cursorX() < snapshot.cols
