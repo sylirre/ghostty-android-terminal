@@ -53,6 +53,62 @@
                 android:layout_width="match_parent"
                 android:layout_height="200dp" />
 
+            <!-- Background image (a global wallpaper, independent of the theme
+                 colors). The opacity row hides itself while no image is set. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/theme_bg_image_label"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <Button
+                    android:id="@+id/theme_bg_choose"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_bg_image_choose" />
+
+                <Button
+                    android:id="@+id/theme_bg_remove"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_bg_image_remove" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/theme_bg_opacity_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_bg_image_opacity"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <SeekBar
+                    android:id="@+id/theme_bg_opacity"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginLeft="8dp"
+                    android:max="100" />
+
+            </LinearLayout>
+
             <!-- Active theme + switcher. -->
             <LinearLayout
                 android:layout_width="match_parent"

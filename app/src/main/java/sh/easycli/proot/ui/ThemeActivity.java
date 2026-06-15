@@ -2,9 +2,14 @@ package sh.easycli.proot.ui;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -13,9 +18,11 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +50,10 @@ public final class ThemeActivity extends Activity {
     private static final int CODE_BG = 101;
     private static final int CODE_CURSOR = 102;
 
+    private static final int REQ_PICK_BG_IMAGE = 1;
+
     private ThemeStore store;
+    private AppSettings settings;
 
     // Working copy of the colors being edited.
     private int fg, bg, cursor;
@@ -54,6 +64,14 @@ public final class ThemeActivity extends Activity {
     private ThemePreviewView preview;
     private Button themeName, btnSave, btnRevert, btnRename, btnDelete;
     private final Map<Integer, View> boxes = new LinkedHashMap<>();
+
+    // Background wallpaper controls (a global setting, not part of the theme's
+    // color working copy). bgPreviewBitmap is owned here and drawn in the
+    // preview; the live terminal gets its own copy from MainActivity.
+    private Button btnBgChoose, btnBgRemove;
+    private View bgOpacityRow;
+    private SeekBar bgOpacity;
+    private Bitmap bgPreviewBitmap;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,6 +95,7 @@ public final class ThemeActivity extends Activity {
         });
 
         store = new ThemeStore(this);
+        settings = new AppSettings(this);
         preview = findViewById(R.id.theme_preview);
         themeName = findViewById(R.id.theme_name);
         btnSave = findViewById(R.id.theme_save);
@@ -92,8 +111,18 @@ public final class ThemeActivity extends Activity {
         btnRename.setOnClickListener(v -> renameCurrent());
         btnDelete.setOnClickListener(v -> deleteCurrent());
 
+        setupBackgroundControls();
         buildSwatchGrid();
         loadInto(store.current());
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (bgPreviewBitmap != null) {
+            bgPreviewBitmap.recycle();
+            bgPreviewBitmap = null;
+        }
     }
 
     @Override
@@ -153,6 +182,98 @@ public final class ThemeActivity extends Activity {
         btnRevert.setVisibility(dirty ? View.VISIBLE : View.GONE);
         btnRename.setVisibility(userTheme ? View.VISIBLE : View.GONE);
         btnDelete.setVisibility(userTheme ? View.VISIBLE : View.GONE);
+    }
+
+    // --- Background image (global wallpaper) ---
+
+    private void setupBackgroundControls() {
+        btnBgChoose = findViewById(R.id.theme_bg_choose);
+        btnBgRemove = findViewById(R.id.theme_bg_remove);
+        bgOpacityRow = findViewById(R.id.theme_bg_opacity_row);
+        bgOpacity = findViewById(R.id.theme_bg_opacity);
+
+        btnBgChoose.setOnClickListener(v -> pickBackgroundImage());
+        btnBgRemove.setOnClickListener(v -> removeBackgroundImage());
+        bgOpacity.setProgress(settings.backgroundImageOpacity());
+        bgOpacity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar sb, int progress, boolean fromUser) {
+                if (!fromUser) return;
+                settings.setBackgroundImageOpacity(progress);
+                applyBackgroundToPreview();
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        reloadBackgroundBitmap();
+    }
+
+    private void pickBackgroundImage() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/*");
+        try {
+            startActivityForResult(intent, REQ_PICK_BG_IMAGE);
+        } catch (ActivityNotFoundException e) {
+            toast(R.string.theme_bg_image_failed);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_PICK_BG_IMAGE || resultCode != RESULT_OK || data == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        if (uri == null) return;
+        try {
+            String path = BackgroundImageStore.importFrom(this, uri);
+            if (path == null) {
+                toast(R.string.theme_bg_image_failed);
+                return;
+            }
+            settings.setBackgroundImagePath(path);
+            reloadBackgroundBitmap();
+        } catch (IOException e) {
+            toast(R.string.theme_bg_image_failed);
+        }
+    }
+
+    private void removeBackgroundImage() {
+        BackgroundImageStore.clear(this);
+        settings.setBackgroundImagePath(null);
+        reloadBackgroundBitmap();
+        toast(R.string.theme_bg_image_removed);
+    }
+
+    /** Decodes (or drops) the stored wallpaper, then refreshes preview + controls. */
+    private void reloadBackgroundBitmap() {
+        preview.setBackgroundImage(null, 0); // drop the reference before recycling
+        if (bgPreviewBitmap != null) {
+            bgPreviewBitmap.recycle();
+            bgPreviewBitmap = null;
+        }
+        String path = settings.backgroundImagePath();
+        if (path != null) {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            bgPreviewBitmap = BackgroundImageStore.decode(path, dm.widthPixels, dm.heightPixels);
+            if (bgPreviewBitmap == null) {
+                // The file went missing or is corrupt: forget it.
+                settings.setBackgroundImagePath(null);
+            }
+        }
+        applyBackgroundToPreview();
+    }
+
+    private void applyBackgroundToPreview() {
+        boolean hasImage = bgPreviewBitmap != null;
+        int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);
+        preview.setBackgroundImage(bgPreviewBitmap, alpha);
+        btnBgChoose.setText(hasImage
+                ? R.string.theme_bg_image_change : R.string.theme_bg_image_choose);
+        btnBgRemove.setVisibility(hasImage ? View.VISIBLE : View.GONE);
+        bgOpacityRow.setVisibility(hasImage ? View.VISIBLE : View.GONE);
     }
 
     // --- Swatch grid ---

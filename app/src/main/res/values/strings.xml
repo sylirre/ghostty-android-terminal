@@ -79,6 +79,13 @@
     <string name="theme_color_foreground">Foreground</string>
     <string name="theme_color_background">Background</string>
     <string name="theme_color_cursor">Cursor</string>
+    <string name="theme_bg_image_label">Background image</string>
+    <string name="theme_bg_image_choose">Choose image…</string>
+    <string name="theme_bg_image_change">Change image…</string>
+    <string name="theme_bg_image_remove">Remove</string>
+    <string name="theme_bg_image_opacity">Opacity</string>
+    <string name="theme_bg_image_failed">Couldn\'t load that image.</string>
+    <string name="theme_bg_image_removed">Background image removed</string>
     <string-array name="theme_ansi_names">
         <item>Black</item>
         <item>Red</item>

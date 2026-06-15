@@ -19,9 +19,14 @@ public final class AppSettings {
     private static final String KEY_RICH_KEYBOARD = "rich_keyboard";
     private static final String KEY_EXTRA_KEYS_ENABLED = "extra_keys_enabled";
     private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
+    private static final String KEY_BG_IMAGE_PATH = "bg_image_path";
+    private static final String KEY_BG_IMAGE_OPACITY = "bg_image_opacity";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
+
+    /** Default wallpaper strength (percent) when an image is first chosen. */
+    private static final int DEFAULT_BG_IMAGE_OPACITY = 35;
 
     private final SharedPreferences prefs;
 
@@ -78,5 +83,39 @@ public final class AppSettings {
 
     public void setScrollbackLines(int lines) {
         prefs.edit().putInt(KEY_SCROLLBACK_LINES, lines).apply();
+    }
+
+    /**
+     * Absolute path to the terminal background image (a copy kept in app
+     * storage by {@link BackgroundImageStore}), or null when no wallpaper is
+     * set. The image is drawn behind the default background of every session
+     * by {@link TerminalView}; it is a global choice, independent of the color
+     * theme.
+     */
+    public String backgroundImagePath() {
+        return prefs.getString(KEY_BG_IMAGE_PATH, null);
+    }
+
+    /** Pass null to clear the wallpaper. */
+    public void setBackgroundImagePath(String path) {
+        if (path == null) {
+            prefs.edit().remove(KEY_BG_IMAGE_PATH).apply();
+        } else {
+            prefs.edit().putString(KEY_BG_IMAGE_PATH, path).apply();
+        }
+    }
+
+    /**
+     * How strongly the background image shows through, 0–100 percent. Mapped to
+     * a draw alpha over the solid theme background, so low values keep text
+     * contrast (the theme color dominates) and high values make the image vivid.
+     */
+    public int backgroundImageOpacity() {
+        return prefs.getInt(KEY_BG_IMAGE_OPACITY, DEFAULT_BG_IMAGE_OPACITY);
+    }
+
+    public void setBackgroundImageOpacity(int percent) {
+        int clamped = Math.max(0, Math.min(100, percent));
+        prefs.edit().putInt(KEY_BG_IMAGE_OPACITY, clamped).apply();
     }
 }

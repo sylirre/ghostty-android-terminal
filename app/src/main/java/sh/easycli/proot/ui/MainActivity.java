@@ -8,11 +8,13 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -201,6 +203,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         super.onResume();
         // Pick up theme changes made in ThemeActivity (and seed the first paint).
         applyTheme();
+        // Pick up a wallpaper chosen/removed in ThemeActivity.
+        applyBackgroundImage();
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
@@ -220,6 +224,24 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             s.emulator.setColors(theme.foreground, theme.background, theme.cursor, palette);
         }
         terminal.invalidate();
+    }
+
+    /**
+     * Loads the global background wallpaper (if any) and hands it to the view.
+     * Decoded downsampled to the screen so a large photo stays cheap; a path
+     * that no longer decodes is forgotten. The view takes ownership of the
+     * bitmap and recycles it when replaced.
+     */
+    private void applyBackgroundImage() {
+        String path = settings.backgroundImagePath();
+        Bitmap bmp = null;
+        if (path != null) {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            bmp = BackgroundImageStore.decode(path, dm.widthPixels, dm.heightPixels);
+            if (bmp == null) settings.setBackgroundImagePath(null); // stale/corrupt
+        }
+        int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);
+        terminal.setBackgroundImage(bmp, alpha);
     }
 
     private boolean debianByDefault() {

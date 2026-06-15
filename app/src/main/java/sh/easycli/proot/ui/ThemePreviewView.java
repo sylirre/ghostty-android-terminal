@@ -1,8 +1,10 @@
 package sh.easycli.proot.ui;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.View;
@@ -21,7 +23,12 @@ public final class ThemePreviewView extends View {
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fillPaint = new Paint();
+    private final Paint bgImagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Rect bgSrc = new Rect();
+    private final Rect bgDst = new Rect();
     private TerminalTheme theme;
+    private Bitmap backgroundImage;
+    private int backgroundImageAlpha = 255;
 
     public ThemePreviewView(Context context) {
         this(context, null);
@@ -36,6 +43,17 @@ public final class ThemePreviewView extends View {
 
     public void setTheme(TerminalTheme theme) {
         this.theme = theme;
+        invalidate();
+    }
+
+    /**
+     * Mirrors the terminal wallpaper in the preview so the opacity slider has
+     * live feedback. The bitmap is owned by the caller ({@link ThemeActivity});
+     * this view only references it. Pass null to show no wallpaper.
+     */
+    public void setBackgroundImage(Bitmap bmp, int alpha) {
+        this.backgroundImage = bmp;
+        this.backgroundImageAlpha = alpha;
         invalidate();
     }
 
@@ -55,6 +73,7 @@ public final class ThemePreviewView extends View {
     protected void onDraw(Canvas canvas) {
         if (theme == null) return;
         canvas.drawColor(theme.background);
+        drawBackgroundImage(canvas);
 
         int fg = theme.foreground;
         int[] a = theme.ansi;
@@ -103,6 +122,27 @@ public final class ThemePreviewView extends View {
             float left = pad + i * sw;
             canvas.drawRect(left, y, left + sw - dp(1), y + stripH, fillPaint);
         }
+    }
+
+    /** Center-cropped wallpaper fill, matching {@link TerminalView}. */
+    private void drawBackgroundImage(Canvas canvas) {
+        Bitmap bmp = backgroundImage;
+        int vw = getWidth(), vh = getHeight();
+        if (bmp == null || vw <= 0 || vh <= 0) return;
+        int bw = bmp.getWidth(), bh = bmp.getHeight();
+        if (bw <= 0 || bh <= 0) return;
+        if ((long) bw * vh > (long) vw * bh) {
+            int cropW = Math.round(bh * (vw / (float) vh));
+            int x = (bw - cropW) / 2;
+            bgSrc.set(x, 0, x + cropW, bh);
+        } else {
+            int cropH = Math.round(bw * (vh / (float) vw));
+            int y = (bh - cropH) / 2;
+            bgSrc.set(0, y, bw, y + cropH);
+        }
+        bgDst.set(0, 0, vw, vh);
+        bgImagePaint.setAlpha(backgroundImageAlpha);
+        canvas.drawBitmap(bmp, bgSrc, bgDst, bgImagePaint);
     }
 
     private float dp(float v) {

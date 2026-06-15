@@ -110,6 +110,16 @@ public class TerminalView extends View {
     private final Rect imgSrc = new Rect();
     private final RectF imgDst = new RectF();
 
+    // --- Background wallpaper. A global, theme-independent image drawn over the
+    // default background and beneath everything else (per-cell colors, text,
+    // cursor). Owned here and recycled on detach; the alpha is the user's
+    // opacity slider, so the solid theme bg shows through for legibility. ---
+    private final Paint bgImagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private Bitmap backgroundImage;
+    private int backgroundImageAlpha = 255;
+    private final Rect bgImgSrc = new Rect();
+    private final Rect bgImgDst = new Rect();
+
     private static final float MIN_FONT_SP = 8f;
     private static final float MAX_FONT_SP = 40f;
     private static final float DEFAULT_FONT_SP = 14f;
@@ -361,6 +371,24 @@ public class TerminalView extends View {
         sticky = mods;
     }
 
+    /**
+     * Sets (or clears, with a null bitmap) the terminal background wallpaper.
+     * {@code alpha} is the draw opacity (0–255) over the solid theme
+     * background. Takes ownership of {@code bmp}: the previously held bitmap is
+     * recycled here, so callers must not reuse it afterward.
+     */
+    public void setBackgroundImage(Bitmap bmp, int alpha) {
+        if (bmp == backgroundImage) {
+            backgroundImageAlpha = alpha;
+            invalidate();
+            return;
+        }
+        if (backgroundImage != null) backgroundImage.recycle();
+        backgroundImage = bmp;
+        backgroundImageAlpha = alpha;
+        invalidate();
+    }
+
     /** Binds a session; pass null to detach. Resizes it to fit this view. */
     public void attachSession(TerminalSession s) {
         if (s != session) {
@@ -409,6 +437,10 @@ public class TerminalView extends View {
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         clearImageCache(); // release decoded bitmaps; rebuilt on next draw
+        if (backgroundImage != null) {
+            backgroundImage.recycle();
+            backgroundImage = null; // MainActivity re-pushes it on resume
+        }
     }
 
     private void updateGridSize(int w, int h) {
@@ -767,6 +799,7 @@ public class TerminalView extends View {
         session.emulator.scrollbar(scrollState); // keep the indicator current
         updateRichInputActive();
         canvas.drawColor(snapshot.defaultBg());
+        drawBackgroundImage(canvas);
 
         int sc = snapshot.cols, sr = snapshot.rows;
         // Background runs first so glyphs never get painted over.
@@ -812,6 +845,35 @@ public class TerminalView extends View {
                 });
             }
         }
+    }
+
+    /**
+     * Draws the wallpaper to fill the view, center-cropped so its aspect ratio
+     * is preserved (the shorter axis fills; the longer axis is trimmed evenly).
+     * Drawn at {@link #backgroundImageAlpha} over the already-painted theme
+     * background, so a low opacity keeps text readable. A no-op when no image
+     * is set or the view has no size yet.
+     */
+    private void drawBackgroundImage(Canvas canvas) {
+        Bitmap bmp = backgroundImage;
+        int vw = getWidth(), vh = getHeight();
+        if (bmp == null || vw <= 0 || vh <= 0) return;
+        int bw = bmp.getWidth(), bh = bmp.getHeight();
+        if (bw <= 0 || bh <= 0) return;
+
+        // Pick the largest centered source rect matching the view's aspect.
+        if ((long) bw * vh > (long) vw * bh) {
+            int cropW = Math.round(bh * (vw / (float) vh));
+            int x = (bw - cropW) / 2;
+            bgImgSrc.set(x, 0, x + cropW, bh);
+        } else {
+            int cropH = Math.round(bw * (vh / (float) vw));
+            int y = (bh - cropH) / 2;
+            bgImgSrc.set(0, y, bw, y + cropH);
+        }
+        bgImgDst.set(0, 0, vw, vh);
+        bgImagePaint.setAlpha(backgroundImageAlpha);
+        canvas.drawBitmap(bmp, bgImgSrc, bgImgDst, bgImagePaint);
     }
 
     /**
