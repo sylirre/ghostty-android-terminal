@@ -9,8 +9,8 @@ import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.View;
-import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -129,14 +129,12 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         });
     }
 
-    /** Hides the bar, clears the query, and drops the keyboard. */
+    /** Hides the bar and clears the query. Keyboard management is the caller's responsibility. */
     public void hide() {
         pendingQuery = false;
         field.setText("");
         removeCallbacks(runQuery);
         setVisibility(GONE);
-        InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
-        if (imm != null) imm.hideSoftInputFromWindow(getWindowToken(), 0);
     }
 
     public boolean isOpen() {

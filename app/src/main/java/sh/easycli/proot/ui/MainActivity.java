@@ -18,6 +18,7 @@ import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -343,6 +344,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private void hideSearch() {
         searchBar.hide();
         terminal.searchClose();
+        terminal.requestFocus();
+        InputMethodManager imm = getSystemService(InputMethodManager.class);
+        if (imm != null) imm.showSoftInput(terminal, 0);
     }
 
     @Override
