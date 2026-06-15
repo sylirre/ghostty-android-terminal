@@ -55,6 +55,28 @@
         <item>100000</item>
     </integer-array>
 
+    <!-- Settings: Text margins -->
+    <string name="setting_text_margin_left_title">Left text margin</string>
+    <string name="setting_text_margin_left_summary">Gap between the left screen edge and terminal text. Useful when the screen edge is hidden behind the device case.</string>
+    <string name="setting_text_margin_right_title">Right text margin</string>
+    <string name="setting_text_margin_right_summary">Gap between terminal text and the right screen edge. Useful when the screen edge is hidden behind the device case.</string>
+    <string-array name="text_margin_option_labels">
+        <item>None</item>
+        <item>4 dp</item>
+        <item>8 dp</item>
+        <item>12 dp</item>
+        <item>16 dp</item>
+        <item>24 dp</item>
+    </string-array>
+    <integer-array name="text_margin_option_values">
+        <item>0</item>
+        <item>4</item>
+        <item>8</item>
+        <item>12</item>
+        <item>16</item>
+        <item>24</item>
+    </integer-array>
+
     <!-- Settings: Terminal theme -->
     <string name="setting_theme_title">Terminal theme</string>
     <string name="setting_theme_summary">Colors for the terminal: pick a preset or build your own palette.</string>

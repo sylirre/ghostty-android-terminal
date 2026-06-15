@@ -27,6 +27,8 @@ public final class AppSettings {
     private static final String KEY_CURSOR_STYLE = "cursor_style";
     private static final String KEY_CURSOR_BLINK = "cursor_blink";
     private static final String KEY_TOUCH_KEYBOARD = "touch_keyboard";
+    private static final String KEY_TEXT_MARGIN_LEFT = "text_margin_left";
+    private static final String KEY_TEXT_MARGIN_RIGHT = "text_margin_right";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -178,5 +180,30 @@ public final class AppSettings {
 
     public void setTouchKeyboard(boolean enabled) {
         prefs.edit().putBoolean(KEY_TOUCH_KEYBOARD, enabled).apply();
+    }
+
+    /**
+     * Left text margin in dp. A gap between the left screen edge and the
+     * start of terminal text, useful on devices where the screen edge is
+     * obscured by the case. Default 0.
+     */
+    public int textMarginLeft() {
+        return prefs.getInt(KEY_TEXT_MARGIN_LEFT, 0);
+    }
+
+    public void setTextMarginLeft(int dp) {
+        prefs.edit().putInt(KEY_TEXT_MARGIN_LEFT, Math.max(0, dp)).apply();
+    }
+
+    /**
+     * Right text margin in dp. A gap between the end of terminal text and
+     * the right screen edge. Default 0.
+     */
+    public int textMarginRight() {
+        return prefs.getInt(KEY_TEXT_MARGIN_RIGHT, 0);
+    }
+
+    public void setTextMarginRight(int dp) {
+        prefs.edit().putInt(KEY_TEXT_MARGIN_RIGHT, Math.max(0, dp)).apply();
     }
 }

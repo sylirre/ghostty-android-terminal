@@ -97,6 +97,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        applyTextMargins();
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
 
         searchBar = findViewById(R.id.search_bar);
@@ -465,7 +466,34 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 getResources().getStringArray(R.array.scrollback_option_labels),
                 settings::scrollbackLines,
                 settings::setScrollbackLines));
+        items.add(new Setting.Choice(
+                getString(R.string.setting_text_margin_left_title),
+                getString(R.string.setting_text_margin_left_summary),
+                getResources().getIntArray(R.array.text_margin_option_values),
+                getResources().getStringArray(R.array.text_margin_option_labels),
+                settings::textMarginLeft,
+                dp -> {
+                    settings.setTextMarginLeft(dp);
+                    applyTextMargins();
+                }));
+        items.add(new Setting.Choice(
+                getString(R.string.setting_text_margin_right_title),
+                getString(R.string.setting_text_margin_right_summary),
+                getResources().getIntArray(R.array.text_margin_option_values),
+                getResources().getStringArray(R.array.text_margin_option_labels),
+                settings::textMarginRight,
+                dp -> {
+                    settings.setTextMarginRight(dp);
+                    applyTextMargins();
+                }));
         SettingsDialog.show(this, items);
+    }
+
+    private void applyTextMargins() {
+        float density = getResources().getDisplayMetrics().density;
+        int leftPx = Math.round(settings.textMarginLeft() * density);
+        int rightPx = Math.round(settings.textMarginRight() * density);
+        terminal.setTextMargins(leftPx, rightPx);
     }
 
     /** Holds the display on (or releases it) via the activity window flag. */

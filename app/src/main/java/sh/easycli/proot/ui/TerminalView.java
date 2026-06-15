@@ -124,6 +124,8 @@ public class TerminalView extends View {
     private int cellHeight;
     private int baseline;
     private int cols = 80, rows = 24;
+    private int textMarginLeft;
+    private int textMarginRight;
 
     // --- Grid-size HUD. A transient COLSxROWS chip drawn in onDraw while
     // pinch-zooming and held briefly after. Drawn in-view (rather than as a
@@ -424,6 +426,21 @@ public class TerminalView extends View {
                 .edit().putFloat(PREF_FONT_SP, fontSizeSp).apply();
     }
 
+    /**
+     * Sets left and right text margins in pixels. The grid is narrowed by the
+     * combined margin so the terminal never renders text into the margin area.
+     * Useful on devices where a few pixels of the screen edge are hidden by the
+     * case.
+     */
+    public void setTextMargins(int leftPx, int rightPx) {
+        textMarginLeft = leftPx;
+        textMarginRight = rightPx;
+        if (getWidth() > 0) {
+            updateGridSize(getWidth(), getHeight());
+        }
+        invalidate();
+    }
+
     public void setStickyModifiers(StickyModifiers mods) {
         sticky = mods;
     }
@@ -503,7 +520,7 @@ public class TerminalView extends View {
     }
 
     private void updateGridSize(int w, int h) {
-        cols = Math.max(4, (int) (w / cellWidth));
+        cols = Math.max(4, (int) ((w - textMarginLeft - textMarginRight) / cellWidth));
         rows = Math.max(2, h / cellHeight);
         if (session != null) {
             session.resize(cols, rows, (int) cellWidth, cellHeight);
@@ -579,7 +596,7 @@ public class TerminalView extends View {
 
     private void startSelection(float px, float py) {
         if (session == null || selecting) return;
-        int cx = clampToGrid(px / cellWidth, cols);
+        int cx = clampToGrid((px - textMarginLeft) / cellWidth, cols);
         int cy = clampToGrid(py / (float) cellHeight, rows);
         if (!session.emulator.selectWord(cx, cy)) return;
         selecting = true;
@@ -639,7 +656,7 @@ public class TerminalView extends View {
                     // selection doesn't jump under the finger.
                     int hx = which == 0 ? snapshot.selectionStartX() : snapshot.selectionEndX();
                     int hy = which == 0 ? snapshot.selectionStartY() : snapshot.selectionEndY();
-                    dragOffsetX = (hx + 0.5f) * cellWidth - event.getX();
+                    dragOffsetX = textMarginLeft + (hx + 0.5f) * cellWidth - event.getX();
                     dragOffsetY = (hy + 0.5f) * cellHeight - event.getY();
                     if (session != null) session.emulator.selectionAnchor(which);
                     return true;
@@ -708,7 +725,7 @@ public class TerminalView extends View {
             session.emulator.scrollBy(1);
         }
         session.emulator.selectionDrag(
-                clampToGrid(px / cellWidth, cols),
+                clampToGrid((px - textMarginLeft) / cellWidth, cols),
                 clampToGrid(py / (float) cellHeight, rows));
         if (actionMode != null) actionMode.hide(ActionMode.DEFAULT_HIDE_DURATION);
         invalidate();
@@ -858,8 +875,8 @@ public class TerminalView extends View {
             int left = 0, right = getWidth();
             if (snapshot.selectionStartVisible() && snapshot.selectionEndVisible()
                     && snapshot.selectionStartY() == snapshot.selectionEndY()) {
-                left = (int) (snapshot.selectionStartX() * cellWidth);
-                right = (int) ((snapshot.selectionEndX() + 1) * cellWidth);
+                left = textMarginLeft + (int) (snapshot.selectionStartX() * cellWidth);
+                right = textMarginLeft + (int) ((snapshot.selectionEndX() + 1) * cellWidth);
             }
             outRect.set(left, top, right, bottom);
         }
@@ -907,7 +924,8 @@ public class TerminalView extends View {
                 if (x == sc || bg != runBg) {
                     if (runBg != snapshot.defaultBg()) {
                         bgPaint.setColor(runBg);
-                        canvas.drawRect(runStart * cellWidth, top, x * cellWidth, bottom, bgPaint);
+                        canvas.drawRect(textMarginLeft + runStart * cellWidth, top,
+                                textMarginLeft + x * cellWidth, bottom, bgPaint);
                     }
                     runStart = x;
                     runBg = bg;
@@ -1048,7 +1066,7 @@ public class TerminalView extends View {
             // the canvas is clipped to the view, so partial images clip for free.
             // The pixel offsets nudge within the start cell (aspect centering
             // for placeholders, sub-cell placement for direct images).
-            float left = gfx[base + TerminalNative.GFX_COL] * cellWidth
+            float left = textMarginLeft + gfx[base + TerminalNative.GFX_COL] * cellWidth
                     + gfx[base + TerminalNative.GFX_OFF_X];
             float top = gfx[base + TerminalNative.GFX_ROW] * cellHeight
                     + gfx[base + TerminalNative.GFX_OFF_Y];
@@ -1069,13 +1087,13 @@ public class TerminalView extends View {
         if (!selecting || !snapshot.hasSelection()) return;
         if (snapshot.selectionStartVisible() && handleLeft != null) {
             placeHandle(handleLeft, startHandleRect, true,
-                    snapshot.selectionStartX() * cellWidth,
+                    textMarginLeft + snapshot.selectionStartX() * cellWidth,
                     (snapshot.selectionStartY() + 1) * cellHeight);
             handleLeft.draw(canvas);
         }
         if (snapshot.selectionEndVisible() && handleRight != null) {
             placeHandle(handleRight, endHandleRect, false,
-                    (snapshot.selectionEndX() + 1) * cellWidth,
+                    textMarginLeft + (snapshot.selectionEndX() + 1) * cellWidth,
                     (snapshot.selectionEndY() + 1) * cellHeight);
             handleRight.draw(canvas);
         }
@@ -1116,10 +1134,11 @@ public class TerminalView extends View {
             if (breakRun && runStart >= 0 && runText.length() > 0) {
                 applyStyle(runFg, runAttr);
                 canvas.drawText(runText, 0, runText.length(),
-                        runStart * cellWidth, top + baseline, textPaint);
+                        textMarginLeft + runStart * cellWidth, top + baseline, textPaint);
                 // The run covered cells [runStart, x); underline its full width.
                 drawUnderline(canvas, runFg, runAttr,
-                        runStart * cellWidth, x * cellWidth, top);
+                        textMarginLeft + runStart * cellWidth,
+                        textMarginLeft + x * cellWidth, top);
                 runStart = -1;
                 runText.setLength(0);
             }
@@ -1127,9 +1146,10 @@ public class TerminalView extends View {
             if ((snapshot.attrs[i] & TerminalNative.ATTR_WIDE) != 0) {
                 applyStyle(fg, attr);
                 String s = new String(Character.toChars(cp));
-                canvas.drawText(s, x * cellWidth, top + baseline, textPaint);
+                canvas.drawText(s, textMarginLeft + x * cellWidth, top + baseline, textPaint);
                 drawUnderline(canvas, fg, attr,
-                        x * cellWidth, (x + 2) * cellWidth, top);
+                        textMarginLeft + x * cellWidth,
+                        textMarginLeft + (x + 2) * cellWidth, top);
                 continue;
             }
             if (runStart < 0) {
@@ -1253,7 +1273,7 @@ public class TerminalView extends View {
         // leaves the cell glyph to be drawn normally by the text pass (it is
         // only nulled below when the inverse cursor actually paints).
         if (snapshot.cursorBlinking() && !cursorBlinkOn) return;
-        float left = snapshot.cursorX() * cellWidth;
+        float left = textMarginLeft + snapshot.cursorX() * cellWidth;
         float top = snapshot.cursorY() * cellHeight;
         boolean wide = snapshot.cursorX() < snapshot.cols
                 && (snapshot.attrs[snapshot.cursorY() * snapshot.cols + snapshot.cursorX()]
