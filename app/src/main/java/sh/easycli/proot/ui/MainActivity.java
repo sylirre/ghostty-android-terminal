@@ -10,11 +10,13 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -588,15 +590,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     private void runBackup(Uri uri) {
         AtomicBoolean cancelled = new AtomicBoolean();
-        ProgressHandle ui = showProgress(R.string.backup_in_progress, cancelled);
+        ProgressHandle ui = showProgress(R.string.backup_in_progress,
+                R.string.backup_progress, cancelled);
         new Thread(() -> {
             IOException failure = null;
             boolean wasCancelled = false;
             try (OutputStream out = getContentResolver().openOutputStream(uri)) {
                 if (out == null) throw new IOException("cannot open destination");
-                RootfsBackup.backup(getApplicationContext(), out,
-                        bytes -> ui.update(getString(R.string.backup_progress, bytes >> 20)),
-                        cancelled);
+                RootfsBackup.backup(getApplicationContext(), out, ui::update, cancelled);
             } catch (InterruptedIOException e) {
                 wasCancelled = true;
             } catch (IOException e) {
@@ -628,16 +629,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         updateTabs();
         SessionService.refresh(this);
 
+        long archiveSize = querySize(uri); // restore progress denominator
         AtomicBoolean cancelled = new AtomicBoolean();
-        ProgressHandle ui = showProgress(R.string.restore_in_progress, cancelled);
+        ProgressHandle ui = showProgress(R.string.restore_in_progress,
+                R.string.restore_progress, cancelled);
         new Thread(() -> {
             IOException failure = null;
             boolean wasCancelled = false;
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IOException("cannot open backup file");
-                RootfsBackup.restore(getApplicationContext(), in,
-                        bytes -> ui.update(getString(R.string.restore_progress, bytes >> 20)),
-                        cancelled);
+                RootfsBackup.restore(getApplicationContext(), in, archiveSize,
+                        ui::update, cancelled);
             } catch (InterruptedIOException e) {
                 wasCancelled = true;
             } catch (IOException e) {
@@ -667,13 +669,31 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }, "rootfs-restore").start();
     }
 
+    /** The byte length the picker reports for a SAF document, or 0 if unknown. */
+    private long querySize(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri, null, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int i = c.getColumnIndex(OpenableColumns.SIZE);
+                if (i >= 0 && !c.isNull(i)) return c.getLong(i);
+            }
+        } catch (Exception ignored) {
+            // size is a nicety; an unknown size just falls back to indeterminate
+        }
+        return 0;
+    }
+
     /**
-     * Shows a modal progress dialog whose Cancel button flips {@code cancelled}
-     * (and shows "Cancelling…") without dismissing — the worker dismisses it as
-     * it unwinds. Returned handle's {@link ProgressHandle#update} is safe to
-     * call from a background thread.
+     * Shows a modal progress dialog with a horizontal bar. It starts
+     * indeterminate and switches to a determinate percentage on the first
+     * {@link ProgressHandle#update} that carries a known total. The Cancel
+     * button flips {@code cancelled} and shows "Cancelling…" without dismissing
+     * — the worker dismisses it as it unwinds, and later progress ticks no
+     * longer overwrite the cancelling message. {@code progressFmtRes} is a
+     * three-arg string (percent, done MB, total MB). The returned handle's
+     * methods are safe to call from a background thread.
      */
-    private ProgressHandle showProgress(int titleRes, AtomicBoolean cancelled) {
+    private ProgressHandle showProgress(int titleRes, int progressFmtRes,
+            AtomicBoolean cancelled) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         int pad = (int) (20 * getResources().getDisplayMetrics().density);
@@ -683,6 +703,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         ProgressBar bar = new ProgressBar(this, null,
                 android.R.attr.progressBarStyleHorizontal);
         bar.setIndeterminate(true);
+        bar.setMax(100);
         box.addView(status);
         box.addView(bar);
 
@@ -698,22 +719,39 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             cancelled.set(true);
             status.setText(R.string.progress_cancelling);
         });
-        return new ProgressHandle(dialog, status);
+        return new ProgressHandle(dialog, status, bar, progressFmtRes, cancelled);
     }
 
-    /** A live progress dialog with thread-safe text updates. */
+    /** A live progress dialog with thread-safe, determinate updates. */
     private final class ProgressHandle {
         private final AlertDialog dialog;
         private final TextView status;
+        private final ProgressBar bar;
+        private final int progressFmtRes;
+        private final AtomicBoolean cancelled;
 
-        ProgressHandle(AlertDialog dialog, TextView status) {
+        ProgressHandle(AlertDialog dialog, TextView status, ProgressBar bar,
+                int progressFmtRes, AtomicBoolean cancelled) {
             this.dialog = dialog;
             this.status = status;
+            this.bar = bar;
+            this.progressFmtRes = progressFmtRes;
+            this.cancelled = cancelled;
         }
 
-        void update(String text) {
+        /**
+         * Sets the bar to {@code done / total}. A {@code total} of 0 (unknown)
+         * leaves the bar indeterminate; once cancelling, updates are dropped so
+         * the "Cancelling…" message stays put.
+         */
+        void update(long done, long total) {
             runOnUiThread(() -> {
-                if (dialog.isShowing()) status.setText(text);
+                if (!dialog.isShowing() || cancelled.get() || total <= 0) return;
+                int pct = (int) Math.min(100, done * 100 / total);
+                bar.setIndeterminate(false);
+                bar.setProgress(pct);
+                status.setText(getString(progressFmtRes, pct,
+                        done >> 20, total >> 20));
             });
         }
 

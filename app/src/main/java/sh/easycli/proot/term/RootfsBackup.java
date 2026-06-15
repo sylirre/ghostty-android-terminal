@@ -10,6 +10,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -42,6 +43,18 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class RootfsBackup {
 
+    /**
+     * Determinate progress for a backup or restore: {@code done} and
+     * {@code total} share one unit so the ratio is the fraction complete. For a
+     * backup that unit is uncompressed payload bytes (archived / total to
+     * archive); for a restore it is compressed archive bytes (consumed / file
+     * size). {@code total} is 0 when it could not be determined up front, in
+     * which case only an indeterminate bar is meaningful.
+     */
+    public interface ProgressListener {
+        void onProgress(long done, long total);
+    }
+
     private static final int BLOCK = 512;
     private static final int NAME_MAX = 100;            // ustar name/linkname width
     private static final String LONG_NAME = "././@LongLink"; // GNU sentinel name
@@ -54,16 +67,24 @@ public final class RootfsBackup {
      * Streams the installed rootfs to {@code out} as a gzip-compressed tar.
      * Does not close {@code out} (the caller owns it). Blocking — call off the
      * main thread; flip {@code cancelled} to abort with {@link InterruptedIOException}.
+     *
+     * Progress is reported as {@code archived / total} payload bytes; the total
+     * comes from a quick {@link #measure} walk taken under the same lock, so the
+     * denominator matches exactly what the writer counts and the fraction
+     * reaches 1.0 at the end.
      */
     public static void backup(Context ctx, OutputStream out,
-            DebianRootfs.ProgressListener progress, AtomicBoolean cancelled)
+            ProgressListener progress, AtomicBoolean cancelled)
             throws IOException {
         File root = DebianRootfs.dir(ctx);
         if (!root.isDirectory()) throw new IOException("Debian rootfs not installed");
         synchronized (DebianRootfs.class) {
+            long total = measure(root);
+            DebianRootfs.ProgressListener tick = progress == null ? null
+                    : archived -> progress.onProgress(archived, total);
             GZIPOutputStream gz = new GZIPOutputStream(
                     new BufferedOutputStream(out, 1 << 16));
-            writeArchive(root, gz, progress, cancelled);
+            writeArchive(root, gz, tick, cancelled);
             gz.finish(); // write the gzip trailer without closing the caller's stream
             gz.flush();
         }
@@ -74,12 +95,46 @@ public final class RootfsBackup {
      * Does not close {@code in} (the caller owns it). The swap is atomic and
      * non-destructive on failure (see {@link DebianRootfs#replaceFromTar}).
      * Blocking — call off the main thread; flip {@code cancelled} to abort.
+     *
+     * Progress is reported as {@code consumed / archiveSize} <em>compressed</em>
+     * bytes — counted on the raw stream below the gzip layer, since the
+     * uncompressed total is unknown until the archive is fully read. Pass the
+     * archive file's byte length as {@code archiveSize}; a value &le; 0 (the
+     * picker did not report a size) yields indeterminate progress.
      */
-    public static void restore(Context ctx, InputStream in,
-            DebianRootfs.ProgressListener progress, AtomicBoolean cancelled)
+    public static void restore(Context ctx, InputStream in, long archiveSize,
+            ProgressListener progress, AtomicBoolean cancelled)
             throws IOException {
-        GZIPInputStream gz = new GZIPInputStream(new BufferedInputStream(in, 1 << 16));
-        DebianRootfs.replaceFromTar(ctx, gz, progress, cancelled);
+        CountingInputStream counter = new CountingInputStream(in);
+        GZIPInputStream gz = new GZIPInputStream(
+                new BufferedInputStream(counter, 1 << 16));
+        DebianRootfs.ProgressListener tick = progress == null ? null
+                : extracted -> progress.onProgress(counter.count(), archiveSize);
+        DebianRootfs.replaceFromTar(ctx, gz, tick, cancelled);
+    }
+
+    /**
+     * Sum of the regular-file bytes the archive will carry — the backup
+     * denominator. Counts only what {@link #archive} streams as file data
+     * ({@code S_ISREG}); directories and symlinks contribute no payload, so this
+     * equals the writer's running total at completion. Package-private so a test
+     * can pin the denominator against a known tree.
+     */
+    static long measure(File dir) {
+        File[] children = dir.listFiles();
+        if (children == null) return 0;
+        long total = 0;
+        for (File child : children) {
+            StructStat st;
+            try {
+                st = Os.lstat(child.getAbsolutePath());
+            } catch (ErrnoException e) {
+                continue; // vanished mid-walk; the writer skips it too
+            }
+            if (OsConstants.S_ISDIR(st.st_mode)) total += measure(child);
+            else if (OsConstants.S_ISREG(st.st_mode)) total += st.st_size;
+        }
+        return total;
     }
 
     // --- tar writer ---
@@ -266,6 +321,43 @@ public final class RootfsBackup {
             int n = (int) Math.min(ZERO.length, count);
             out.write(ZERO, 0, n);
             count -= n;
+        }
+    }
+
+    /**
+     * Tallies the bytes pulled from the underlying stream. Sits below the gzip
+     * layer during a restore so {@link #count} tracks consumption of the
+     * compressed archive — the restore progress numerator — rather than the
+     * uncompressed total, which is unknown until the read completes. Only ever
+     * read from the extraction thread that does the reads, so no synchronization.
+     */
+    private static final class CountingInputStream extends FilterInputStream {
+        private long count;
+
+        CountingInputStream(InputStream in) {
+            super(in);
+        }
+
+        long count() {
+            return count;
+        }
+
+        @Override public int read() throws IOException {
+            int b = in.read();
+            if (b >= 0) count++;
+            return b;
+        }
+
+        @Override public int read(byte[] b, int off, int len) throws IOException {
+            int n = in.read(b, off, len);
+            if (n > 0) count += n;
+            return n;
+        }
+
+        @Override public long skip(long n) throws IOException {
+            long s = in.skip(n);
+            if (s > 0) count += s;
+            return s;
         }
     }
 }

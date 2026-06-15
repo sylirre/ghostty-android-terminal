@@ -146,9 +146,9 @@
     <string name="restore_confirm_message">This replaces the current Debian rootfs with the contents of a backup file and closes all open sessions. Anything in the current rootfs that is not in the backup is lost.</string>
     <string name="restore_confirm_choose">Choose file…</string>
     <string name="backup_in_progress">Backing up Debian…</string>
-    <string name="backup_progress">Backing up Debian… %d MB</string>
+    <string name="backup_progress">Backing up Debian… %1$d%% (%2$d / %3$d MB)</string>
     <string name="restore_in_progress">Restoring Debian…</string>
-    <string name="restore_progress">Restoring Debian… %d MB</string>
+    <string name="restore_progress">Restoring Debian… %1$d%% (%2$d / %3$d MB)</string>
     <string name="progress_cancelling">Cancelling…</string>
     <string name="backup_done">Backup complete</string>
     <string name="backup_cancelled">Backup cancelled; the partial file may remain.</string>

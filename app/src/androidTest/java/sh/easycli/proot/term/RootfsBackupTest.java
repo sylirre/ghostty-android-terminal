@@ -114,6 +114,18 @@ public class RootfsBackupTest {
                 readFile(new File(dst, LONG_NAME)));
     }
 
+    /**
+     * The backup progress denominator counts only regular-file payload bytes —
+     * not directories (whose on-disk st_size is filesystem noise) nor symlink
+     * targets — so the bar reaches exactly 100% when the writer, which emits the
+     * same bytes, finishes. The tree's files: hello.txt(3) + bin/run.sh(18) +
+     * etc/secret(9) + locked/inside(5) + LONG_NAME(5) = 40.
+     */
+    @Test
+    public void measureCountsOnlyRegularFilePayload() {
+        assertEquals(40, RootfsBackup.measure(src));
+    }
+
     // --- helpers ---
 
     private static String repeat(String s, int n) {

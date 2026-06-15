@@ -112,7 +112,11 @@ under app data):
    (`publish`) swaps it onto `debian`, leaving the existing rootfs intact if a
    restore fails or is cancelled. Restore tears down all sessions first (no
    live PRoot may hold the tree being replaced) and skips the install-time
-   `writeGuestDefaults` so the archive is reproduced verbatim.
+   `writeGuestDefaults` so the archive is reproduced verbatim. Both directions
+   drive a determinate progress bar: backup against a pre-pass `measure` of the
+   payload bytes (`archived / total`), restore against the picker-reported
+   archive size, counted on the raw stream *below* gzip (`consumed / size`)
+   since the uncompressed total isn't known until the read finishes.
 
 The session command is `proot --kill-on-exit --link2symlink -0 -r <rootfs>
 -w /root -b /dev -b /proc -b /sys /usr/bin/env -i HOME=/root … /bin/bash
