@@ -107,6 +107,7 @@
     <string name="toast_debian_install_failed">Debian install failed: %s</string>
     <string name="toast_debian_unavailable">Debian unavailable (%s); starting the Android shell instead.</string>
     <string name="toast_debian_session_failed">Debian session failed to start; starting the Android shell instead.</string>
+    <string name="toast_grid_size">%1$d×%2$d</string>
 
     <!-- Foreground service notification -->
     <string name="notification_channel_name">Running sessions</string>

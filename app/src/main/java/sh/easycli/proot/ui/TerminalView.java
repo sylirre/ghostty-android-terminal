@@ -30,12 +30,14 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.OverScroller;
+import android.widget.Toast;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+import sh.easycli.proot.R;
 import sh.easycli.proot.term.ScreenSnapshot;
 import sh.easycli.proot.term.TerminalNative;
 import sh.easycli.proot.term.TerminalSession;
@@ -93,6 +95,9 @@ public class TerminalView extends View {
     private int cellHeight;
     private int baseline;
     private int cols = 80, rows = 24;
+    // Reused so rapid pinch-zoom ticks replace the visible toast instead of
+    // queueing a trail of stale dimensions behind it.
+    private Toast sizeToast;
 
     // --- Kitty graphics. Placement geometry is re-read every frame into gfx
     // (GFX_STRIDE ints each); decoded bitmaps are cached by image id and
@@ -340,6 +345,9 @@ public class TerminalView extends View {
         setTextSizePx(spToPx(sp));
         if (getWidth() > 0) {
             updateGridSize(getWidth(), getHeight());
+            // Announce the new grid only for zoom-driven resizes; layout
+            // changes (keyboard show/hide) go through onSizeChanged silently.
+            if (session != null) showSizeToast();
         }
         invalidate();
     }
@@ -409,6 +417,17 @@ public class TerminalView extends View {
         if (session != null) {
             session.resize(cols, rows, (int) cellWidth, cellHeight);
         }
+    }
+
+    /** Flashes the current grid dimensions, reusing one toast to avoid spam. */
+    private void showSizeToast() {
+        String text = getResources().getString(R.string.toast_grid_size, cols, rows);
+        if (sizeToast == null) {
+            sizeToast = Toast.makeText(getContext(), text, Toast.LENGTH_SHORT);
+        } else {
+            sizeToast.setText(text);
+        }
+        sizeToast.show();
     }
 
     @Override
