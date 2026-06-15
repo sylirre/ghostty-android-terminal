@@ -206,7 +206,7 @@ public class TerminalUiTest {
                 .inRoot(isDialog()).perform(click());
 
         // The toolbar is gone, but the configured keys are untouched.
-        onView(withText("ESC")).check(doesNotExist());
+        onView(withText("ESC")).check(matches(not(isDisplayed())));
         scenario.onActivity(a -> assertEquals(View.GONE,
                 a.findViewById(R.id.extra_keys).getVisibility()));
         assertEquals(keyCount, new ExtraKeysConfig(
