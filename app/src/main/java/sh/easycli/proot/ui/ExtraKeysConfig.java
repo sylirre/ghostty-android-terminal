@@ -108,7 +108,11 @@ public final class ExtraKeysConfig {
         if (k != null) return k;
         if (id.startsWith(CUSTOM_PREFIX)) {
             String t = id.substring(CUSTOM_PREFIX.length());
-            if (!t.isEmpty()) return ExtraKey.text(id, t, t);
+            if (!t.isEmpty()) {
+                String label = t.replaceAll("\n+$", "");
+                if (label.isEmpty()) label = "↵";
+                return ExtraKey.text(id, label, t);
+            }
         }
         return null;
     }

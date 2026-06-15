@@ -135,7 +135,7 @@ public final class ExtraKeysActivity extends Activity {
                 .setTitle(R.string.extra_keys_add_custom_title)
                 .setView(container)
                 .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
-                    String text = input.getText().toString();
+                    String text = expandEscapes(input.getText().toString());
                     if (text.isEmpty()) {
                         toast(R.string.extra_keys_custom_empty);
                         return;
@@ -230,6 +230,22 @@ public final class ExtraKeysActivity extends Activity {
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density);
+    }
+
+    /** Expands \n → newline and \\n → literal \n; other backslash sequences pass through. */
+    private static String expandEscapes(String raw) {
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            if (raw.charAt(i) == '\\' && i + 1 < raw.length()) {
+                char next = raw.charAt(i + 1);
+                if (next == 'n') { sb.append('\n'); i++; }
+                else if (next == '\\') { sb.append('\\'); i++; }
+                else { sb.append(raw.charAt(i)); }
+            } else {
+                sb.append(raw.charAt(i));
+            }
+        }
+        return sb.toString();
     }
 
     /**

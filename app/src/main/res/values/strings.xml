@@ -213,7 +213,7 @@
     <string name="extra_keys_add_chip">+ %1$s</string>
     <string name="extra_keys_add_custom">Add custom text…</string>
     <string name="extra_keys_add_custom_title">Custom text key</string>
-    <string name="extra_keys_add_custom_hint">Text to insert, e.g. ~ or git </string>
+    <string name="extra_keys_add_custom_hint">Text; \\n = Enter, \\\\n = literal \\n</string>
     <string name="extra_keys_custom_empty">Enter some text.</string>
     <string name="extra_keys_custom_exists">That key is already in the toolbar.</string>
 </resources>
