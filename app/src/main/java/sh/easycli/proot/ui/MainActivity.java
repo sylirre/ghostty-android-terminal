@@ -209,6 +209,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
+        if (current != null) showKeyboard();
     }
 
     @Override
@@ -281,6 +282,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.scrollbackLines(), debian, this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
+            showKeyboard();
             // Promote the process to foreground priority so the shell
             // survives backgrounding; refresh updates the session count.
             SessionService.refresh(this);
@@ -340,13 +342,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         updateTabs();
     }
 
+    private void showKeyboard() {
+        terminal.requestFocus();
+        InputMethodManager imm = getSystemService(InputMethodManager.class);
+        if (imm != null) imm.showSoftInput(terminal, 0);
+    }
+
     /** Collapses the find bar and clears its match highlight. */
     private void hideSearch() {
         searchBar.hide();
         terminal.searchClose();
-        terminal.requestFocus();
-        InputMethodManager imm = getSystemService(InputMethodManager.class);
-        if (imm != null) imm.showSoftInput(terminal, 0);
+        showKeyboard();
     }
 
     @Override
