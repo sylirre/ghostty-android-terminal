@@ -2,6 +2,8 @@ package sh.easycli.proot.ui;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -19,15 +21,25 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.OutputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import sh.easycli.proot.R;
 import sh.easycli.proot.term.DebianRootfs;
+import sh.easycli.proot.term.RootfsBackup;
 import sh.easycli.proot.term.SessionManager;
 import sh.easycli.proot.term.SessionService;
 import sh.easycli.proot.term.TerminalSession;
@@ -54,6 +66,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     public static final String EXTRA_FORCE_SHELL = "sh.easycli.proot.FORCE_SHELL";
 
     private static final int REQ_POST_NOTIFICATIONS = 1;
+    private static final int REQ_BACKUP = 100;
+    private static final int REQ_RESTORE = 101;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
 
     private final SessionManager sessions = SessionManager.get();
@@ -504,7 +518,208 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setTextMarginRight(dp);
                     applyTextMargins();
                 }));
+        // Debian backup/restore: only meaningful on an ABI that can run it.
+        // Backing up needs something installed; restoring can create the rootfs.
+        if (DebianRootfs.assetName() != null) {
+            items.add(new Setting.Action(
+                    getString(R.string.setting_backup_title),
+                    getString(R.string.setting_backup_summary),
+                    () -> "",
+                    this::startBackup)
+                    .enabledWhen(() -> DebianRootfs.isInstalled(this)));
+            items.add(new Setting.Action(
+                    getString(R.string.setting_restore_title),
+                    getString(R.string.setting_restore_summary),
+                    () -> "",
+                    this::confirmRestore));
+        }
         SettingsDialog.show(this, items);
+    }
+
+    // --- Debian rootfs backup & restore ---
+
+    /** Lets the user pick a destination, then streams the rootfs into it. */
+    private void startBackup() {
+        String name = "debian-rootfs-"
+                + new SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(new Date())
+                + ".tar.gz";
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/gzip")
+                .putExtra(Intent.EXTRA_TITLE, name);
+        try {
+            startActivityForResult(intent, REQ_BACKUP);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.backup_no_picker, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Restore is destructive (replaces the rootfs, closes sessions): confirm first. */
+    private void confirmRestore() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.restore_confirm_title)
+                .setMessage(R.string.restore_confirm_message)
+                .setPositiveButton(R.string.restore_confirm_choose, (d, w) -> {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                            .addCategory(Intent.CATEGORY_OPENABLE)
+                            .setType("*/*"); // gzip MIME detection is unreliable across providers
+                    try {
+                        startActivityForResult(intent, REQ_RESTORE);
+                    } catch (ActivityNotFoundException e) {
+                        Toast.makeText(this, R.string.backup_no_picker,
+                                Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQ_BACKUP) {
+            runBackup(uri);
+        } else if (requestCode == REQ_RESTORE) {
+            runRestore(uri);
+        }
+    }
+
+    private void runBackup(Uri uri) {
+        AtomicBoolean cancelled = new AtomicBoolean();
+        ProgressHandle ui = showProgress(R.string.backup_in_progress, cancelled);
+        new Thread(() -> {
+            IOException failure = null;
+            boolean wasCancelled = false;
+            try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                if (out == null) throw new IOException("cannot open destination");
+                RootfsBackup.backup(getApplicationContext(), out,
+                        bytes -> ui.update(getString(R.string.backup_progress, bytes >> 20)),
+                        cancelled);
+            } catch (InterruptedIOException e) {
+                wasCancelled = true;
+            } catch (IOException e) {
+                failure = e;
+            }
+            final IOException error = failure;
+            final boolean cancelledFinal = wasCancelled;
+            runOnUiThread(() -> {
+                ui.dismiss();
+                if (isFinishing() || isDestroyed()) return;
+                if (cancelledFinal) {
+                    Toast.makeText(this, R.string.backup_cancelled, Toast.LENGTH_LONG).show();
+                } else if (error == null) {
+                    Toast.makeText(this, R.string.backup_done, Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, getString(R.string.backup_failed,
+                            error.getMessage()), Toast.LENGTH_LONG).show();
+                }
+            });
+        }, "rootfs-backup").start();
+    }
+
+    private void runRestore(Uri uri) {
+        // Tear down every session before the rootfs is swapped: a live PRoot
+        // process must not hold the tree we are about to delete and replace.
+        terminal.attachSession(null);
+        current = null;
+        sessions.closeAll();
+        updateTabs();
+        SessionService.refresh(this);
+
+        AtomicBoolean cancelled = new AtomicBoolean();
+        ProgressHandle ui = showProgress(R.string.restore_in_progress, cancelled);
+        new Thread(() -> {
+            IOException failure = null;
+            boolean wasCancelled = false;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new IOException("cannot open backup file");
+                RootfsBackup.restore(getApplicationContext(), in,
+                        bytes -> ui.update(getString(R.string.restore_progress, bytes >> 20)),
+                        cancelled);
+            } catch (InterruptedIOException e) {
+                wasCancelled = true;
+            } catch (IOException e) {
+                failure = e;
+            }
+            final IOException error = failure;
+            final boolean cancelledFinal = wasCancelled;
+            runOnUiThread(() -> {
+                ui.dismiss();
+                if (isFinishing() || isDestroyed()) return;
+                if (error == null && !cancelledFinal) {
+                    Toast.makeText(this, R.string.restore_done, Toast.LENGTH_SHORT).show();
+                    createSession(true); // fresh Debian session on the restored rootfs
+                } else {
+                    // Failed or cancelled: the swap is atomic, so the original
+                    // rootfs is intact — just reopen a session on whatever's there.
+                    if (cancelledFinal) {
+                        Toast.makeText(this, R.string.restore_cancelled,
+                                Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(this, getString(R.string.restore_failed,
+                                error.getMessage()), Toast.LENGTH_LONG).show();
+                    }
+                    createSession(DebianRootfs.isUsable(this));
+                }
+            });
+        }, "rootfs-restore").start();
+    }
+
+    /**
+     * Shows a modal progress dialog whose Cancel button flips {@code cancelled}
+     * (and shows "Cancelling…") without dismissing — the worker dismisses it as
+     * it unwinds. Returned handle's {@link ProgressHandle#update} is safe to
+     * call from a background thread.
+     */
+    private ProgressHandle showProgress(int titleRes, AtomicBoolean cancelled) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (20 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad, pad, pad);
+        TextView status = new TextView(this);
+        status.setText(titleRes);
+        ProgressBar bar = new ProgressBar(this, null,
+                android.R.attr.progressBarStyleHorizontal);
+        bar.setIndeterminate(true);
+        box.addView(status);
+        box.addView(bar);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(box)
+                .setCancelable(false)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        dialog.show();
+        // Replacing the button listener after show() suppresses the default
+        // auto-dismiss, so the dialog stays up until the worker tears it down.
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+            cancelled.set(true);
+            status.setText(R.string.progress_cancelling);
+        });
+        return new ProgressHandle(dialog, status);
+    }
+
+    /** A live progress dialog with thread-safe text updates. */
+    private final class ProgressHandle {
+        private final AlertDialog dialog;
+        private final TextView status;
+
+        ProgressHandle(AlertDialog dialog, TextView status) {
+            this.dialog = dialog;
+            this.status = status;
+        }
+
+        void update(String text) {
+            runOnUiThread(() -> {
+                if (dialog.isShowing()) status.setText(text);
+            });
+        }
+
+        void dismiss() {
+            if (dialog.isShowing()) dialog.dismiss();
+        }
     }
 
     private void applyTextMargins() {

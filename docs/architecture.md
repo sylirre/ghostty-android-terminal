@@ -102,6 +102,17 @@ under app data):
    (apps cannot `link(2)`); device nodes are skipped (PRoot binds the host
    `/dev`, `/proc`, `/sys`). At runtime `--link2symlink` translates guest
    hard links and `-0` fakes uid 0, which keeps dpkg/apt working.
+4. **The rootfs can be backed up and restored** (Settings → Back up /
+   Restore Debian). `RootfsBackup` walks the live tree with `lstat`/`readlink`
+   and streams it to a user-chosen file (SAF) as a gzip-compressed,
+   GNU-tar-dialect archive preserving file bytes, directory layout, symlink
+   targets, and mode bits (sticky/setuid included). The format is the exact
+   subset `DebianRootfs.extractTar` already reads, so restore reuses that
+   reader: it extracts into `debian.tmp` and only the final atomic rename
+   (`publish`) swaps it onto `debian`, leaving the existing rootfs intact if a
+   restore fails or is cancelled. Restore tears down all sessions first (no
+   live PRoot may hold the tree being replaced) and skips the install-time
+   `writeGuestDefaults` so the archive is reproduced verbatim.
 
 The session command is `proot --kill-on-exit --link2symlink -0 -r <rootfs>
 -w /root -b /dev -b /proc -b /sys /usr/bin/env -i HOME=/root … /bin/bash
@@ -118,7 +129,8 @@ no-exec model.
 | `TerminalEmulator` | Owns the native terminal handle; feed/resize/snapshot/encode under one lock |
 | `ScreenSnapshot` | Reusable flat-array copy of the viewport + cursor for rendering |
 | `SessionCommand` | What to spawn: execve command or PRoot argv, env, cwd, tab label |
-| `DebianRootfs` | Rootfs asset detection + tar.xz install + PRoot command construction |
+| `DebianRootfs` | Rootfs asset detection + tar.xz install + atomic publish + PRoot command construction |
+| `RootfsBackup` | Streams the rootfs to/from a gzip-tar file (Settings backup/restore), reusing `DebianRootfs`'s tar reader/publish |
 | `TerminalSession` | PTY fd + shell pid + reader thread; writes input; reports exit |
 | `SessionManager` | Process-wide session list; survives Activity recreation |
 | `TerminalView` | Canvas grid renderer, IME connection, scroll + pinch-zoom gestures |

@@ -137,6 +137,27 @@
         <item>Br. White</item>
     </string-array>
 
+    <!-- Settings: Debian backup & restore -->
+    <string name="setting_backup_title">Back up Debian</string>
+    <string name="setting_backup_summary">Save the Debian rootfs — all files, symlinks, and permissions — to a .tar.gz file.</string>
+    <string name="setting_restore_title">Restore Debian</string>
+    <string name="setting_restore_summary">Replace the Debian rootfs from a backup file. Closes all open sessions.</string>
+    <string name="restore_confirm_title">Restore Debian rootfs?</string>
+    <string name="restore_confirm_message">This replaces the current Debian rootfs with the contents of a backup file and closes all open sessions. Anything in the current rootfs that is not in the backup is lost.</string>
+    <string name="restore_confirm_choose">Choose file…</string>
+    <string name="backup_in_progress">Backing up Debian…</string>
+    <string name="backup_progress">Backing up Debian… %d MB</string>
+    <string name="restore_in_progress">Restoring Debian…</string>
+    <string name="restore_progress">Restoring Debian… %d MB</string>
+    <string name="progress_cancelling">Cancelling…</string>
+    <string name="backup_done">Backup complete</string>
+    <string name="backup_cancelled">Backup cancelled; the partial file may remain.</string>
+    <string name="backup_failed">Backup failed: %s</string>
+    <string name="restore_done">Restore complete</string>
+    <string name="restore_cancelled">Restore cancelled; the rootfs is unchanged.</string>
+    <string name="restore_failed">Restore failed: %s</string>
+    <string name="backup_no_picker">No app available to pick a file location.</string>
+
     <!-- Debian install progress overlay -->
     <string name="installing_debian">Installing Debian…</string>
     <string name="installing_debian_progress">Installing Debian… %d MB</string>

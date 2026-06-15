@@ -14,10 +14,12 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The Debian userland: rootfs install state, the tar.xz installer, and the
@@ -127,14 +129,50 @@ public final class DebianRootfs {
 
         try (InputStream raw = ctx.getAssets().open(asset);
                 XZInputStream xz = new XZInputStream(new BufferedInputStream(raw, 1 << 16))) {
-            extractTar(xz, staging, progress);
+            extractTar(xz, staging, progress, null);
         }
         writeGuestDefaults(staging);
+        publish(ctx, staging);
+    }
 
-        // Publish atomically: dir() (the marker) only ever names a finished
-        // rootfs. renameTo is a rename(2) within filesDir, so it's atomic.
+    /**
+     * Replaces the installed rootfs with the contents of an <em>uncompressed</em>
+     * tar stream (the caller handles any decompression — see
+     * {@link RootfsBackup#restore}). Extraction lands in {@link #stagingDir}
+     * first and only the final {@link #publish} rename touches {@link #dir}, so
+     * a failure or cancel mid-extract leaves the existing rootfs untouched.
+     *
+     * Unlike {@link #install} this deliberately skips {@link #writeGuestDefaults}:
+     * a restore reproduces the backed-up tree verbatim — its resolv.conf, /etc,
+     * and the bind-mount point directories all ride in the archive, and
+     * rewriting them would clobber the user's data. Synchronized against
+     * {@link #install} (both lock this class). Blocking — call off the main
+     * thread; pass {@code cancelled} to abort a long restore.
+     */
+    static synchronized void replaceFromTar(Context ctx, InputStream tar,
+            ProgressListener progress, AtomicBoolean cancelled) throws IOException {
+        File staging = stagingDir(ctx);
+        deleteRecursively(staging); // drop any aborted previous attempt
+        if (!staging.mkdirs()) throw new IOException("cannot create " + staging);
+        try {
+            extractTar(tar, staging, progress, cancelled);
+        } catch (IOException e) {
+            deleteRecursively(staging); // never leave a half-written tree behind
+            throw e;
+        }
+        publish(ctx, staging);
+    }
+
+    /**
+     * Atomically swaps {@code staging} onto {@link #dir} with a rename(2) within
+     * filesDir. The destination is removed first because renameTo won't replace
+     * a non-empty directory; for a fresh {@link #install} that delete is a
+     * defensive no-op. Shared by {@link #install} and {@link #replaceFromTar} so
+     * {@link #dir} (the install marker) only ever names a finished rootfs.
+     */
+    private static void publish(Context ctx, File staging) throws IOException {
         File root = dir(ctx);
-        deleteRecursively(root); // unreachable for a real install; defensive
+        deleteRecursively(root);
         if (!staging.renameTo(root)) {
             deleteRecursively(staging);
             throw new IOException("cannot publish rootfs to " + root);
@@ -195,8 +233,8 @@ public final class DebianRootfs {
 
     private static final int BLOCK = 512;
 
-    private static void extractTar(InputStream in, File root, ProgressListener progress)
-            throws IOException {
+    static void extractTar(InputStream in, File root, ProgressListener progress,
+            AtomicBoolean cancelled) throws IOException {
         byte[] header = new byte[BLOCK];
         byte[] buf = new byte[1 << 16];
         // Directory modes are applied after extraction: a read-only dir
@@ -212,6 +250,9 @@ public final class DebianRootfs {
         long lastReport = 0;
 
         while (readBlock(in, header)) {
+            if (cancelled != null && cancelled.get()) {
+                throw new InterruptedIOException("restore cancelled");
+            }
             if (isZeroBlock(header)) break; // end-of-archive marker
 
             String name = field(header, 0, 100);
@@ -263,6 +304,9 @@ public final class DebianRootfs {
                     try (OutputStream out = new FileOutputStream(target)) {
                         long left = size;
                         while (left > 0) {
+                            if (cancelled != null && cancelled.get()) {
+                                throw new InterruptedIOException("restore cancelled");
+                            }
                             int n = in.read(buf, 0, (int) Math.min(buf.length, left));
                             if (n < 0) throw new IOException("truncated tar entry " + name);
                             out.write(buf, 0, n);
