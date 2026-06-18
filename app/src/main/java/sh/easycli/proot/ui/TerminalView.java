@@ -198,6 +198,12 @@ public class TerminalView extends View {
     private boolean mouseTrackingEnabled = true;
     private int mouseAxis;
     private float mouseWheelRemainder;
+    // A long-press with mouse reporting active holds the left button down and
+    // turns subsequent movement into drag (motion-with-button) reports, ending
+    // on finger-up. mouseDragCellX/Y is the last cell a motion was reported for,
+    // so a drag within one cell isn't re-reported (the protocol is cell-grained).
+    private boolean mouseDragging;
+    private int mouseDragCellX = -1, mouseDragCellY = -1;
 
     // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
     // to an OverScroller, whose decelerating position is sampled once per
@@ -317,6 +323,14 @@ public class TerminalView extends View {
 
             @Override
             public void onLongPress(MotionEvent e) {
+                // With mouse reporting active, a long-press grabs the left
+                // button so the following drag is reported to the program
+                // (text/region select, slider, divider) instead of starting a
+                // local copy selection.
+                if (mouseReporting()) {
+                    startMouseDrag(e.getX(), e.getY());
+                    return;
+                }
                 startSelection(e.getX(), e.getY());
             }
 
@@ -557,7 +571,7 @@ public class TerminalView extends View {
     /** Sends {@code count} wheel-button presses (encoded once, written N times). */
     private void emitWheel(int button, int count, float x, float y) {
         byte[] one = session.emulator.encodeMouse(
-                TerminalNative.MOUSE_PRESS, button, x, y);
+                TerminalNative.MOUSE_PRESS, button, x, y, false);
         if (one == null) return;
         for (int i = 0; i < count; i++) session.writeBytes(one);
     }
@@ -566,11 +580,66 @@ public class TerminalView extends View {
     private void sendMouseClick(float px, float py) {
         float x = px - textMarginLeft, y = py;
         byte[] press = session.emulator.encodeMouse(
-                TerminalNative.MOUSE_PRESS, TerminalNative.MOUSE_BUTTON_LEFT, x, y);
+                TerminalNative.MOUSE_PRESS, TerminalNative.MOUSE_BUTTON_LEFT, x, y, false);
         byte[] release = session.emulator.encodeMouse(
-                TerminalNative.MOUSE_RELEASE, TerminalNative.MOUSE_BUTTON_LEFT, x, y);
+                TerminalNative.MOUSE_RELEASE, TerminalNative.MOUSE_BUTTON_LEFT, x, y, false);
         if (press != null) session.writeBytes(press);
         if (release != null) session.writeBytes(release);
+    }
+
+    /**
+     * Begins a left-button drag at the long-press point: presses the button
+     * (held) and records the start cell. {@link #mouseDragTouch} then carries
+     * the motion and release. A short haptic marks the grab, mirroring the
+     * feedback the local selection gives.
+     */
+    private void startMouseDrag(float px, float py) {
+        float x = px - textMarginLeft, y = py;
+        mouseDragging = true;
+        mouseDragCellX = (int) (x / cellWidth);
+        mouseDragCellY = (int) (y / cellHeight);
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        byte[] press = session.emulator.encodeMouse(
+                TerminalNative.MOUSE_PRESS, TerminalNative.MOUSE_BUTTON_LEFT, x, y, true);
+        if (press != null) session.writeBytes(press);
+    }
+
+    /**
+     * Carries an in-progress long-press drag: moves emit a motion report (with
+     * the left button held) once per new cell entered, and the lift emits the
+     * release. Consumes the whole stream so it bypasses the gesture detectors.
+     */
+    private boolean mouseDragTouch(MotionEvent event) {
+        if (session == null) {
+            mouseDragging = false;
+            return true;
+        }
+        float x = event.getX() - textMarginLeft, y = event.getY();
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_MOVE: {
+                int cx = (int) (x / cellWidth), cy = (int) (y / cellHeight);
+                if (cx == mouseDragCellX && cy == mouseDragCellY) return true;
+                mouseDragCellX = cx;
+                mouseDragCellY = cy;
+                byte[] motion = session.emulator.encodeMouse(
+                        TerminalNative.MOUSE_MOTION, TerminalNative.MOUSE_BUTTON_LEFT,
+                        x, y, true);
+                if (motion != null) session.writeBytes(motion);
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                byte[] release = session.emulator.encodeMouse(
+                        TerminalNative.MOUSE_RELEASE, TerminalNative.MOUSE_BUTTON_LEFT,
+                        x, y, false);
+                if (release != null) session.writeBytes(release);
+                mouseDragging = false;
+                mouseDragCellX = mouseDragCellY = -1;
+                return true;
+            }
+            default:
+                return true;
+        }
     }
 
     private void setTextSizePx(float px) {
@@ -670,6 +739,7 @@ public class TerminalView extends View {
             resetRichInput(); // the mirror belonged to the old session's line
             scroller.forceFinished(true); // don't coast into the new session
             pixelScrollOffset = 0; // the old session's sub-row offset is meaningless
+            mouseDragging = false; // any in-flight drag belonged to the old session
         }
         session = s;
         if (s != null && getWidth() > 0) {
@@ -784,6 +854,10 @@ public class TerminalView extends View {
         // selection (we own these events so they never reach the detectors —
         // which also keeps the release from being read as a dismissing tap).
         if (longPressDragging && longPressDragTouch(event)) return true;
+        // A long-press-initiated mouse drag owns the rest of the gesture: its
+        // moves become motion reports and never reach the detectors, so no
+        // wheel/scroll fires underneath it.
+        if (mouseDragging && mouseDragTouch(event)) return true;
         scaleGestures.onTouchEvent(event);
         // Suppress scrolling (and taps) while a pinch is in progress so the
         // viewport doesn't jump around during zoom.

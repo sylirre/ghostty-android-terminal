@@ -236,11 +236,13 @@ public final class TerminalNative {
      * output format. {@code action} is a {@code MOUSE_PRESS/RELEASE/MOTION}
      * value, {@code button} a {@code MOUSE_BUTTON_*}/{@code MOUSE_WHEEL_*}
      * value, and {@code x}/{@code y} are surface pixels relative to the cell
-     * grid origin. Returns bytes for the PTY, or null when the event encodes to
-     * nothing (e.g. no tracking mode is active).
+     * grid origin. {@code buttonHeld} marks that a button is down, so
+     * {@code MOUSE_MOTION} is reported in button-event tracking mode (a drag).
+     * Returns bytes for the PTY, or null when the event encodes to nothing
+     * (e.g. no tracking mode is active, or motion in a mode that ignores it).
      */
     public static native byte[] terminalEncodeMouse(long handle, int action,
-            int button, float x, float y);
+            int button, float x, float y, boolean buttonHeld);
 
     // --- Selection (state lives in the terminal; survives scroll/reflow) ---
 

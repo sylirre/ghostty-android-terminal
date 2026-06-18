@@ -171,9 +171,11 @@ public final class TerminalEmulator implements AutoCloseable {
      * mode; null if it encodes to nothing. See
      * {@link TerminalNative#terminalEncodeMouse}.
      */
-    public synchronized byte[] encodeMouse(int action, int button, float x, float y) {
+    public synchronized byte[] encodeMouse(int action, int button, float x,
+            float y, boolean buttonHeld) {
         if (handle == 0) return null;
-        return TerminalNative.terminalEncodeMouse(handle, action, button, x, y);
+        return TerminalNative.terminalEncodeMouse(
+                handle, action, button, x, y, buttonHeld);
     }
 
     // --- Selection. The terminal owns it (tracked refs), so it follows its

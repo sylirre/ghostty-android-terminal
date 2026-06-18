@@ -1312,18 +1312,23 @@ Java_sh_easycli_proot_term_TerminalNative_terminalEncodeKey(
  * Encodes a single mouse event into the byte sequence for the PTY, honoring
  * the terminal's active tracking mode and output format (SGR, X10, …). The
  * caller drives gestures: a tap is a PRESS+RELEASE of MOUSE_BUTTON_LEFT; a
- * wheel notch is a PRESS of buttons 4/5 (vertical) or 6/7 (horizontal).
+ * wheel notch is a PRESS of buttons 4/5 (vertical) or 6/7 (horizontal); a
+ * long-press drag is a PRESS, then MOTION events with button_held set, then a
+ * RELEASE.
  *
  * action/button are GhosttyMouseAction / GhosttyMouseButton values (mirrored
  * in TerminalNative.MOUSE_*). x/y are surface pixels relative to the cell-grid
- * origin (the view subtracts its left text margin first). Returns null when
- * the event encodes to nothing — including when no tracking mode is active, so
- * a stale "mouse on" snapshot can't emit stray bytes.
+ * origin (the view subtracts its left text margin first). button_held tells
+ * the encoder a button is down, so MOTION gets reported in button-event
+ * tracking mode (1002); it is set per call to stay stateless across the reused
+ * encoder. Returns null when the event encodes to nothing — including when no
+ * tracking mode is active (so a stale "mouse on" snapshot can't emit stray
+ * bytes) and when MOTION wouldn't be reported in the current mode.
  */
 JNIEXPORT jbyteArray JNICALL
 Java_sh_easycli_proot_term_TerminalNative_terminalEncodeMouse(
     JNIEnv *env, jclass clazz, jlong h, jint action, jint button, jfloat x,
-    jfloat y) {
+    jfloat y, jboolean button_held) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
     if (!c->mouse_encoder || !c->mouse_event) return NULL;
@@ -1346,6 +1351,10 @@ Java_sh_easycli_proot_term_TerminalNative_terminalEncodeMouse(
     };
     ghostty_mouse_encoder_setopt(c->mouse_encoder,
                                  GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+    bool held = button_held == JNI_TRUE;
+    ghostty_mouse_encoder_setopt(c->mouse_encoder,
+                                 GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED,
+                                 &held);
 
     GhosttyMousePosition pos = {.x = (float)x, .y = (float)y};
     ghostty_mouse_event_set_action(c->mouse_event, (GhosttyMouseAction)action);
