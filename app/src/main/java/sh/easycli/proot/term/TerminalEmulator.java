@@ -59,6 +59,18 @@ public final class TerminalEmulator implements AutoCloseable {
         }
     }
 
+    /**
+     * Force-enables or disables DEC mode 2027 (grapheme-cluster mode). With it
+     * on, the engine combines multi-codepoint grapheme clusters — combining
+     * marks, ZWJ emoji, and Indic conjuncts like स्व — into one (possibly wide)
+     * cell, which the renderer shapes as a unit. Off by default: it changes
+     * column-width accounting, which wcwidth-based programs may not match.
+     * No-op after {@link #close}.
+     */
+    public synchronized void setGraphemeClustering(boolean enable) {
+        if (handle != 0) TerminalNative.terminalSetGraphemeClustering(handle, enable);
+    }
+
     public synchronized void scrollToBottom() {
         if (handle != 0) TerminalNative.terminalScroll(handle, 1, 0);
     }

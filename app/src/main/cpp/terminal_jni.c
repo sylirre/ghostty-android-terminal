@@ -82,6 +82,11 @@ typedef struct {
     bool search_dirty;
 
     int events;
+
+    /* When true, DEC mode 2027 (grapheme clustering) is force-enabled and
+     * re-asserted after each feed so it survives a program's RIS reset. Set
+     * from Java when the user opts in; off by default (calloc-zeroed). */
+    bool want_grapheme_cluster;
 } TermCtx;
 
 static void on_write_pty(GhosttyTerminal t, void *ud, const uint8_t *data,
@@ -317,6 +322,17 @@ Java_sh_easycli_proot_term_TerminalNative_terminalFeed(
     /* The buffer changed, so an open search must re-scan before it navigates. */
     c->search_dirty = true;
 
+    /* Keep forced grapheme clustering (mode 2027) sticky: a program's RIS
+     * reset clears it, so re-assert after each feed when the user opted in. */
+    if (c->want_grapheme_cluster) {
+        bool on = false;
+        if (ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_GRAPHEME_CLUSTER,
+                                      &on) == GHOSTTY_SUCCESS && !on) {
+            ghostty_terminal_mode_set(c->term, GHOSTTY_MODE_GRAPHEME_CLUSTER,
+                                      true);
+        }
+    }
+
     if (c->out_len == 0) return NULL;
     jbyteArray resp = (*env)->NewByteArray(env, (jsize)c->out_len);
     (*env)->SetByteArrayRegion(env, resp, 0, (jsize)c->out_len,
@@ -398,6 +414,19 @@ Java_sh_easycli_proot_term_TerminalNative_terminalScrollbar(
     ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb);
     jint vals[3] = {(jint)sb.total, (jint)sb.offset, (jint)sb.len};
     (*env)->SetIntArrayRegion(env, jout, 0, 3, vals);
+}
+
+/* Force-enables or disables DEC mode 2027 (grapheme clustering). When on, the
+ * engine groups multi-codepoint grapheme clusters — combining marks, ZWJ emoji,
+ * and Indic conjuncts (consonant-virama-consonant) — into one cell, which the
+ * renderer shapes as a unit; terminalFeed re-asserts it after a RIS reset. */
+JNIEXPORT void JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalSetGraphemeClustering(
+    JNIEnv *env, jclass clazz, jlong h, jboolean enable) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    c->want_grapheme_cluster = enable;
+    ghostty_terminal_mode_set(c->term, GHOSTTY_MODE_GRAPHEME_CLUSTER, enable);
 }
 
 static jint pack_rgb(GhosttyColorRgb c) {

@@ -176,8 +176,22 @@ sparse cell→string map. A cheap row-level flag (`GHOSTTY_ROW_DATA_GRAPHEME`)
 gates the per-cell probe, so non-grapheme rows — nearly all of them — pay
 nothing. The renderer breaks its batched run at a cluster cell and hands the
 whole string to `Canvas.drawText`, letting the platform text stack shape the
-combining marks / emoji sequences. DEC mode 2027 (grapheme-cluster
-segmentation) is left to application opt-in; the engine answers the query.
+combining marks / emoji sequences.
+
+Zero-width combining marks attach to their base cell unconditionally, but full
+grapheme *segmentation* — multi-consonant Indic conjuncts (consonant + virama +
+consonant, e.g. `स्व`), and treating ZWJ emoji sequences as one cell — happens
+only under DEC mode 2027. Programs can request it (`CSI ? 2027 h`), and a
+**Combine grapheme clusters** setting force-enables it on every session
+(`AppSettings.graphemeClustering` → `TerminalEmulator.setGraphemeClustering`,
+applied in `MainActivity.applyTheme`). With it on, the engine groups the whole
+cluster into a single cell — a conjunct becomes a *wide* (two-column) cell whose
+second consonant's slot is a spacer tail — and the existing `graphemeAt`
+renderer shapes it correctly. It's off by default because mode 2027 changes
+column-width accounting (a cluster counts as one unit), which programs that
+measure strings with libc `wcwidth` may not match. The mode is per-terminal
+state that a program's RIS reset clears, so the JNI `terminalFeed` re-asserts it
+after each feed while the setting is on.
 
 #### Unicode width and bidi: what's not supported
 

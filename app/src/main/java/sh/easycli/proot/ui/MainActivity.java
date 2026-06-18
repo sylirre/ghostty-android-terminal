@@ -247,19 +247,22 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     /**
-     * Pushes the selected theme colors and the global cursor style/blink
-     * preference to every open session, then repaints. Called on resume (to
-     * pick up edits made in {@link ThemeActivity}) and after creating a session
-     * (to style it before any output arrives).
+     * Pushes the selected theme colors and the global cursor-style/blink and
+     * grapheme-clustering preferences to every open session, then repaints.
+     * Called on resume (to pick up edits made in {@link ThemeActivity} or the
+     * settings dialog) and after creating a session (to style it before any
+     * output arrives).
      */
     private void applyTheme() {
         TerminalTheme theme = themeStore.current();
         int[] palette = theme.toPalette256();
         int cursorStyle = settings.cursorStyle();
         boolean cursorBlink = settings.cursorBlink();
+        boolean grapheme = settings.graphemeClustering();
         for (TerminalSession s : sessions.sessions()) {
             s.emulator.setColors(theme.foreground, theme.background, theme.cursor, palette);
             s.emulator.setCursorStyle(cursorStyle, cursorBlink);
+            s.emulator.setGraphemeClustering(grapheme);
         }
         terminal.invalidate();
     }
@@ -467,6 +470,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     terminal.setRichKeyboard(enabled);
                 })
                 .enabledWhen(settings::touchKeyboard));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_grapheme_title),
+                getString(R.string.setting_grapheme_summary),
+                settings::graphemeClustering,
+                enabled -> {
+                    settings.setGraphemeClustering(enabled);
+                    applyTheme(); // re-pushes the mode to every open session
+                }));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),
                 getString(R.string.setting_extra_keys_enabled_summary),

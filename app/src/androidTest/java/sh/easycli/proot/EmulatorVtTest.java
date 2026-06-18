@@ -119,6 +119,35 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void indicConjunctNotClusteredByDefault() {
+        // Devanagari स ् व र: the virama (U+094D, zero width) attaches to its
+        // consonant, but with grapheme clustering off the following consonant
+        // starts a fresh cell — so the conjunct स्व does not form and only स्
+        // is the cluster in cell 0.
+        feed("स्वर");
+        ScreenSnapshot s = snapshot();
+        assertEquals(0x0938, s.codepoints[cell(0, 0)]);          // base स
+        assertEquals("स्", s.graphemeAt(cell(0, 0)));  // स् only
+        assertEquals(0x0935, s.codepoints[cell(1, 0)]);          // व, own cell
+        assertNull(s.graphemeAt(cell(1, 0)));
+    }
+
+    @Test
+    public void indicConjunctClustersWithMode2027() {
+        // Forcing DEC mode 2027 makes the engine apply Indic conjunct breaks:
+        // consonant + virama + consonant merge into one (wide) cell, so स ् व
+        // cluster in cell 0 and र lands two columns over.
+        term.setGraphemeClustering(true);
+        feed("स्वर");
+        ScreenSnapshot s = snapshot();
+        assertEquals(0x0938, s.codepoints[cell(0, 0)]);          // base स
+        assertEquals("स्व", s.graphemeAt(cell(0, 0))); // स्व cluster
+        assertTrue((s.attrs[cell(0, 0)] & TerminalNative.ATTR_WIDE) != 0);
+        assertEquals(0x0930, s.codepoints[cell(2, 0)]);          // र past the spacer
+        assertNull(s.graphemeAt(cell(2, 0)));
+    }
+
+    @Test
     public void cursorMovement() {
         feed("\u001b[3;5Hx"); // CUP row 3, col 5 (1-based)
         ScreenSnapshot s = snapshot();

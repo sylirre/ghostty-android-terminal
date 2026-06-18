@@ -30,6 +30,7 @@ public final class AppSettings {
     private static final String KEY_TEXT_MARGIN_LEFT = "text_margin_left";
     private static final String KEY_TEXT_MARGIN_RIGHT = "text_margin_right";
     private static final String KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN = "hide_extra_keys_when_kb_hidden";
+    private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -219,5 +220,22 @@ public final class AppSettings {
 
     public void setHideExtraKeysWhenKeyboardHidden(boolean hide) {
         prefs.edit().putBoolean(KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN, hide).apply();
+    }
+
+    /**
+     * When true, DEC mode 2027 (grapheme-cluster mode) is force-enabled on every
+     * session, so the engine merges multi-codepoint clusters — combining marks,
+     * ZWJ emoji, and Indic conjuncts such as स्व — into one cell that the
+     * renderer shapes as a unit. Off by default because it changes column-width
+     * accounting: programs that measure strings with libc {@code wcwidth} (some
+     * shells/TUIs) may then misplace the cursor. Applied per session by
+     * {@code MainActivity#applyTheme}; takes effect on the next snapshot.
+     */
+    public boolean graphemeClustering() {
+        return prefs.getBoolean(KEY_GRAPHEME_CLUSTERING, false);
+    }
+
+    public void setGraphemeClustering(boolean enabled) {
+        prefs.edit().putBoolean(KEY_GRAPHEME_CLUSTERING, enabled).apply();
     }
 }

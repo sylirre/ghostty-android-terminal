@@ -159,6 +159,15 @@ public final class TerminalNative {
     public static native void terminalSetCursorStyle(long handle, int style,
             boolean blink);
 
+    /**
+     * Force-enables or disables DEC mode 2027 (grapheme-cluster mode). When on,
+     * the engine groups multi-codepoint grapheme clusters (combining marks, ZWJ
+     * emoji, Indic conjuncts) into a single cell; the native side re-asserts it
+     * after each feed so it survives a program's RIS reset. Off by default.
+     */
+    public static native void terminalSetGraphemeClustering(long handle,
+            boolean enable);
+
     /** mode: 0 = top, 1 = bottom, 2 = by delta rows (negative is up). */
     public static native void terminalScroll(long handle, int mode, int delta);
 
