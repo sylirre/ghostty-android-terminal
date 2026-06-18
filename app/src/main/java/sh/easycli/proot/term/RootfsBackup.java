@@ -30,16 +30,34 @@ import java.util.zip.GZIPOutputStream;
  * {@code L}/{@code K} long-name records for paths over 100 bytes. That is
  * exactly the subset {@link DebianRootfs#extractTar} already reads, so
  * {@link #restore} reuses that proven reader instead of a second parser; it
- * also means the file opens with a desktop {@code tar xzf}. The live tree never
- * contains hard links (the installer copies them) or device nodes (PRoot binds
- * the host's at runtime), so neither is emitted.
+ * also means the file opens with a desktop {@code tar xzf}.
+ *
+ * <p><b>link2symlink inlining.</b> The runtime runs PRoot with
+ * {@code --link2symlink}, which turns guest hard links — created en masse by
+ * {@code apt}/{@code dpkg} — into symlinks pointing at {@code .proot.l2s.*}
+ * intermediate files next to each original (see
+ * {@code native/proot/src/extension/link2symlink/link2symlink.c}). Those
+ * symlink targets are absolute host paths, so storing them verbatim would bake
+ * {@code /data/data/…} into the archive and dangle on any path change or a
+ * desktop {@code tar xzf}. Instead each such symlink is <em>inlined</em> —
+ * emitted as a regular file holding the backing file's content and mode (the
+ * proot-distro approach) — and the raw {@code .proot.l2s.*} entries are
+ * dropped. The archive is therefore self-contained and portable; guest
+ * hard-link <em>sharing</em> is lost but re-established lazily by PRoot the next
+ * time the guest links a file after restore.
+ *
+ * <p>The live tree otherwise contains no real hard links (the installer copies
+ * them) or device nodes (PRoot binds the host's at runtime), so neither is
+ * emitted.
  *
  * Both directions stream in constant memory and serialize against
  * {@link DebianRootfs#install}/{@link DebianRootfs#replaceFromTar} by locking
  * {@code DebianRootfs.class}. A backup is a best-effort snapshot: it does not
  * freeze a rootfs a live session may be writing, but a file that changes
  * underneath is still emitted at its declared size (zero-padded if it shrank),
- * so the archive stays structurally valid.
+ * so the archive stays structurally valid. An {@link #ensureReadable} pass
+ * first grants the owner the minimum bits to read every entry, so a
+ * deliberately unreadable file or directory isn't silently lost.
  */
 public final class RootfsBackup {
 
@@ -61,6 +79,16 @@ public final class RootfsBackup {
     private static final byte[] EMPTY = new byte[0];
     private static final byte[] ZERO = new byte[BLOCK];
 
+    /**
+     * Basename prefixes PRoot's {@code --link2symlink} extension gives the
+     * intermediate/backing files that stand in for guest hard links:
+     * {@code .proot.l2s.} in the USERLAND build we ship, {@code .l2s.} otherwise
+     * (link2symlink.c). Both are recognized so an archive made under either
+     * build round-trips. The {@code .l2s} directory is the {@code PROOT_L2S_DIR}
+     * layout (we don't set it, but skip it defensively).
+     */
+    private static final String[] L2S_PREFIXES = {".proot.l2s.", ".l2s."};
+
     private RootfsBackup() {}
 
     /**
@@ -79,6 +107,7 @@ public final class RootfsBackup {
         File root = DebianRootfs.dir(ctx);
         if (!root.isDirectory()) throw new IOException("Debian rootfs not installed");
         synchronized (DebianRootfs.class) {
+            ensureReadable(root);
             long total = measure(root);
             DebianRootfs.ProgressListener tick = progress == null ? null
                     : archived -> progress.onProgress(archived, total);
@@ -115,26 +144,160 @@ public final class RootfsBackup {
 
     /**
      * Sum of the regular-file bytes the archive will carry — the backup
-     * denominator. Counts only what {@link #archive} streams as file data
-     * ({@code S_ISREG}); directories and symlinks contribute no payload, so this
-     * equals the writer's running total at completion. Package-private so a test
-     * can pin the denominator against a known tree.
+     * denominator. Counts only what {@link #archive} streams as file data: plain
+     * regular files plus the backing file of each inlined {@code link2symlink}
+     * entry (counted once, via the referring symlink — the raw
+     * {@code .proot.l2s.*} siblings are skipped just like the writer skips them).
+     * Directories and ordinary symlinks contribute no payload, so this equals
+     * the writer's running total at completion. Package-private so a test can pin
+     * the denominator against a known tree.
      */
     static long measure(File dir) {
+        String rootCanon;
+        try {
+            rootCanon = dir.getCanonicalPath();
+        } catch (IOException e) {
+            rootCanon = dir.getAbsolutePath();
+        }
+        return measure(dir, rootCanon);
+    }
+
+    private static long measure(File dir, String rootCanon) {
         File[] children = dir.listFiles();
         if (children == null) return 0;
         long total = 0;
         for (File child : children) {
+            if (isL2sArtifact(child.getName())) continue; // inlined via its symlink
             StructStat st;
             try {
                 st = Os.lstat(child.getAbsolutePath());
             } catch (ErrnoException e) {
                 continue; // vanished mid-walk; the writer skips it too
             }
-            if (OsConstants.S_ISDIR(st.st_mode)) total += measure(child);
-            else if (OsConstants.S_ISREG(st.st_mode)) total += st.st_size;
+            if (OsConstants.S_ISDIR(st.st_mode)) {
+                total += measure(child, rootCanon);
+            } else if (OsConstants.S_ISLNK(st.st_mode)) {
+                File backing = l2sBacking(child, rootCanon);
+                if (backing != null) {
+                    try {
+                        total += Os.stat(backing.getAbsolutePath()).st_size;
+                    } catch (ErrnoException e) {
+                        // backing vanished; the writer falls back to a symlink (0 payload)
+                    }
+                }
+            } else if (OsConstants.S_ISREG(st.st_mode)) {
+                total += st.st_size;
+            }
         }
         return total;
+    }
+
+    // --- link2symlink inlining & readability ---
+
+    /**
+     * True when {@code name} is a PRoot {@code link2symlink} backing/intermediate
+     * file (basename carries an {@link #L2S_PREFIXES} prefix) or the
+     * {@code .l2s} backing directory. Such entries are dropped from the archive;
+     * their content is carried by the user-facing symlink that references them.
+     */
+    private static boolean isL2sArtifact(String name) {
+        if (name.equals(".l2s")) return true;
+        for (String p : L2S_PREFIXES) {
+            if (name.startsWith(p)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * If {@code symlink} is a {@code link2symlink} hard-link stand-in — its
+     * target's basename carries an {@link #L2S_PREFIXES} prefix and the chain
+     * resolves to a regular file inside the rootfs — returns the file to inline
+     * (the intermediate symlink path, which {@link Os#stat}/{@link FileInputStream}
+     * follow to the content). Returns {@code null} for an ordinary symlink, a
+     * broken/non-regular chain, or a target that would escape {@code rootCanon}
+     * (so a crafted link can't make the backup read host files). Mirrors
+     * proot-distro's {@code resolve_l2s_target}.
+     */
+    private static File l2sBacking(File symlink, String rootCanon) {
+        String target;
+        try {
+            target = Os.readlink(symlink.getAbsolutePath());
+        } catch (ErrnoException e) {
+            return null;
+        }
+        int slash = target.lastIndexOf('/');
+        String base = slash < 0 ? target : target.substring(slash + 1);
+        boolean l2s = false;
+        for (String p : L2S_PREFIXES) {
+            if (base.startsWith(p)) { l2s = true; break; }
+        }
+        if (!l2s) return null;
+        File abs = target.startsWith("/") ? new File(target)
+                : new File(symlink.getParentFile(), target);
+        try {
+            String resolved = abs.getCanonicalPath(); // follows the l2s chain
+            if (!resolved.equals(rootCanon)
+                    && !resolved.startsWith(rootCanon + File.separator)) {
+                return null;
+            }
+            if (!OsConstants.S_ISREG(Os.stat(abs.getAbsolutePath()).st_mode)) {
+                return null;
+            }
+            return abs;
+        } catch (ErrnoException | IOException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Grants the owner the minimum bits to read every entry under {@code dir}
+     * before it is archived, so a deliberately unreadable file or directory
+     * isn't silently lost (an unreadable file would otherwise be emitted as zero
+     * padding by {@link #writeFileData}; an unsearchable directory's children
+     * would be dropped when {@code listFiles()} returns {@code null}). Adds only
+     * the missing owner bits — a directory without owner r-x gets {@code +0500},
+     * a regular file without owner r gets {@code +0400} — leaving group/other and
+     * already-present bits untouched. Never follows symlinks. Mirrors
+     * proot-distro's {@code _fix_permissions}; the one visible effect is that a
+     * {@code chmod 000} entry round-trips as owner-readable. Best-effort: a
+     * {@code chmod} that fails (e.g. on a vanished entry) is ignored, leaving the
+     * pre-existing skip-on-error behavior of the writer.
+     */
+    private static void ensureReadable(File dir) {
+        StructStat dst;
+        try {
+            dst = Os.lstat(dir.getAbsolutePath());
+        } catch (ErrnoException e) {
+            return;
+        }
+        int dmode = dst.st_mode & 07777;
+        if ((dmode & 0500) != 0500) {
+            try {
+                Os.chmod(dir.getAbsolutePath(), dmode | 0500);
+            } catch (ErrnoException ignored) {
+            }
+        }
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            StructStat st;
+            try {
+                st = Os.lstat(child.getAbsolutePath());
+            } catch (ErrnoException e) {
+                continue;
+            }
+            if (OsConstants.S_ISDIR(st.st_mode)) {
+                ensureReadable(child);
+            } else if (OsConstants.S_ISREG(st.st_mode)) {
+                int mode = st.st_mode & 07777;
+                if ((mode & 0400) == 0) {
+                    try {
+                        Os.chmod(child.getAbsolutePath(), mode | 0400);
+                    } catch (ErrnoException ignored) {
+                    }
+                }
+            }
+        }
     }
 
     // --- tar writer ---
@@ -150,15 +313,22 @@ public final class RootfsBackup {
             throws IOException {
         byte[] buf = new byte[1 << 16];
         long[] counter = new long[2]; // [0] = bytes written, [1] = last reported
-        archive(root, "", out, buf, counter, progress, cancelled);
+        String rootCanon;
+        try {
+            rootCanon = root.getCanonicalPath();
+        } catch (IOException e) {
+            rootCanon = root.getAbsolutePath();
+        }
+        archive(root, "", rootCanon, out, buf, counter, progress, cancelled);
         out.write(ZERO);
         out.write(ZERO);
     }
 
     /** Depth-first, parents before children, names sorted for reproducibility. */
-    private static void archive(File dir, String prefix, OutputStream out,
-            byte[] buf, long[] counter, DebianRootfs.ProgressListener progress,
-            AtomicBoolean cancelled) throws IOException {
+    private static void archive(File dir, String prefix, String rootCanon,
+            OutputStream out, byte[] buf, long[] counter,
+            DebianRootfs.ProgressListener progress, AtomicBoolean cancelled)
+            throws IOException {
         File[] children = dir.listFiles();
         if (children == null) return;
         Arrays.sort(children, (a, b) -> a.getName().compareTo(b.getName()));
@@ -166,6 +336,10 @@ public final class RootfsBackup {
             if (cancelled != null && cancelled.get()) {
                 throw new InterruptedIOException("backup cancelled");
             }
+            // PRoot link2symlink internals reach the archive through the
+            // user-facing symlink that references them (inlined below), never as
+            // standalone entries.
+            if (isL2sArtifact(child.getName())) continue;
             String name = prefix + child.getName();
             StructStat st;
             try {
@@ -175,27 +349,65 @@ public final class RootfsBackup {
             }
             int mode = st.st_mode & 07777;
             if (OsConstants.S_ISLNK(st.st_mode)) {
-                String target;
-                try {
-                    target = Os.readlink(child.getAbsolutePath());
-                } catch (ErrnoException e) {
-                    continue;
+                File backing = l2sBacking(child, rootCanon);
+                if (backing != null) {
+                    // A hard link emulated by --link2symlink: inline the backing
+                    // file's bytes as a plain regular file under this path.
+                    archiveBacking(out, name, backing, buf, counter, progress,
+                            cancelled);
+                } else {
+                    String target;
+                    try {
+                        target = Os.readlink(child.getAbsolutePath());
+                    } catch (ErrnoException e) {
+                        continue;
+                    }
+                    writeHeader(out, name, mode, st.st_mtime, 0, '2', target);
                 }
-                writeHeader(out, name, mode, st.st_mtime, 0, '2', target);
             } else if (OsConstants.S_ISDIR(st.st_mode)) {
                 writeHeader(out, name + "/", mode, st.st_mtime, 0, '5', "");
-                archive(child, name + "/", out, buf, counter, progress, cancelled);
+                archive(child, name + "/", rootCanon, out, buf, counter, progress,
+                        cancelled);
             } else if (OsConstants.S_ISREG(st.st_mode)) {
                 long size = st.st_size;
                 writeHeader(out, name, mode, st.st_mtime, size, '0', "");
                 writeFileData(out, child, size, buf, cancelled);
-                counter[0] += size;
-                if (progress != null && counter[0] - counter[1] >= (8 << 20)) {
-                    counter[1] = counter[0];
-                    progress.onProgress(counter[0]);
-                }
+                tally(size, counter, progress);
             }
             // Anything else (socket/fifo/device) has no place in a rootfs tree.
+        }
+    }
+
+    /**
+     * Emits {@code backing} (the file a {@code link2symlink} symlink resolves to)
+     * as a regular-file entry named {@code name}, with the backing file's own
+     * size/mode/mtime. {@code backing} is the intermediate symlink path;
+     * {@link Os#stat} and the data copy both follow it to the content file. If it
+     * vanished since {@link #l2sBacking} stat'd it, the entry is skipped (rather
+     * than written truncated), keeping the archive consistent.
+     */
+    private static void archiveBacking(OutputStream out, String name, File backing,
+            byte[] buf, long[] counter, DebianRootfs.ProgressListener progress,
+            AtomicBoolean cancelled) throws IOException {
+        StructStat bst;
+        try {
+            bst = Os.stat(backing.getAbsolutePath()); // follows to the content file
+        } catch (ErrnoException e) {
+            return;
+        }
+        long size = bst.st_size;
+        writeHeader(out, name, bst.st_mode & 07777, bst.st_mtime, size, '0', "");
+        writeFileData(out, backing, size, buf, cancelled);
+        tally(size, counter, progress);
+    }
+
+    /** Advances the running payload counter and reports progress every 8 MiB. */
+    private static void tally(long size, long[] counter,
+            DebianRootfs.ProgressListener progress) {
+        counter[0] += size;
+        if (progress != null && counter[0] - counter[1] >= (8 << 20)) {
+            counter[1] = counter[0];
+            progress.onProgress(counter[0]);
         }
     }
 
@@ -235,8 +447,10 @@ public final class RootfsBackup {
     /**
      * Emits one entry's 512-byte header, preceded by GNU {@code L}/{@code K}
      * long-name records when the path or link target exceeds 100 bytes.
+     * Package-private so a test can assemble a hand-crafted archive against the
+     * real reader.
      */
-    private static void writeHeader(OutputStream out, String name, int mode,
+    static void writeHeader(OutputStream out, String name, int mode,
             long mtime, long size, char type, String linkName) throws IOException {
         byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
         if (nameBytes.length > NAME_MAX) writeLongEntry(out, 'L', nameBytes);

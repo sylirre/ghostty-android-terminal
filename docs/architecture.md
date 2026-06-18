@@ -106,17 +106,30 @@ under app data):
    Restore Debian). `RootfsBackup` walks the live tree with `lstat`/`readlink`
    and streams it to a user-chosen file (SAF) as a gzip-compressed,
    GNU-tar-dialect archive preserving file bytes, directory layout, symlink
-   targets, and mode bits (sticky/setuid included). The format is the exact
-   subset `DebianRootfs.extractTar` already reads, so restore reuses that
-   reader: it extracts into `debian.tmp` and only the final atomic rename
-   (`publish`) swaps it onto `debian`, leaving the existing rootfs intact if a
-   restore fails or is cancelled. Restore tears down all sessions first (no
-   live PRoot may hold the tree being replaced) and skips the install-time
-   `writeGuestDefaults` so the archive is reproduced verbatim. Both directions
-   drive a determinate progress bar: backup against a pre-pass `measure` of the
-   payload bytes (`archived / total`), restore against the picker-reported
-   archive size, counted on the raw stream *below* gzip (`consumed / size`)
-   since the uncompressed total isn't known until the read finishes.
+   targets, and mode bits (sticky/setuid included). Guest hard links — which
+   `--link2symlink` stores as symlinks to `.proot.l2s.*` intermediates carrying
+   absolute host paths — are **inlined**: each is emitted as a plain regular
+   file holding the backing content (the proot-distro approach), and the raw
+   `.proot.l2s.*` entries are dropped, so the archive is self-contained and
+   portable rather than a web of absolute symlinks that dangle on `tar xzf`. A
+   pre-pass (`ensureReadable`) first grants the owner the minimum bits to read
+   every entry so a deliberately unreadable file/dir isn't silently lost. The
+   format is the exact subset `DebianRootfs.extractTar` already reads, so restore
+   reuses that reader: it extracts into `debian.tmp` and only the final atomic
+   rename (`publish`) swaps it onto `debian`, leaving the existing rootfs intact
+   if a restore fails or is cancelled. Restore is hardened against an arbitrary
+   picked file: the reader confines every write inside `debian.tmp` (a planted
+   `evil -> /` symlink can't redirect a later `evil/x` onto the host, while
+   usrmerge symlinks that resolve within the tree still work), and `publish`
+   refuses a tree whose login shell doesn't resolve so a wrong/corrupt file
+   can't replace a good rootfs. (The trusted bundled-asset install skips that
+   per-entry guard.) Restore tears down all sessions first (no live PRoot may
+   hold the tree being replaced) and skips the install-time `writeGuestDefaults`
+   so the archive is reproduced verbatim. Both directions drive a determinate
+   progress bar: backup against a pre-pass `measure` of the payload bytes
+   (`archived / total`), restore against the picker-reported archive size,
+   counted on the raw stream *below* gzip (`consumed / size`) since the
+   uncompressed total isn't known until the read finishes.
 
 The session command is `proot --kill-on-exit --link2symlink -0 -r <rootfs>
 -w /root -b /dev -b /proc -b /sys /usr/bin/env -i HOME=/root … /bin/bash

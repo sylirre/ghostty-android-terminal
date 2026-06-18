@@ -2,6 +2,7 @@ package sh.easycli.proot.term;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
@@ -126,7 +127,104 @@ public class RootfsBackupTest {
         assertEquals(40, RootfsBackup.measure(src));
     }
 
+    /**
+     * A PRoot {@code --link2symlink} hard link — a user symlink pointing at a
+     * {@code .proot.l2s.*} intermediate that chains to a regular backing file —
+     * is inlined: the archive carries the backing content as a plain regular
+     * file under the user-facing path, with the backing file's mode, and none of
+     * the {@code .proot.l2s.*} internals survive. This is what makes a backup
+     * portable instead of a web of absolute-path symlinks.
+     */
+    @Test
+    public void inlinesLink2symlinkChain() throws Exception {
+        buildL2sChain(); // src/usr/bin/{tool -> .proot.l2s intermediate -> content}
+
+        ByteArrayOutputStream tar = new ByteArrayOutputStream();
+        RootfsBackup.writeArchive(src, tar, null, null);
+        assertTrue(dst.mkdirs());
+        DebianRootfs.extractTar(new ByteArrayInputStream(tar.toByteArray()), dst,
+                null, null);
+
+        File tool = new File(dst, "usr/bin/tool");
+        StructStat st = Os.lstat(tool.getAbsolutePath());
+        assertTrue("expected a regular file, not a symlink",
+                OsConstants.S_ISREG(st.st_mode));
+        assertEquals(0755, st.st_mode & 07777);
+        assertArrayEquals("EXEC\n".getBytes(StandardCharsets.UTF_8), readFile(tool));
+
+        // The proot internals were dropped — usr/bin holds only the inlined file.
+        File[] kids = new File(dst, "usr/bin").listFiles();
+        assertEquals(1, kids.length);
+        assertEquals("tool", kids[0].getName());
+    }
+
+    /**
+     * The backup denominator counts an inlined link2symlink's backing bytes
+     * exactly once (via the referring symlink), ignoring the {@code .proot.l2s.*}
+     * siblings — so the bar still reaches 100% and doesn't double-count shared
+     * content. The setUp tree is 40 bytes; the chain's backing file adds 5.
+     */
+    @Test
+    public void measureCountsInlinedBacking() throws Exception {
+        buildL2sChain();
+        assertEquals(40 + 5, RootfsBackup.measure(src));
+    }
+
+    /**
+     * A hostile archive that plants a symlink escaping the extraction root and
+     * then writes a file "through" it must not land outside the root. The guard
+     * resolves each entry's parent and skips the write; the escape directory
+     * stays empty.
+     */
+    @Test
+    public void restoreRejectsTraversalEscape() throws Exception {
+        File escape = new File(src.getParentFile(), "bk-escape-" + System.nanoTime());
+        assertTrue(escape.mkdirs());
+        try {
+            ByteArrayOutputStream tar = new ByteArrayOutputStream();
+            // evil -> <escape>  (a symlink out of the extraction root)
+            RootfsBackup.writeHeader(tar, "evil", 0777, 0, 0, '2',
+                    escape.getAbsolutePath());
+            // evil/x  (a file the reader would write *through* the symlink)
+            byte[] payload = "PWNED\n".getBytes(StandardCharsets.UTF_8);
+            RootfsBackup.writeHeader(tar, "evil/x", 0644, 0, payload.length, '0', "");
+            tar.write(payload);
+            tar.write(new byte[512 - payload.length]); // pad the data block
+            tar.write(new byte[512]);                  // end-of-archive marker
+            tar.write(new byte[512]);
+
+            assertTrue(dst.mkdirs());
+            DebianRootfs.extractTar(new ByteArrayInputStream(tar.toByteArray()), dst,
+                    null, null);
+
+            // The symlink itself is fine (it lives inside the root)...
+            assertSymlink(new File(dst, "evil"), escape.getAbsolutePath());
+            // ...but nothing was written through it into the escape directory.
+            assertFalse("write escaped the extraction root",
+                    new File(escape, "x").exists());
+        } finally {
+            deleteRecursively(escape);
+        }
+    }
+
     // --- helpers ---
+
+    /**
+     * Reproduces a proot {@code --link2symlink} hard link in {@code src}:
+     * {@code usr/bin/tool} is a symlink to a {@code .proot.l2s.*} intermediate,
+     * which symlinks to the regular backing file holding the content (mode 0755,
+     * 5 bytes). All targets are absolute, exactly as the extension writes them.
+     */
+    private void buildL2sChain() throws Exception {
+        mkdir(new File(src, "usr"), 0755);
+        mkdir(new File(src, "usr/bin"), 0755);
+        File content = new File(src, "usr/bin/.proot.l2s.tool0001.0002");
+        writeFile(content, "EXEC\n", 0755);
+        File intermediate = new File(src, "usr/bin/.proot.l2s.tool0001");
+        Os.symlink(content.getAbsolutePath(), intermediate.getAbsolutePath());
+        Os.symlink(intermediate.getAbsolutePath(),
+                new File(src, "usr/bin/tool").getAbsolutePath());
+    }
 
     private static String repeat(String s, int n) {
         StringBuilder b = new StringBuilder();

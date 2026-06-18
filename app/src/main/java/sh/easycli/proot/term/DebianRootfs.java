@@ -129,7 +129,9 @@ public final class DebianRootfs {
 
         try (InputStream raw = ctx.getAssets().open(asset);
                 XZInputStream xz = new XZInputStream(new BufferedInputStream(raw, 1 << 16))) {
-            extractTar(xz, staging, progress, null);
+            // The bundled asset is trusted (we built it), so skip the per-entry
+            // path-escape guard restore applies to arbitrary picked files.
+            extractTar(xz, staging, progress, null, false);
         }
         writeGuestDefaults(staging);
         publish(ctx, staging);
@@ -148,6 +150,12 @@ public final class DebianRootfs {
      * rewriting them would clobber the user's data. Synchronized against
      * {@link #install} (both lock this class). Blocking — call off the main
      * thread; pass {@code cancelled} to abort a long restore.
+     *
+     * <p>The extracted tree must look like a Debian rootfs (its login shell
+     * resolves) before it is published; otherwise a wrong or corrupt picked file
+     * would replace a working rootfs with junk. Because extraction lands in
+     * {@link #stagingDir} and only {@link #publish} touches {@link #dir}, a
+     * rejected archive leaves the existing rootfs untouched.
      */
     static synchronized void replaceFromTar(Context ctx, InputStream tar,
             ProgressListener progress, AtomicBoolean cancelled) throws IOException {
@@ -156,6 +164,10 @@ public final class DebianRootfs {
         if (!staging.mkdirs()) throw new IOException("cannot create " + staging);
         try {
             extractTar(tar, staging, progress, cancelled);
+            if (!hasShell(staging)) {
+                throw new IOException("this archive is not a Debian rootfs backup "
+                        + "(/bin/bash is missing)");
+            }
         } catch (IOException e) {
             deleteRecursively(staging); // never leave a half-written tree behind
             throw e;
@@ -233,8 +245,42 @@ public final class DebianRootfs {
 
     private static final int BLOCK = 512;
 
+    /**
+     * Extracts {@code in} into {@code root} with the path-escape guard on: this
+     * is the entry point for restoring an arbitrary, possibly hostile, picked
+     * archive (see {@link #extractTar(InputStream, File, ProgressListener,
+     * AtomicBoolean, boolean)}).
+     */
     static void extractTar(InputStream in, File root, ProgressListener progress,
             AtomicBoolean cancelled) throws IOException {
+        extractTar(in, root, progress, cancelled, true);
+    }
+
+    /**
+     * Core tar reader. When {@code guard} is set, every entry is confined to
+     * {@code root}: an entry whose parent (or, for a directory, itself) resolves
+     * through a symlink to outside {@code root} is skipped, and any symlink
+     * already present at a regular-file/hard-link target is removed before the
+     * write so a planted {@code evil -> /} (followed by {@code evil/x}) can't
+     * redirect onto the host. Legitimate usrmerge symlinks resolve <em>within</em>
+     * {@code root} and are unaffected. {@code guard} is off only for the trusted
+     * bundled-asset install, where the per-entry canonicalization is needless
+     * cost.
+     */
+    private static void extractTar(InputStream in, File root, ProgressListener progress,
+            AtomicBoolean cancelled, boolean guard) throws IOException {
+        final String rootCanon;
+        if (guard) {
+            String p;
+            try {
+                p = root.getCanonicalPath();
+            } catch (IOException e) {
+                p = root.getAbsolutePath();
+            }
+            rootCanon = p;
+        } else {
+            rootCanon = null;
+        }
         byte[] header = new byte[BLOCK];
         byte[] buf = new byte[1 << 16];
         // Directory modes are applied after extraction: a read-only dir
@@ -300,7 +346,14 @@ public final class DebianRootfs {
                 case 0:
                 case '7': { // regular file
                     File parent = target.getParentFile();
-                    if (parent != null) parent.mkdirs();
+                    if (parent != null) {
+                        if (guard && !withinRoot(rootCanon, parent)) {
+                            skip(in, padded(size));
+                            break;
+                        }
+                        parent.mkdirs();
+                    }
+                    if (guard) deleteIfSymlink(target); // don't write through a planted link
                     try (OutputStream out = new FileOutputStream(target)) {
                         long left = size;
                         while (left > 0) {
@@ -318,6 +371,10 @@ public final class DebianRootfs {
                     break;
                 }
                 case '5': // directory
+                    if (guard && !withinRoot(rootCanon, target)) {
+                        skip(in, padded(size));
+                        break;
+                    }
                     target.mkdirs();
                     dirFiles.add(target);
                     dirModes.add(mode);
@@ -325,7 +382,13 @@ public final class DebianRootfs {
                     break;
                 case '2': { // symlink
                     File parent = target.getParentFile();
-                    if (parent != null) parent.mkdirs();
+                    if (parent != null) {
+                        if (guard && !withinRoot(rootCanon, parent)) {
+                            skip(in, padded(size));
+                            break;
+                        }
+                        parent.mkdirs();
+                    }
                     target.delete();
                     try {
                         Os.symlink(linkName, target.getAbsolutePath());
@@ -337,11 +400,19 @@ public final class DebianRootfs {
                 }
                 case '1': { // hard link: apps can't link(); copy the target
                     File source = resolve(root, linkName);
-                    if (source == null || !source.isFile()) {
+                    if (source == null || (guard && !withinRoot(rootCanon, source))
+                            || !source.isFile()) {
                         throw new IOException("hard link source missing: " + linkName);
                     }
                     File parent = target.getParentFile();
-                    if (parent != null) parent.mkdirs();
+                    if (parent != null) {
+                        if (guard && !withinRoot(rootCanon, parent)) {
+                            skip(in, padded(size));
+                            break;
+                        }
+                        parent.mkdirs();
+                    }
+                    if (guard) deleteIfSymlink(target);
                     try (InputStream src = new FileInputStream(source);
                             OutputStream out = new FileOutputStream(target)) {
                         int n;
@@ -468,6 +539,36 @@ public final class DebianRootfs {
                 n = 1;
             }
             count -= n;
+        }
+    }
+
+    /**
+     * True when {@code path}'s real location (all symlink components resolved) is
+     * {@code rootCanon} itself or lies beneath it. Used by the guarded
+     * {@link #extractTar} path to reject an entry that a symlink planted by an
+     * earlier member would redirect outside the staging tree, while still
+     * allowing the rootfs's own usrmerge symlinks (whose parent {@code bin}
+     * resolves to {@code usr/bin}, still inside {@code root}). A path that can't
+     * be canonicalized is treated as unsafe.
+     */
+    private static boolean withinRoot(String rootCanon, File path) {
+        String p;
+        try {
+            p = path.getCanonicalPath();
+        } catch (IOException e) {
+            return false;
+        }
+        return p.equals(rootCanon) || p.startsWith(rootCanon + File.separator);
+    }
+
+    /** Removes {@code file} only if it is itself a symlink (the link, not its target). */
+    private static void deleteIfSymlink(File file) {
+        try {
+            if (OsConstants.S_ISLNK(Os.lstat(file.getAbsolutePath()).st_mode)) {
+                file.delete();
+            }
+        } catch (ErrnoException ignored) {
+            // doesn't exist (or can't stat) — nothing to remove
         }
     }
 
