@@ -255,6 +255,50 @@ public class RootfsBackupTest {
                 "notes.txt", "photos/a.jpg")));
     }
 
+    /**
+     * Restore autodetects compression: the same tar bytes are read whether or
+     * not they are gzip-wrapped, so a plain (uncompressed) {@code .tar} restores
+     * just like one of our own gzip backups. Drives both branches of
+     * {@code tarStream} and confirms the member name survives the round trip.
+     */
+    @Test
+    public void tarStreamReadsPlainAndGzip() throws Exception {
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        tarFile(raw, "etc/hostname", "host\n");
+        raw.write(new byte[512]); // end-of-archive marker
+        raw.write(new byte[512]);
+        byte[] plain = raw.toByteArray();
+
+        ByteArrayOutputStream gzipped = new ByteArrayOutputStream();
+        try (java.util.zip.GZIPOutputStream gz =
+                new java.util.zip.GZIPOutputStream(gzipped)) {
+            gz.write(plain);
+        }
+
+        // Plain bytes start with the tar name field, not the gzip magic.
+        assertEquals("host\n", firstMemberContent(plain));
+        // Gzip bytes start with 0x1f 0x8b and are transparently inflated.
+        assertEquals("host\n", firstMemberContent(gzipped.toByteArray()));
+    }
+
+    /**
+     * Feeds {@code archive} through {@code RootfsBackup.tarStream} (autodetecting
+     * gzip vs. plain) into the tar reader and returns the first regular file's
+     * contents — a tiny stand-in for what {@code restore} extracts.
+     */
+    private String firstMemberContent(byte[] archive) throws Exception {
+        try (java.io.BufferedInputStream buf = new java.io.BufferedInputStream(
+                new ByteArrayInputStream(archive));
+                InputStream tar = RootfsBackup.tarStream(buf)) {
+            assertTrue(dst.mkdirs());
+            DebianRootfs.extractTar(tar, dst, null, null);
+            return new String(readFile(new File(dst, "etc/hostname")),
+                    StandardCharsets.UTF_8);
+        } finally {
+            deleteRecursively(dst);
+        }
+    }
+
     // --- helpers ---
 
     /**

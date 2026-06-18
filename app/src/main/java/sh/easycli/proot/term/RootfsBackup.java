@@ -23,7 +23,9 @@ import java.util.zip.GZIPOutputStream;
 
 /**
  * Backs up and restores the Debian rootfs ({@link DebianRootfs#dir}) to and
- * from a single gzip-compressed tar file.
+ * from a single gzip-compressed tar file. A {@link #backup} always writes
+ * gzip-tar; {@link #restore} autodetects compression and also accepts a plain
+ * (uncompressed) {@code .tar}.
  *
  * The archive is a GNU-tar dialect — regular files, directories and symlinks,
  * each carrying its mode bits (including sticky/setuid/setgid), with GNU
@@ -131,23 +133,28 @@ public final class RootfsBackup {
     }
 
     /**
-     * Replaces the installed rootfs with the contents of a gzip-tar opened by
+     * Replaces the installed rootfs with the contents of a tar opened by
      * {@code source}. The swap is atomic and non-destructive on failure (see
      * {@link DebianRootfs#replaceFromTar}). Blocking — call off the main thread;
      * flip {@code cancelled} to abort.
      *
-     * <p>The archive need not be one of our own backups: a first pass probes the
-     * leading member names ({@link DebianRootfs#probeStripCount}) to detect how
-     * many wrapper directories to strip so a foreign rootfs tarball (e.g. one
-     * nested under {@code distro/}) still lands at the root, then a second pass
-     * extracts with that strip applied. The probe failing for any reason just
-     * falls back to a verbatim (strip 0) extraction.
+     * <p>The archive need not be one of our own backups. Compression is
+     * autodetected: a leading gzip magic ({@code 0x1f 0x8b}) is decompressed on
+     * the fly, otherwise the stream is read as a plain (uncompressed) {@code .tar}
+     * — so a hand-rolled or already-decompressed tarball restores too (see
+     * {@link #tarStream}). A first pass then probes the leading member names
+     * ({@link DebianRootfs#probeStripCount}) to detect how many wrapper
+     * directories to strip so a foreign rootfs tarball (e.g. one nested under
+     * {@code distro/}) still lands at the root, and a second pass extracts with
+     * that strip applied. The probe failing for any reason just falls back to a
+     * verbatim (strip 0) extraction.
      *
-     * <p>Progress is reported as {@code consumed / archiveSize} <em>compressed</em>
-     * bytes — counted on the raw stream below the gzip layer of the extraction
-     * pass, since the uncompressed total is unknown until the archive is fully
-     * read. Pass the archive file's byte length as {@code archiveSize}; a value
-     * &le; 0 (the picker did not report a size) yields indeterminate progress.
+     * <p>Progress is reported as {@code consumed / archiveSize} <em>file</em>
+     * bytes — counted on the raw stream below any decompression layer of the
+     * extraction pass, since the uncompressed total is unknown until the archive
+     * is fully read. Pass the archive file's byte length as {@code archiveSize}; a
+     * value &le; 0 (the picker did not report a size) yields indeterminate
+     * progress.
      */
     public static void restore(Context ctx, ArchiveSource source, long archiveSize,
             ProgressListener progress, AtomicBoolean cancelled)
@@ -157,9 +164,9 @@ public final class RootfsBackup {
         // and pass 2 surfaces a genuinely broken archive.
         int strip = 0;
         try (InputStream probe = source.open();
-                GZIPInputStream gz = new GZIPInputStream(
+                InputStream tar = tarStream(
                         new BufferedInputStream(probe, 1 << 16))) {
-            strip = DebianRootfs.probeStripCount(gz);
+            strip = DebianRootfs.probeStripCount(tar);
         } catch (IOException e) {
             strip = 0;
         }
@@ -167,12 +174,30 @@ public final class RootfsBackup {
         // Pass 2: extract with the detected strip applied.
         try (InputStream in = source.open()) {
             CountingInputStream counter = new CountingInputStream(in);
-            GZIPInputStream gz = new GZIPInputStream(
-                    new BufferedInputStream(counter, 1 << 16));
+            InputStream tar = tarStream(new BufferedInputStream(counter, 1 << 16));
             DebianRootfs.ProgressListener tick = progress == null ? null
                     : extracted -> progress.onProgress(counter.count(), archiveSize);
-            DebianRootfs.replaceFromTar(ctx, gz, tick, cancelled, strip);
+            DebianRootfs.replaceFromTar(ctx, tar, tick, cancelled, strip);
         }
+    }
+
+    /**
+     * Returns a tar stream over {@code buffered}, transparently decompressing it
+     * when it carries the gzip magic ({@code 0x1f 0x8b}) and reading it verbatim
+     * otherwise — so {@link #restore} accepts both our own gzip backups and a
+     * plain (uncompressed) {@code .tar}. The first two bytes are sniffed through
+     * the buffer's {@code mark}/{@code reset} and pushed back, so the chosen
+     * reader still sees the whole stream. The caller supplies the
+     * {@link BufferedInputStream} so a restore can interpose a byte counter
+     * beneath it. Package-private so a test can drive both branches. A stream
+     * shorter than two bytes is treated as plain (and the tar reader rejects it).
+     */
+    static InputStream tarStream(BufferedInputStream buffered) throws IOException {
+        buffered.mark(2);
+        int b0 = buffered.read();
+        int b1 = buffered.read();
+        buffered.reset();
+        return (b0 == 0x1f && b1 == 0x8b) ? new GZIPInputStream(buffered) : buffered;
     }
 
     /**

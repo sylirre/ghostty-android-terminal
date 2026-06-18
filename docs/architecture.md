@@ -118,10 +118,12 @@ under app data):
    reuses that reader: it extracts into `debian.tmp` and only the final atomic
    rename (`publish`) swaps it onto `debian`, leaving the existing rootfs intact
    if a restore fails or is cancelled. Restore also accepts foreign rootfs
-   tarballs, not just our own backups: a first pass probes the leading member
-   names (`probeStripCount`/`detectStripCount`, ported from proot-distro) to
-   detect how many wrapper directories to strip so a nested rootfs (e.g. under
-   `distro/`) lands at the root, then a second pass extracts with that strip.
+   tarballs, not just our own backups: compression is autodetected (`tarStream`
+   sniffs the gzip magic and inflates on the fly, otherwise reads a plain
+   uncompressed `.tar`), and a first pass probes the leading member names
+   (`probeStripCount`/`detectStripCount`, ported from proot-distro) to detect how
+   many wrapper directories to strip so a nested rootfs (e.g. under `distro/`)
+   lands at the root, then a second pass extracts with that strip.
    It is hardened against an arbitrary picked file: the reader confines every
    write inside `debian.tmp` (a planted `evil -> /` symlink can't redirect a
    later `evil/x` onto the host, while usrmerge symlinks that resolve within the
@@ -135,8 +137,8 @@ under app data):
    verbatim. Both directions drive a determinate
    progress bar: backup against a pre-pass `measure` of the payload bytes
    (`archived / total`), restore against the picker-reported archive size,
-   counted on the raw stream *below* gzip (`consumed / size`) since the
-   uncompressed total isn't known until the read finishes.
+   counted on the raw stream *below* any decompression (`consumed / size`) since
+   the uncompressed total isn't known until the read finishes.
 
 The session command is `proot --kill-on-exit --link2symlink -0 -r <rootfs>
 -w /root -b /dev -b /proc -b /sys /usr/bin/env -i HOME=/root … /bin/bash
