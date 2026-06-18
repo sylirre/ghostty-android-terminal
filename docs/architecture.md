@@ -117,15 +117,22 @@ under app data):
    format is the exact subset `DebianRootfs.extractTar` already reads, so restore
    reuses that reader: it extracts into `debian.tmp` and only the final atomic
    rename (`publish`) swaps it onto `debian`, leaving the existing rootfs intact
-   if a restore fails or is cancelled. Restore is hardened against an arbitrary
-   picked file: the reader confines every write inside `debian.tmp` (a planted
-   `evil -> /` symlink can't redirect a later `evil/x` onto the host, while
-   usrmerge symlinks that resolve within the tree still work), and `publish`
-   refuses a tree whose login shell doesn't resolve so a wrong/corrupt file
-   can't replace a good rootfs. (The trusted bundled-asset install skips that
-   per-entry guard.) Restore tears down all sessions first (no live PRoot may
-   hold the tree being replaced) and skips the install-time `writeGuestDefaults`
-   so the archive is reproduced verbatim. Both directions drive a determinate
+   if a restore fails or is cancelled. Restore also accepts foreign rootfs
+   tarballs, not just our own backups: a first pass probes the leading member
+   names (`probeStripCount`/`detectStripCount`, ported from proot-distro) to
+   detect how many wrapper directories to strip so a nested rootfs (e.g. under
+   `distro/`) lands at the root, then a second pass extracts with that strip.
+   It is hardened against an arbitrary picked file: the reader confines every
+   write inside `debian.tmp` (a planted `evil -> /` symlink can't redirect a
+   later `evil/x` onto the host, while usrmerge symlinks that resolve within the
+   tree still work). A corrupt/non-tar file fails extraction and leaves the old
+   rootfs intact, but a structurally valid archive is installed *as given* — if
+   its login shell (`/bin/bash`) is missing it's kept and the user is warned
+   rather than blocked, so custom/non-Debian images still install. (The trusted
+   bundled-asset install skips the per-entry guard and the strip.) Restore tears
+   down all sessions first (no live PRoot may hold the tree being replaced) and
+   skips the install-time `writeGuestDefaults` so the archive is reproduced
+   verbatim. Both directions drive a determinate
    progress bar: backup against a pre-pass `measure` of the payload bytes
    (`archived / total`), restore against the picker-reported archive size,
    counted on the raw stream *below* gzip (`consumed / size`) since the

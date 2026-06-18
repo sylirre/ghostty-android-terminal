@@ -158,6 +158,7 @@
     <string name="backup_cancelled">Backup cancelled; the partial file may remain.</string>
     <string name="backup_failed">Backup failed: %s</string>
     <string name="restore_done">Restore complete</string>
+    <string name="restore_no_shell">Restore complete, but /bin/bash was not found — this may not be a working Debian rootfs.</string>
     <string name="restore_cancelled">Restore cancelled; the rootfs is unchanged.</string>
     <string name="restore_failed">Restore failed: %s</string>
     <string name="backup_no_picker">No app available to pick a file location.</string>

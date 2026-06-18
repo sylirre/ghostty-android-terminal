@@ -73,6 +73,17 @@ public final class RootfsBackup {
         void onProgress(long done, long total);
     }
 
+    /**
+     * Opens a fresh stream at the start of the archive. {@link #restore} reads
+     * the archive twice — once to probe member names for the wrapper-directory
+     * strip count, once to extract — so it needs to reopen rather than rewind a
+     * one-shot (e.g. SAF) stream. Each call returns an independent stream the
+     * caller owns; {@code restore} closes the streams it opens.
+     */
+    public interface ArchiveSource {
+        InputStream open() throws IOException;
+    }
+
     private static final int BLOCK = 512;
     private static final int NAME_MAX = 100;            // ustar name/linkname width
     private static final String LONG_NAME = "././@LongLink"; // GNU sentinel name
@@ -120,26 +131,48 @@ public final class RootfsBackup {
     }
 
     /**
-     * Replaces the installed rootfs with the contents of gzip-tar {@code in}.
-     * Does not close {@code in} (the caller owns it). The swap is atomic and
-     * non-destructive on failure (see {@link DebianRootfs#replaceFromTar}).
-     * Blocking — call off the main thread; flip {@code cancelled} to abort.
+     * Replaces the installed rootfs with the contents of a gzip-tar opened by
+     * {@code source}. The swap is atomic and non-destructive on failure (see
+     * {@link DebianRootfs#replaceFromTar}). Blocking — call off the main thread;
+     * flip {@code cancelled} to abort.
      *
-     * Progress is reported as {@code consumed / archiveSize} <em>compressed</em>
-     * bytes — counted on the raw stream below the gzip layer, since the
-     * uncompressed total is unknown until the archive is fully read. Pass the
-     * archive file's byte length as {@code archiveSize}; a value &le; 0 (the
-     * picker did not report a size) yields indeterminate progress.
+     * <p>The archive need not be one of our own backups: a first pass probes the
+     * leading member names ({@link DebianRootfs#probeStripCount}) to detect how
+     * many wrapper directories to strip so a foreign rootfs tarball (e.g. one
+     * nested under {@code distro/}) still lands at the root, then a second pass
+     * extracts with that strip applied. The probe failing for any reason just
+     * falls back to a verbatim (strip 0) extraction.
+     *
+     * <p>Progress is reported as {@code consumed / archiveSize} <em>compressed</em>
+     * bytes — counted on the raw stream below the gzip layer of the extraction
+     * pass, since the uncompressed total is unknown until the archive is fully
+     * read. Pass the archive file's byte length as {@code archiveSize}; a value
+     * &le; 0 (the picker did not report a size) yields indeterminate progress.
      */
-    public static void restore(Context ctx, InputStream in, long archiveSize,
+    public static void restore(Context ctx, ArchiveSource source, long archiveSize,
             ProgressListener progress, AtomicBoolean cancelled)
             throws IOException {
-        CountingInputStream counter = new CountingInputStream(in);
-        GZIPInputStream gz = new GZIPInputStream(
-                new BufferedInputStream(counter, 1 << 16));
-        DebianRootfs.ProgressListener tick = progress == null ? null
-                : extracted -> progress.onProgress(counter.count(), archiveSize);
-        DebianRootfs.replaceFromTar(ctx, gz, tick, cancelled);
+        // Pass 1: probe the leading member names for a wrapper-directory strip
+        // count. Best-effort — any failure here falls back to verbatim extract,
+        // and pass 2 surfaces a genuinely broken archive.
+        int strip = 0;
+        try (InputStream probe = source.open();
+                GZIPInputStream gz = new GZIPInputStream(
+                        new BufferedInputStream(probe, 1 << 16))) {
+            strip = DebianRootfs.probeStripCount(gz);
+        } catch (IOException e) {
+            strip = 0;
+        }
+
+        // Pass 2: extract with the detected strip applied.
+        try (InputStream in = source.open()) {
+            CountingInputStream counter = new CountingInputStream(in);
+            GZIPInputStream gz = new GZIPInputStream(
+                    new BufferedInputStream(counter, 1 << 16));
+            DebianRootfs.ProgressListener tick = progress == null ? null
+                    : extracted -> progress.onProgress(counter.count(), archiveSize);
+            DebianRootfs.replaceFromTar(ctx, gz, tick, cancelled, strip);
+        }
     }
 
     /**

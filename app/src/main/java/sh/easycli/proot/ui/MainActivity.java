@@ -647,10 +647,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         new Thread(() -> {
             IOException failure = null;
             boolean wasCancelled = false;
-            try (InputStream in = getContentResolver().openInputStream(uri)) {
-                if (in == null) throw new IOException("cannot open backup file");
-                RootfsBackup.restore(getApplicationContext(), in, archiveSize,
-                        ui::update, cancelled);
+            // restore() reads the archive twice (probe + extract), so hand it a
+            // reopener rather than a single stream.
+            try {
+                RootfsBackup.restore(getApplicationContext(), () -> {
+                    InputStream in = getContentResolver().openInputStream(uri);
+                    if (in == null) throw new IOException("cannot open backup file");
+                    return in;
+                }, archiveSize, ui::update, cancelled);
             } catch (InterruptedIOException e) {
                 wasCancelled = true;
             } catch (IOException e) {
@@ -662,8 +666,15 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 ui.dismiss();
                 if (isFinishing() || isDestroyed()) return;
                 if (error == null && !cancelledFinal) {
-                    Toast.makeText(this, R.string.restore_done, Toast.LENGTH_SHORT).show();
-                    createSession(true); // fresh Debian session on the restored rootfs
+                    // The archive was installed as given. If it doesn't look like
+                    // a launchable Debian rootfs (no /bin/bash — could be a custom
+                    // or non-Debian image), keep it but warn and fall back to the
+                    // Android shell rather than failing to open a session.
+                    boolean usable = DebianRootfs.isUsable(this);
+                    Toast.makeText(this,
+                            usable ? R.string.restore_done : R.string.restore_no_shell,
+                            usable ? Toast.LENGTH_SHORT : Toast.LENGTH_LONG).show();
+                    createSession(usable);
                 } else {
                     // Failed or cancelled: the swap is atomic, so the original
                     // rootfs is intact — just reopen a session on whatever's there.

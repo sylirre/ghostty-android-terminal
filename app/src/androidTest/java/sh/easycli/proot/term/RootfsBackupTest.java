@@ -207,6 +207,54 @@ public class RootfsBackupTest {
         }
     }
 
+    /**
+     * A custom archive that nests the whole rootfs under a wrapper directory is
+     * detected and stripped so its contents land at the root — letting restore
+     * accept tarballs that weren't produced by this app's backup.
+     */
+    @Test
+    public void detectsAndStripsWrapperDirectory() throws Exception {
+        ByteArrayOutputStream tar = new ByteArrayOutputStream();
+        tarDir(tar, "mydistro/");
+        tarDir(tar, "mydistro/etc/");
+        tarFile(tar, "mydistro/etc/hostname", "host\n");
+        tarDir(tar, "mydistro/usr/");
+        tarDir(tar, "mydistro/usr/bin/");
+        tarDir(tar, "mydistro/bin/");
+        tar.write(new byte[512]); // end-of-archive marker
+        tar.write(new byte[512]);
+        byte[] bytes = tar.toByteArray();
+
+        // The probe pass sees the wrapper at depth 0 and picks strip 1.
+        assertEquals(1, DebianRootfs.probeStripCount(new ByteArrayInputStream(bytes)));
+
+        // Extracting with that strip lands the rootfs dirs at the root, with no
+        // wrapper directory left behind.
+        assertTrue(dst.mkdirs());
+        DebianRootfs.extractTar(new ByteArrayInputStream(bytes), dst, null, null,
+                true, 1);
+        assertArrayEquals("host\n".getBytes(StandardCharsets.UTF_8),
+                readFile(new File(dst, "etc/hostname")));
+        assertTrue(new File(dst, "bin").isDirectory());
+        assertTrue(new File(dst, "usr/bin").isDirectory());
+        assertFalse(new File(dst, "mydistro").exists());
+    }
+
+    /**
+     * The strip score is highest at the depth where rootfs dirs appear: 0 for an
+     * already-rooted archive, the wrapper depth for a nested one, and 0 (verbatim)
+     * when nothing looks like a rootfs.
+     */
+    @Test
+    public void detectStripCountScoresRootfsDepth() {
+        assertEquals(0, DebianRootfs.detectStripCount(Arrays.asList(
+                "etc/", "etc/hostname", "usr/", "bin/", "var/log/")));
+        assertEquals(1, DebianRootfs.detectStripCount(Arrays.asList(
+                "x/etc/", "x/usr/", "x/bin/", "x/var/")));
+        assertEquals(0, DebianRootfs.detectStripCount(Arrays.asList(
+                "notes.txt", "photos/a.jpg")));
+    }
+
     // --- helpers ---
 
     /**
@@ -224,6 +272,21 @@ public class RootfsBackupTest {
         Os.symlink(content.getAbsolutePath(), intermediate.getAbsolutePath());
         Os.symlink(intermediate.getAbsolutePath(),
                 new File(src, "usr/bin/tool").getAbsolutePath());
+    }
+
+    /** Writes a directory entry (name should end with '/') into a raw tar. */
+    private static void tarDir(OutputStream out, String name) throws IOException {
+        RootfsBackup.writeHeader(out, name, 0755, 0, 0, '5', "");
+    }
+
+    /** Writes a regular-file entry plus its 512-block padding into a raw tar. */
+    private static void tarFile(OutputStream out, String name, String content)
+            throws IOException {
+        byte[] data = content.getBytes(StandardCharsets.UTF_8);
+        RootfsBackup.writeHeader(out, name, 0644, 0, data.length, '0', "");
+        out.write(data);
+        int pad = (512 - data.length % 512) % 512;
+        out.write(new byte[pad]);
     }
 
     private static String repeat(String s, int n) {

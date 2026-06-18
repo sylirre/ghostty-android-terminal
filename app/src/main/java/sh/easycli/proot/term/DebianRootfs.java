@@ -18,7 +18,10 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -129,9 +132,10 @@ public final class DebianRootfs {
 
         try (InputStream raw = ctx.getAssets().open(asset);
                 XZInputStream xz = new XZInputStream(new BufferedInputStream(raw, 1 << 16))) {
-            // The bundled asset is trusted (we built it), so skip the per-entry
-            // path-escape guard restore applies to arbitrary picked files.
-            extractTar(xz, staging, progress, null, false);
+            // The bundled asset is trusted (we built it) and unwrapped, so skip
+            // both the per-entry path-escape guard and the strip heuristic that
+            // restore applies to arbitrary picked files.
+            extractTar(xz, staging, progress, null, false, 0);
         }
         writeGuestDefaults(staging);
         publish(ctx, staging);
@@ -151,23 +155,28 @@ public final class DebianRootfs {
      * {@link #install} (both lock this class). Blocking — call off the main
      * thread; pass {@code cancelled} to abort a long restore.
      *
-     * <p>The extracted tree must look like a Debian rootfs (its login shell
-     * resolves) before it is published; otherwise a wrong or corrupt picked file
-     * would replace a working rootfs with junk. Because extraction lands in
-     * {@link #stagingDir} and only {@link #publish} touches {@link #dir}, a
-     * rejected archive leaves the existing rootfs untouched.
+     * <p>{@code strip} drops that many leading path components from every member
+     * (a {@code tar --strip-components} equivalent) so a custom archive that
+     * nests the rootfs under a wrapper directory still lands at the root; pass 0
+     * for a verbatim extraction. The caller derives it from
+     * {@link #probeStripCount}.
+     *
+     * <p>Only a structurally valid tar is accepted — a corrupt or non-tar file
+     * fails extraction and leaves the existing rootfs untouched (extraction
+     * stages in {@link #stagingDir} and only {@link #publish} touches
+     * {@link #dir}). The published tree is <em>not</em> required to be a
+     * recognizable Debian rootfs: a custom or non-Debian archive is installed as
+     * given and the caller warns if its login shell is missing (so the install
+     * isn't silently blocked).
      */
     static synchronized void replaceFromTar(Context ctx, InputStream tar,
-            ProgressListener progress, AtomicBoolean cancelled) throws IOException {
+            ProgressListener progress, AtomicBoolean cancelled, int strip)
+            throws IOException {
         File staging = stagingDir(ctx);
         deleteRecursively(staging); // drop any aborted previous attempt
         if (!staging.mkdirs()) throw new IOException("cannot create " + staging);
         try {
-            extractTar(tar, staging, progress, cancelled);
-            if (!hasShell(staging)) {
-                throw new IOException("this archive is not a Debian rootfs backup "
-                        + "(/bin/bash is missing)");
-            }
+            extractTar(tar, staging, progress, cancelled, true, strip);
         } catch (IOException e) {
             deleteRecursively(staging); // never leave a half-written tree behind
             throw e;
@@ -246,6 +255,20 @@ public final class DebianRootfs {
     private static final int BLOCK = 512;
 
     /**
+     * Top-level directory names that mark a filesystem root. Used by
+     * {@link #detectStripCount} to recognize where the rootfs actually begins
+     * inside a custom archive. Mirrors proot-distro's {@code _ROOTFS_DIRS}.
+     */
+    private static final Set<String> ROOTFS_DIRS = new HashSet<>(Arrays.asList(
+            "bin", "dev", "etc", "home", "lib", "lib32", "lib64", "libx32",
+            "media", "mnt", "opt", "proc", "root", "run", "sbin", "srv",
+            "sys", "tmp", "usr", "var"));
+
+    /** Member-name sample size and max leading components considered for stripping. */
+    private static final int STRIP_SAMPLE = 500;
+    private static final int STRIP_MAX = 4;
+
+    /**
      * Extracts {@code in} into {@code root} with the path-escape guard on: this
      * is the entry point for restoring an arbitrary, possibly hostile, picked
      * archive (see {@link #extractTar(InputStream, File, ProgressListener,
@@ -253,7 +276,7 @@ public final class DebianRootfs {
      */
     static void extractTar(InputStream in, File root, ProgressListener progress,
             AtomicBoolean cancelled) throws IOException {
-        extractTar(in, root, progress, cancelled, true);
+        extractTar(in, root, progress, cancelled, true, 0);
     }
 
     /**
@@ -266,9 +289,15 @@ public final class DebianRootfs {
      * {@code root} and are unaffected. {@code guard} is off only for the trusted
      * bundled-asset install, where the per-entry canonicalization is needless
      * cost.
+     *
+     * <p>{@code strip} drops that many leading path components from each member
+     * (and from a hard link's source), so a custom archive nesting the rootfs
+     * under a wrapper directory extracts at the root; a member at or above the
+     * strip depth is dropped. Package-private so a test can drive the strip
+     * directly.
      */
-    private static void extractTar(InputStream in, File root, ProgressListener progress,
-            AtomicBoolean cancelled, boolean guard) throws IOException {
+    static void extractTar(InputStream in, File root, ProgressListener progress,
+            AtomicBoolean cancelled, boolean guard, int strip) throws IOException {
         final String rootCanon;
         if (guard) {
             String p;
@@ -334,6 +363,21 @@ public final class DebianRootfs {
             if (longLink != null) linkName = longLink;
             if (paxLink != null) linkName = paxLink;
             longName = longLink = paxPath = paxLink = null;
+
+            if (strip > 0) {
+                name = stripComponents(name, strip);
+                if (name == null) { // the wrapper dir itself or shallower
+                    skip(in, padded(size));
+                    continue;
+                }
+                if (type == '1') { // a hard link's source is a member path too
+                    linkName = stripComponents(linkName, strip);
+                    if (linkName == null) {
+                        skip(in, padded(size));
+                        continue;
+                    }
+                }
+            }
 
             File target = resolve(root, name);
             if (target == null) { // unsafe path — skip entry and its data
@@ -437,6 +481,86 @@ public final class DebianRootfs {
         for (int i = 0; i < dirFiles.size(); i++) {
             chmod(dirFiles.get(i), dirModes.get(i));
         }
+    }
+
+    // --- wrapper-directory strip heuristic (custom archives) ---
+
+    /**
+     * Reads the leading member names of an (already-decompressed) tar stream and
+     * returns how many leading path components {@link #extractTar} should strip
+     * so the rootfs lands at the root. Best-effort: a parse error mid-probe just
+     * scores the names gathered so far. The stream is consumed and must be
+     * reopened for the actual extraction. Package-private for tests.
+     */
+    static int probeStripCount(InputStream tar) throws IOException {
+        byte[] header = new byte[BLOCK];
+        List<String> names = new ArrayList<>();
+        try {
+            while (names.size() < STRIP_SAMPLE && readBlock(tar, header)) {
+                if (isZeroBlock(header)) break;
+                String name = field(header, 0, 100);
+                String prefix = field(header, 345, 155);
+                if (!prefix.isEmpty()) name = prefix + "/" + name;
+                long size = octal(header, 124, 12);
+                names.add(name);
+                skip(tar, padded(size));
+            }
+        } catch (IOException e) {
+            // Truncated/odd archive: decide from whatever names we have. The
+            // extraction pass will surface any real corruption.
+        }
+        return detectStripCount(names);
+    }
+
+    /**
+     * Scores strip counts 0..{@link #STRIP_MAX} by how many sampled names carry a
+     * {@link #ROOTFS_DIRS} entry at that depth, and returns the best. 0 means the
+     * archive is already rooted (the common case). Mirrors proot-distro's
+     * {@code detect_strip_count}. Package-private for tests.
+     */
+    static int detectStripCount(List<String> names) {
+        int bestStrip = 0;
+        int bestScore = -1;
+        for (int strip = 0; strip <= STRIP_MAX; strip++) {
+            int score = 0;
+            for (String name : names) {
+                String[] parts = splitMember(name);
+                if (parts.length > strip && ROOTFS_DIRS.contains(parts[strip])) {
+                    score++;
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestStrip = strip;
+            }
+        }
+        return bestStrip;
+    }
+
+    /** Trims leading/trailing slashes then splits on '/'; {@code []} when empty. */
+    private static String[] splitMember(String name) {
+        int start = 0;
+        int end = name.length();
+        while (start < end && name.charAt(start) == '/') start++;
+        while (end > start && name.charAt(end - 1) == '/') end--;
+        if (start >= end) return new String[0];
+        return name.substring(start, end).split("/");
+    }
+
+    /**
+     * Drops the first {@code strip} path components from {@code name}; returns
+     * {@code null} when the name has no more than {@code strip} components (the
+     * wrapper directory itself or shallower), so the caller skips it.
+     */
+    private static String stripComponents(String name, int strip) {
+        String[] parts = splitMember(name);
+        if (parts.length <= strip) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = strip; i < parts.length; i++) {
+            if (sb.length() > 0) sb.append('/');
+            sb.append(parts[i]);
+        }
+        return sb.toString();
     }
 
     /** Reads one block; false on clean EOF, throws if truncated mid-block. */
