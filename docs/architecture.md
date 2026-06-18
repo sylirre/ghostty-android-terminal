@@ -167,6 +167,46 @@ calls. Cell size derives from font metrics; on layout the view computes
 cols/rows and resizes the PTY + terminal. Wide (CJK) glyphs occupy two cells
 (the trailing spacer cell has codepoint 0 and is skipped).
 
+Grapheme clusters — a base codepoint plus combining marks or ZWJ joins that
+render as one glyph — ride out-of-band. The snapshot keeps the base codepoint
+in the per-cell `codepoints` array (so width, wrap, cursor, and selection
+accounting stay codepoint-based) and ships the full cluster in a separate
+self-describing overflow buffer that `ScreenSnapshot.graphemeAt` decodes into a
+sparse cell→string map. A cheap row-level flag (`GHOSTTY_ROW_DATA_GRAPHEME`)
+gates the per-cell probe, so non-grapheme rows — nearly all of them — pay
+nothing. The renderer breaks its batched run at a cluster cell and hands the
+whole string to `Canvas.drawText`, letting the platform text stack shape the
+combining marks / emoji sequences. DEC mode 2027 (grapheme-cluster
+segmentation) is left to application opt-in; the engine answers the query.
+
+#### Unicode width and bidi: what's not supported
+
+**Ambiguous-width characters are always narrow, and that isn't
+app-configurable.** East Asian "ambiguous" codepoints (eaw=A — Greek, Cyrillic,
+box-drawing, and others) can be one or two cells depending on locale.
+libghostty-vt resolves width internally and exposes only a binary `NARROW`/
+`WIDE` classification through the C API — there is no ambiguous state and no
+width-mode option. Width here is *column accounting*, not just drawing: by the
+time a cell reaches the renderer the engine has already advanced the cursor one
+column for an ambiguous char and placed the next char in the adjacent cell, so
+widening it in the renderer alone would overlap the neighbor and desync from
+the reported terminal size, cursor position, and reflow. Treating ambiguous as
+double-width *correctly* means patching Ghostty's width tables and rebuilding
+`libghostty-vt.a` (Zig 0.15.x, per ABI) — and likely upstream work, since
+Ghostty ships no ambiguous-wide toggle. So a Settings switch for it cannot be a
+pure Android-side change.
+
+**No bidirectional (right-to-left) text.** Rendering is strictly left-to-right,
+one codepoint (or cluster) per advancing cell, in logical = visual order. RTL
+scripts (Arabic, Hebrew) and the Unicode bidi algorithm are not applied: the
+engine stores cells in logical order and the renderer draws them L-to-R, so RTL
+runs appear in reversed visual order and without contextual joining /
+shaping. This is inherent to the cell-grid VT model — true bidi needs per-line
+reordering and shaping that neither libghostty-vt nor the cell renderer
+performs, and retrofitting it would break the 1:1 cell↔column mapping the
+cursor, selection, and mouse all depend on. As with most terminal emulators,
+bidi is left to the application running inside.
+
 ### Theming
 
 Colors are a property of the terminal, not the renderer. `TerminalEmulator.
