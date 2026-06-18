@@ -62,6 +62,25 @@ public final class TerminalNative {
     public static final int INPUT_MODE_ALT_SCREEN = 1;
     public static final int INPUT_MODE_APP_CURSOR = 2;
     public static final int INPUT_MODE_BRACKETED_PASTE = 4;
+    public static final int INPUT_MODE_MOUSE = 8;
+
+    /** Mouse event actions for {@link #terminalEncodeMouse} (GhosttyMouseAction). */
+    public static final int MOUSE_PRESS = 0;
+    public static final int MOUSE_RELEASE = 1;
+    public static final int MOUSE_MOTION = 2;
+
+    /**
+     * Mouse buttons for {@link #terminalEncodeMouse} (GhosttyMouseButton).
+     * Wheel scroll is reported as a press of buttons 4–7 (X11 convention):
+     * 4/5 are wheel up/down, 6/7 are wheel left/right.
+     */
+    public static final int MOUSE_BUTTON_LEFT = 1;
+    public static final int MOUSE_BUTTON_RIGHT = 2;
+    public static final int MOUSE_BUTTON_MIDDLE = 3;
+    public static final int MOUSE_WHEEL_UP = 4;
+    public static final int MOUSE_WHEEL_DOWN = 5;
+    public static final int MOUSE_WHEEL_LEFT = 6;
+    public static final int MOUSE_WHEEL_RIGHT = 7;
 
     /**
      * Kitty graphics placement record layout from {@link #terminalGraphics}:
@@ -211,6 +230,17 @@ public final class TerminalNative {
      */
     public static native byte[] terminalEncodeKey(long handle, int androidKeyCode,
             int mods, String utf8, int unshiftedCodepoint);
+
+    /**
+     * Encodes a single mouse event per the terminal's active tracking mode and
+     * output format. {@code action} is a {@code MOUSE_PRESS/RELEASE/MOTION}
+     * value, {@code button} a {@code MOUSE_BUTTON_*}/{@code MOUSE_WHEEL_*}
+     * value, and {@code x}/{@code y} are surface pixels relative to the cell
+     * grid origin. Returns bytes for the PTY, or null when the event encodes to
+     * nothing (e.g. no tracking mode is active).
+     */
+    public static native byte[] terminalEncodeMouse(long handle, int action,
+            int button, float x, float y);
 
     // --- Selection (state lives in the terminal; survives scroll/reflow) ---
 

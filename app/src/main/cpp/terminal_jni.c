@@ -51,6 +51,12 @@ typedef struct {
     GhosttyRenderStateRowCells cells;
     GhosttyKeyEncoder encoder;
     GhosttyKeyEvent kev;
+    /* Mouse event encoding (touch gestures → wheel/click reports). Reused
+     * across calls; the encoder's tracking mode and output format are re-synced
+     * from the terminal on every encode, the geometry from the cached cell
+     * size. NULL if allocation failed, which disables mouse encoding. */
+    GhosttyMouseEncoder mouse_encoder;
+    GhosttyMouseEvent mouse_event;
     /* Reused across frames; re-populated from storage on each terminalGraphics
      * call. NULL when iterator allocation failed (image readback disabled). */
     GhosttyKittyGraphicsPlacementIterator graphics_iter;
@@ -176,6 +182,10 @@ Java_sh_easycli_proot_term_TerminalNative_terminalNew(
     if (ghostty_key_encoder_new(NULL, &c->encoder) != GHOSTTY_SUCCESS)
         goto fail;
     if (ghostty_key_event_new(NULL, &c->kev) != GHOSTTY_SUCCESS) goto fail;
+    if (ghostty_mouse_encoder_new(NULL, &c->mouse_encoder) != GHOSTTY_SUCCESS)
+        goto fail;
+    if (ghostty_mouse_event_new(NULL, &c->mouse_event) != GHOSTTY_SUCCESS)
+        goto fail;
 
     c->cols = (uint16_t)cols;
     c->rows = (uint16_t)rows;
@@ -198,6 +208,8 @@ Java_sh_easycli_proot_term_TerminalNative_terminalNew(
     return (jlong)(intptr_t)c;
 
 fail:
+    ghostty_mouse_event_free(c->mouse_event);
+    ghostty_mouse_encoder_free(c->mouse_encoder);
     ghostty_key_event_free(c->kev);
     ghostty_key_encoder_free(c->encoder);
     ghostty_render_state_row_cells_free(c->cells);
@@ -215,6 +227,8 @@ Java_sh_easycli_proot_term_TerminalNative_terminalFree(
     TermCtx *c = (TermCtx *)(intptr_t)h;
     if (!c) return;
     ghostty_kitty_graphics_placement_iterator_free(c->graphics_iter);
+    ghostty_mouse_event_free(c->mouse_event);
+    ghostty_mouse_encoder_free(c->mouse_encoder);
     ghostty_key_event_free(c->kev);
     ghostty_key_encoder_free(c->encoder);
     ghostty_render_state_row_cells_free(c->cells);
@@ -459,6 +473,9 @@ static jint pack_rgb(GhosttyColorRgb c) {
 #define INPUT_MODE_ALT_SCREEN 1
 #define INPUT_MODE_APP_CURSOR 2
 #define INPUT_MODE_BRACKETED_PASTE 4
+/* A mouse tracking mode (X10/normal/button/any-event) is active: the view
+ * encodes touch gestures as mouse wheel/click reports instead of scrolling. */
+#define INPUT_MODE_MOUSE 8
 
 /*
  * Copies the current viewport into flat per-cell arrays (row-major).
@@ -598,6 +615,13 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     if (ghostty_terminal_mode_get(c->term, GHOSTTY_MODE_BRACKETED_PASTE, &mode)
             == GHOSTTY_SUCCESS && mode) {
         meta[14] |= INPUT_MODE_BRACKETED_PASTE;
+    }
+    /* Any mouse tracking mode active → the view reports gestures as mouse
+     * events. One cheap query covers X10/normal/button/any-event. */
+    bool mouse = false;
+    if (ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING,
+                             &mouse) == GHOSTTY_SUCCESS && mouse) {
+        meta[14] |= INPUT_MODE_MOUSE;
     }
 
     (*env)->SetIntArrayRegion(env, jmeta, 0, 16, meta);
@@ -1277,6 +1301,62 @@ Java_sh_easycli_proot_term_TerminalNative_terminalEncodeKey(
         ghostty_key_encoder_encode(c->encoder, c->kev, buf, sizeof(buf), &len);
 
     if (utf8) (*env)->ReleaseStringUTFChars(env, jutf8, utf8);
+    if (res != GHOSTTY_SUCCESS || len == 0) return NULL;
+
+    jbyteArray out = (*env)->NewByteArray(env, (jsize)len);
+    (*env)->SetByteArrayRegion(env, out, 0, (jsize)len, (const jbyte *)buf);
+    return out;
+}
+
+/*
+ * Encodes a single mouse event into the byte sequence for the PTY, honoring
+ * the terminal's active tracking mode and output format (SGR, X10, …). The
+ * caller drives gestures: a tap is a PRESS+RELEASE of MOUSE_BUTTON_LEFT; a
+ * wheel notch is a PRESS of buttons 4/5 (vertical) or 6/7 (horizontal).
+ *
+ * action/button are GhosttyMouseAction / GhosttyMouseButton values (mirrored
+ * in TerminalNative.MOUSE_*). x/y are surface pixels relative to the cell-grid
+ * origin (the view subtracts its left text margin first). Returns null when
+ * the event encodes to nothing — including when no tracking mode is active, so
+ * a stale "mouse on" snapshot can't emit stray bytes.
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_sh_easycli_proot_term_TerminalNative_terminalEncodeMouse(
+    JNIEnv *env, jclass clazz, jlong h, jint action, jint button, jfloat x,
+    jfloat y) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    if (!c->mouse_encoder || !c->mouse_event) return NULL;
+
+    /* Tracking mode + format come from the terminal; geometry from the cached
+     * cell size kept current on resize. cell_w/h are 0 only before the first
+     * resize (which always precedes any program), but guard against the divide
+     * either way. */
+    ghostty_mouse_encoder_setopt_from_terminal(c->mouse_encoder, c->term);
+    GhosttyMouseEncoderSize size = {
+        .size = sizeof(GhosttyMouseEncoderSize),
+        .screen_width = (uint32_t)c->cols * c->cell_w,
+        .screen_height = (uint32_t)c->rows * c->cell_h,
+        .cell_width = c->cell_w ? c->cell_w : 1,
+        .cell_height = c->cell_h ? c->cell_h : 1,
+        .padding_top = 0,
+        .padding_bottom = 0,
+        .padding_right = 0,
+        .padding_left = 0,
+    };
+    ghostty_mouse_encoder_setopt(c->mouse_encoder,
+                                 GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+
+    GhosttyMousePosition pos = {.x = (float)x, .y = (float)y};
+    ghostty_mouse_event_set_action(c->mouse_event, (GhosttyMouseAction)action);
+    ghostty_mouse_event_set_button(c->mouse_event, (GhosttyMouseButton)button);
+    ghostty_mouse_event_set_position(c->mouse_event, pos);
+    ghostty_mouse_event_set_mods(c->mouse_event, 0);
+
+    char buf[64];
+    size_t len = 0;
+    GhosttyResult res = ghostty_mouse_encoder_encode(
+        c->mouse_encoder, c->mouse_event, buf, sizeof(buf), &len);
     if (res != GHOSTTY_SUCCESS || len == 0) return NULL;
 
     jbyteArray out = (*env)->NewByteArray(env, (jsize)len);

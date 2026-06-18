@@ -115,6 +115,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         terminal.setSmoothScroll(settings.smoothScroll());
+        terminal.setMouseTracking(settings.mouseTracking());
         applyTextMargins();
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
 
@@ -486,6 +487,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 enabled -> {
                     settings.setSmoothScroll(enabled);
                     terminal.setSmoothScroll(enabled);
+                }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_mouse_tracking_title),
+                getString(R.string.setting_mouse_tracking_summary),
+                settings::mouseTracking,
+                enabled -> {
+                    settings.setMouseTracking(enabled);
+                    terminal.setMouseTracking(enabled);
                 }));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),

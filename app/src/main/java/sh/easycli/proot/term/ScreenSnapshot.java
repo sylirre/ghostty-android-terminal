@@ -91,6 +91,16 @@ public final class ScreenSnapshot {
         return (meta[14] & TerminalNative.INPUT_MODE_ALT_SCREEN) != 0;
     }
 
+    /**
+     * True when the running program has enabled a mouse tracking mode
+     * (X10/normal/button/any-event). The view then reports touch gestures as
+     * mouse events — swipes as wheel scroll, taps as a left click — instead of
+     * driving the local scrollback or raising the keyboard.
+     */
+    public boolean mouseTracking() {
+        return (meta[14] & TerminalNative.INPUT_MODE_MOUSE) != 0;
+    }
+
     void ensureCapacity(int cells) {
         if (codepoints.length >= cells) return;
         codepoints = new int[cells];

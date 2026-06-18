@@ -166,6 +166,16 @@ public final class TerminalEmulator implements AutoCloseable {
                 handle, androidKeyCode, mods, utf8, unshiftedCodepoint);
     }
 
+    /**
+     * Encodes a mouse event for the PTY per the terminal's active tracking
+     * mode; null if it encodes to nothing. See
+     * {@link TerminalNative#terminalEncodeMouse}.
+     */
+    public synchronized byte[] encodeMouse(int action, int button, float x, float y) {
+        if (handle == 0) return null;
+        return TerminalNative.terminalEncodeMouse(handle, action, button, x, y);
+    }
+
     // --- Selection. The terminal owns it (tracked refs), so it follows its
     // text across scrolling, new output, and reflow; the snapshot reports
     // highlighted cells and endpoint positions for the UI. ---

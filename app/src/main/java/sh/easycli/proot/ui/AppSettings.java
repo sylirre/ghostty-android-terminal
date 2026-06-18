@@ -32,6 +32,7 @@ public final class AppSettings {
     private static final String KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN = "hide_extra_keys_when_kb_hidden";
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
+    private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -255,5 +256,21 @@ public final class AppSettings {
 
     public void setSmoothScroll(boolean enabled) {
         prefs.edit().putBoolean(KEY_SMOOTH_SCROLL, enabled).apply();
+    }
+
+    /**
+     * When true (default), programs that request mouse reporting receive touch
+     * gestures as mouse events: a tap is a left click and a swipe is wheel
+     * scroll (vertical and horizontal, locked to the dominant axis). Only takes
+     * effect while a program has enabled a mouse tracking mode; otherwise
+     * gestures drive the local scrollback. Applied to the view by
+     * {@code MainActivity}.
+     */
+    public boolean mouseTracking() {
+        return prefs.getBoolean(KEY_MOUSE_TRACKING, true);
+    }
+
+    public void setMouseTracking(boolean enabled) {
+        prefs.edit().putBoolean(KEY_MOUSE_TRACKING, enabled).apply();
     }
 }

@@ -187,6 +187,18 @@ public class TerminalView extends View {
     private boolean smoothScroll = true;
     private float pixelScrollOffset;
 
+    // --- Mouse reporting. When the user has enabled it (the master switch
+    // below) AND the running program turned on a mouse tracking mode
+    // (snapshot.mouseTracking()), touch gestures are encoded as mouse events
+    // and sent to the PTY instead of driving the local scrollback: a tap is a
+    // left-button click, a swipe is wheel scroll. Each gesture locks to its
+    // dominant axis (mouseAxis: 0 none, 1 vertical, 2 horizontal) so a slightly
+    // diagonal drag doesn't emit both vertical and horizontal wheel reports;
+    // mouseWheelRemainder carries the sub-cell leftover along that axis.
+    private boolean mouseTrackingEnabled = true;
+    private int mouseAxis;
+    private float mouseWheelRemainder;
+
     // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
     // to an OverScroller, whose decelerating position is sampled once per
     // animation frame and converted to whole-row scrollBy() calls (the engine
@@ -290,6 +302,12 @@ public class TerminalView extends View {
                     return true;
                 }
                 requestFocus();
+                // A program tracking the mouse gets the tap as a left click
+                // rather than a request for the keyboard.
+                if (mouseReporting()) {
+                    sendMouseClick(e.getX(), e.getY());
+                    return true;
+                }
                 if (touchKeyboardEnabled) {
                     InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
                     imm.showSoftInput(TerminalView.this, 0);
@@ -305,6 +323,13 @@ public class TerminalView extends View {
             @Override
             public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
                 if (session == null) return true;
+                // Mouse path takes precedence over both scrollback and the
+                // alt-screen arrow-key translation: encode the swipe as wheel
+                // scroll along the gesture's dominant axis.
+                if (mouseReporting()) {
+                    handleMouseWheel(e2, dx, dy);
+                    return true;
+                }
                 // Smooth path: track pixels on the main screen (not while
                 // selecting, where the swipe scrolls the selection into view in
                 // whole rows). dy > 0 is a finger-up swipe revealing lower
@@ -340,6 +365,9 @@ public class TerminalView extends View {
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
                 if (session == null || snapshot.altScreen()) return false;
+                // Mouse reporting already emitted discrete wheel reports during
+                // the drag; don't coast the local viewport on top of that.
+                if (mouseReporting()) return false;
                 // No scrollback on the alt screen; the per-row swipe→arrow-key
                 // translation in onScroll stays the only motion there.
                 scroller.forceFinished(true);
@@ -359,6 +387,8 @@ public class TerminalView extends View {
             public boolean onDown(MotionEvent e) {
                 scroller.forceFinished(true); // a touch catches an in-flight fling
                 scrollRemainder = 0;
+                mouseAxis = 0; // re-decide the locked axis for this gesture
+                mouseWheelRemainder = 0;
                 return true;
             }
         });
@@ -469,6 +499,78 @@ public class TerminalView extends View {
             pixelScrollOffset = 0;
             invalidate();
         }
+    }
+
+    /**
+     * Master switch for mouse reporting. When on, touch gestures are forwarded
+     * to programs that have enabled a mouse tracking mode (taps as left clicks,
+     * swipes as wheel scroll); when off, gestures always drive the local
+     * scrollback / raise the keyboard regardless of what the program requested.
+     */
+    public void setMouseTracking(boolean enabled) {
+        mouseTrackingEnabled = enabled;
+    }
+
+    /**
+     * True when gestures should be reported to the program as mouse events:
+     * the user enabled mouse reporting and the program turned on a tracking
+     * mode. Reads the last snapshot's mode flags (refreshed every frame), so it
+     * needs no JNI round-trip per gesture.
+     */
+    private boolean mouseReporting() {
+        return mouseTrackingEnabled && session != null && snapshot.mouseTracking();
+    }
+
+    /**
+     * Encodes a swipe as wheel scroll along the gesture's dominant axis (locked
+     * on the first move of the gesture). Whole cells crossed emit one wheel
+     * report each — vertical buttons 4/5, horizontal buttons 6/7 — matching the
+     * sign convention of the scrollback path: {@code dy > 0} is a finger-up
+     * swipe that reveals lower content (wheel down), and {@code dx > 0} a
+     * finger-left swipe that reveals content to the right (wheel right).
+     */
+    private void handleMouseWheel(MotionEvent e2, float dx, float dy) {
+        if (mouseAxis == 0) {
+            mouseAxis = Math.abs(dy) >= Math.abs(dx) ? 1 : 2;
+            mouseWheelRemainder = 0;
+        }
+        float x = e2.getX() - textMarginLeft, y = e2.getY();
+        if (mouseAxis == 1) {
+            mouseWheelRemainder += dy / cellHeight;
+            int steps = (int) mouseWheelRemainder;
+            if (steps == 0) return;
+            mouseWheelRemainder -= steps;
+            int button = steps > 0 ? TerminalNative.MOUSE_WHEEL_DOWN
+                                   : TerminalNative.MOUSE_WHEEL_UP;
+            emitWheel(button, Math.abs(steps), x, y);
+        } else {
+            mouseWheelRemainder += dx / cellWidth;
+            int steps = (int) mouseWheelRemainder;
+            if (steps == 0) return;
+            mouseWheelRemainder -= steps;
+            int button = steps > 0 ? TerminalNative.MOUSE_WHEEL_RIGHT
+                                   : TerminalNative.MOUSE_WHEEL_LEFT;
+            emitWheel(button, Math.abs(steps), x, y);
+        }
+    }
+
+    /** Sends {@code count} wheel-button presses (encoded once, written N times). */
+    private void emitWheel(int button, int count, float x, float y) {
+        byte[] one = session.emulator.encodeMouse(
+                TerminalNative.MOUSE_PRESS, button, x, y);
+        if (one == null) return;
+        for (int i = 0; i < count; i++) session.writeBytes(one);
+    }
+
+    /** Reports a left-button click (press then release) at the given pixel. */
+    private void sendMouseClick(float px, float py) {
+        float x = px - textMarginLeft, y = py;
+        byte[] press = session.emulator.encodeMouse(
+                TerminalNative.MOUSE_PRESS, TerminalNative.MOUSE_BUTTON_LEFT, x, y);
+        byte[] release = session.emulator.encodeMouse(
+                TerminalNative.MOUSE_RELEASE, TerminalNative.MOUSE_BUTTON_LEFT, x, y);
+        if (press != null) session.writeBytes(press);
+        if (release != null) session.writeBytes(release);
     }
 
     private void setTextSizePx(float px) {
