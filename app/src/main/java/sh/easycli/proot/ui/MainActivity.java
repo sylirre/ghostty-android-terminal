@@ -326,7 +326,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             } else {
                 Toast.makeText(this, getString(R.string.toast_shell_start_failed,
                         e.getMessage()), Toast.LENGTH_LONG).show();
-                if (sessions.isEmpty()) finish();
+                if (sessions.isEmpty()) finishAndRemoveTask();
             }
         }
     }
@@ -401,7 +401,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         sessions.close(s);
         if (sessions.isEmpty()) {
             SessionService.stop(this);
-            finish();
+            finishAndRemoveTask();
             return;
         }
         SessionService.refresh(this); // reflect the new count in the notification
