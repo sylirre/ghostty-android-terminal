@@ -1128,9 +1128,14 @@ public class TerminalView extends View {
             int cp = x < sc ? snapshot.codepoints[i] : 0;
             int fg = x < sc ? snapshot.fg[i] : 0;
             int attr = x < sc ? (snapshot.attrs[i] & ~TerminalNative.ATTR_WIDE) : 0;
+            // A grapheme cluster (base + combining/ZWJ marks) is several
+            // codepoints rendered as one glyph; draw it whole so the font can
+            // shape it, which means keeping it out of batched runs like wides.
+            String cluster = x < sc ? snapshot.graphemeAt(i) : null;
             boolean breakRun = x == sc || cp == 0 || fg != runFg || attr != runAttr
                     // Wide glyphs advance two cells; keep them out of batched runs.
-                    || (x < sc && (snapshot.attrs[i] & TerminalNative.ATTR_WIDE) != 0);
+                    || (x < sc && (snapshot.attrs[i] & TerminalNative.ATTR_WIDE) != 0)
+                    || cluster != null;
             if (breakRun && runStart >= 0 && runText.length() > 0) {
                 applyStyle(runFg, runAttr);
                 canvas.drawText(runText, 0, runText.length(),
@@ -1145,11 +1150,22 @@ public class TerminalView extends View {
             if (x == sc || cp == 0) continue;
             if ((snapshot.attrs[i] & TerminalNative.ATTR_WIDE) != 0) {
                 applyStyle(fg, attr);
-                String s = new String(Character.toChars(cp));
+                String s = cluster != null ? cluster : new String(Character.toChars(cp));
                 canvas.drawText(s, textMarginLeft + x * cellWidth, top + baseline, textPaint);
                 drawUnderline(canvas, fg, attr,
                         textMarginLeft + x * cellWidth,
                         textMarginLeft + (x + 2) * cellWidth, top);
+                continue;
+            }
+            if (cluster != null) {
+                // Narrow cluster: one cell wide, drawn individually so its
+                // combining marks attach to the base instead of the next cell.
+                applyStyle(fg, attr);
+                canvas.drawText(cluster, textMarginLeft + x * cellWidth,
+                        top + baseline, textPaint);
+                drawUnderline(canvas, fg, attr,
+                        textMarginLeft + x * cellWidth,
+                        textMarginLeft + (x + 1) * cellWidth, top);
                 continue;
             }
             if (runStart < 0) {
@@ -1301,9 +1317,11 @@ public class TerminalView extends View {
                 canvas.drawRect(left, top, right, top + cellHeight, bgPaint);
                 int i = snapshot.cursorY() * snapshot.cols + snapshot.cursorX();
                 int cp = snapshot.codepoints[i];
+                String cluster = snapshot.graphemeAt(i);
                 if (cp != 0) {
                     applyStyle(snapshot.bg[i], snapshot.attrs[i]);
-                    canvas.drawText(new String(Character.toChars(cp)),
+                    canvas.drawText(cluster != null ? cluster
+                                    : new String(Character.toChars(cp)),
                             left, top + baseline, textPaint);
                 }
                 // Glyph is drawn here in inverse; null it so the text pass skips it.

@@ -94,6 +94,31 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void graphemeClusterCombiningMark() {
+        // Base letter plus a combining acute accent renders as one glyph but
+        // is two codepoints; the base stays in codepoints[], the full cluster
+        // is reachable via graphemeAt, and plain cells report no cluster.
+        feed("éx");
+        ScreenSnapshot s = snapshot();
+        assertEquals('e', s.codepoints[cell(0, 0)]);
+        assertEquals("é", s.graphemeAt(cell(0, 0)));
+        assertEquals('x', s.codepoints[cell(1, 0)]);
+        assertNull(s.graphemeAt(cell(1, 0)));
+        // rowText splices the cluster back in for copy/debug consumers.
+        assertEquals("éx", s.rowText(0));
+    }
+
+    @Test
+    public void graphemeClusterMultipleMarks() {
+        // Several stacked combining marks all attach to the one base cell.
+        feed("à́");
+        ScreenSnapshot s = snapshot();
+        assertEquals('a', s.codepoints[cell(0, 0)]);
+        assertEquals("à́", s.graphemeAt(cell(0, 0)));
+        assertNull(s.graphemeAt(cell(1, 0)));
+    }
+
+    @Test
     public void cursorMovement() {
         feed("\u001b[3;5Hx"); // CUP row 3, col 5 (1-based)
         ScreenSnapshot s = snapshot();

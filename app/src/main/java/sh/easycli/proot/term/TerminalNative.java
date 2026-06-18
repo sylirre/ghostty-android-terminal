@@ -167,12 +167,18 @@ public final class TerminalNative {
 
     /**
      * Copies the viewport into the given arrays; see terminal_jni.c for the
-     * meta layout. Returns (cols << 16) | rows; if the arrays are smaller
+     * meta layout. Returns (cols << 16) | rows; if the cell arrays are smaller
      * than cols*rows, only meta is filled and the caller must retry with
      * bigger arrays.
+     *
+     * Multi-codepoint grapheme clusters ride in {@code graphemes}, a
+     * self-describing overflow buffer: slot 0 is the number of record ints
+     * required (excluding slot 0), followed by {@code [cellIndex, count,
+     * cp0, cp1, ...]} records. If slot 0 exceeds {@code graphemes.length - 1}
+     * the records didn't fit; grow the buffer and retry, same as the cells.
      */
     public static native int terminalSnapshot(long handle, int[] codepoints,
-            int[] fg, int[] bg, byte[] attrs, int[] meta);
+            int[] fg, int[] bg, byte[] attrs, int[] meta, int[] graphemes);
 
     /**
      * Packs visible Kitty graphics placements into out (GFX_STRIDE ints each)

@@ -76,14 +76,24 @@ public final class TerminalEmulator implements AutoCloseable {
     /** Fills out with the current viewport; returns false after close(). */
     public synchronized boolean snapshot(ScreenSnapshot out) {
         if (handle == 0) return false;
-        int dims = TerminalNative.terminalSnapshot(
-                handle, out.codepoints, out.fg, out.bg, out.attrs, out.meta);
+        int dims = TerminalNative.terminalSnapshot(handle, out.codepoints,
+                out.fg, out.bg, out.attrs, out.meta, out.graphemes);
         int cols = dims >>> 16, rows = dims & 0xFFFF;
         if (cols * rows > out.codepoints.length) {
+            // Cell arrays were too small: only meta was written, and grapheme
+            // collection was skipped. Grow and refill before judging graphemes.
             out.ensureCapacity(cols * rows);
-            TerminalNative.terminalSnapshot(
-                    handle, out.codepoints, out.fg, out.bg, out.attrs, out.meta);
+            TerminalNative.terminalSnapshot(handle, out.codepoints, out.fg,
+                    out.bg, out.attrs, out.meta, out.graphemes);
         }
+        if (out.graphemesOverflowed()) {
+            // Cells now fit; the grapheme buffer asked for more room. Grow it
+            // and refill once more (records fit on the retry, same contract).
+            out.ensureGraphemeCapacity(out.graphemes[0]);
+            TerminalNative.terminalSnapshot(handle, out.codepoints, out.fg,
+                    out.bg, out.attrs, out.meta, out.graphemes);
+        }
+        out.indexGraphemes();
         out.cols = cols;
         out.rows = rows;
         return true;

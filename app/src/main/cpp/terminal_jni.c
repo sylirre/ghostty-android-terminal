@@ -445,13 +445,23 @@ static jint pack_rgb(GhosttyColorRgb c) {
  * bottom-right; each is only valid when its visibility bit is set (an
  * endpoint can sit above or below the viewport).
  *
+ * Grapheme clusters (a base codepoint plus combining/ZWJ codepoints that
+ * render as one glyph) don't fit the one-int-per-cell layout, so they ride
+ * in a separate self-describing overflow buffer `jgraphemes`. The base
+ * codepoint still lands in the cp array (width/wrap/cursor logic stays
+ * codepoint-based); the full cluster is emitted here for the renderer.
+ * Layout: jgraphemes[0] is the number of record ints required (excluding
+ * slot 0); records follow as [cellIndex, count, cp0, cp1, ...]. If slot 0
+ * exceeds the buffer's record capacity the records didn't fit and the caller
+ * must grow jgraphemes and retry — the same contract as the cell arrays.
+ *
  * Returns (cols << 16) | rows. If the arrays are smaller than cols*rows
  * only meta is written; the caller must re-allocate and retry.
  */
 JNIEXPORT jint JNICALL
 Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     JNIEnv *env, jclass clazz, jlong h, jintArray jcp, jintArray jfg,
-    jintArray jbg, jbyteArray jattrs, jintArray jmeta) {
+    jintArray jbg, jbyteArray jattrs, jintArray jmeta, jintArray jgraphemes) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
 
@@ -563,10 +573,38 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
 
     (*env)->SetIntArrayRegion(env, jmeta, 0, 16, meta);
 
+    /* Grapheme overflow buffer. Slot 0 carries the record-int count needed;
+     * default it to 0 so the early returns below leave a defined "no clusters"
+     * value. Records (written only when cells are produced) occupy slots
+     * [1 .. gcap-1], so the record capacity is gcap-1. */
+    jsize gcap = jgraphemes ? (*env)->GetArrayLength(env, jgraphemes) : 0;
+    if (gcap >= 1) {
+        jint zero = 0;
+        (*env)->SetIntArrayRegion(env, jgraphemes, 0, 1, &zero);
+    }
+
     jint ret = ((jint)cols << 16) | rows;
     size_t ncells = (size_t)cols * rows;
     if (ncells == 0 || (size_t)(*env)->GetArrayLength(env, jcp) < ncells)
         return ret;
+
+    /* Staging buffer for grapheme records; one bulk copy into jgraphemes at
+     * the end beats a JNI region call per cluster. cap_rec is the record-int
+     * capacity (gcap-1). On OOM we disable collection and report 0 clusters
+     * (rather than leaving slot 0 demanding a grow that can't be satisfied,
+     * which would loop the caller forever). */
+    size_t cap_rec = gcap >= 1 ? (size_t)(gcap - 1) : 0;
+    jint *grec = NULL;
+    bool g_disabled = false;
+    if (cap_rec > 0) {
+        grec = malloc(cap_rec * sizeof(jint));
+        if (!grec) {
+            g_disabled = true;
+            cap_rec = 0;
+        }
+    }
+    size_t g_used = 0, g_needed = 0;
+    bool g_overflow = false;
 
     jint *row_cp = malloc(cols * sizeof(jint));
     jint *row_fg = malloc(cols * sizeof(jint));
@@ -580,6 +618,17 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     while (ghostty_render_state_row_iterator_next(c->row_iter) && y < rows) {
         ghostty_render_state_row_get(
             c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &c->cells);
+        /* The row-level grapheme flag lets non-grapheme rows skip the per-cell
+         * cluster-length probe entirely — the overwhelmingly common case. */
+        bool row_has_graphemes = false;
+        if (!g_disabled) {
+            GhosttyRow raw_row = 0;
+            if (ghostty_render_state_row_get(
+                    c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_RAW, &raw_row) ==
+                GHOSTTY_SUCCESS)
+                ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_GRAPHEME,
+                                &row_has_graphemes);
+        }
         GhosttyRenderStateRowSelection rsel =
             GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
         bool row_selected =
@@ -598,6 +647,45 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
             if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL ||
                 wide == GHOSTTY_CELL_WIDE_SPACER_HEAD)
                 cp = 0;
+
+            /* Collect a multi-codepoint grapheme cluster for this cell. Only
+             * real cells (cp != 0, i.e. not a spacer) in a grapheme-bearing
+             * row are probed. The base codepoint stays in row_cp; the full
+             * cluster (base + combining/ZWJ codepoints) is staged for the
+             * renderer. g_needed always tracks the true size so the caller can
+             * grow on overflow even when nothing fit this pass. */
+            if (row_has_graphemes && cp != 0) {
+                uint32_t glen = 0;
+                ghostty_render_state_row_cells_get(
+                    c->cells,
+                    GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &glen);
+                if (glen > 1) {
+                    size_t recsize = (size_t)2 + glen;
+                    g_needed += recsize;
+                    if (!g_overflow && g_used + recsize <= cap_rec) {
+                        uint32_t gstack[32];
+                        uint32_t *gbuf = glen <= 32
+                                             ? gstack
+                                             : malloc((size_t)glen *
+                                                      sizeof(uint32_t));
+                        if (gbuf) {
+                            ghostty_render_state_row_cells_get(
+                                c->cells,
+                                GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF,
+                                gbuf);
+                            grec[g_used++] = (jint)((size_t)y * cols + x);
+                            grec[g_used++] = (jint)glen;
+                            for (uint32_t k = 0; k < glen; k++)
+                                grec[g_used++] = (jint)gbuf[k];
+                            if (gbuf != gstack) free(gbuf);
+                        } else {
+                            g_overflow = true; /* don't undercount g_needed */
+                        }
+                    } else {
+                        g_overflow = true;
+                    }
+                }
+            }
 
             GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
             bool has_styling = false;
@@ -668,6 +756,16 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     }
 
 done:
+    /* Publish the grapheme records: slot 0 = ints needed (0 when disabled,
+     * so the caller never demands an unsatisfiable grow), then the staged
+     * records. On overflow g_needed > cap_rec and the caller grows + retries. */
+    if (gcap >= 1) {
+        jint needed = g_disabled ? 0 : (jint)g_needed;
+        (*env)->SetIntArrayRegion(env, jgraphemes, 0, 1, &needed);
+        if (g_used > 0)
+            (*env)->SetIntArrayRegion(env, jgraphemes, 1, (jsize)g_used, grec);
+    }
+    free(grec);
     free(row_cp);
     free(row_fg);
     free(row_bg);
