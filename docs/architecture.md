@@ -119,8 +119,9 @@ under app data):
    rename (`publish`) swaps it onto `debian`, leaving the existing rootfs intact
    if a restore fails or is cancelled. Restore also accepts foreign rootfs
    tarballs, not just our own backups: compression is autodetected (`tarStream`
-   sniffs the gzip magic and inflates on the fly, otherwise reads a plain
-   uncompressed `.tar`), and a first pass probes the leading member names
+   sniffs the leading magic and inflates gzip or xz — the codec the bundled
+   rootfs ships in, via the same `org.tukaani:xz` decoder — on the fly, otherwise
+   reads a plain uncompressed `.tar`), and a first pass probes the member names
    (`probeStripCount`/`detectStripCount`, ported from proot-distro) to detect how
    many wrapper directories to strip so a nested rootfs (e.g. under `distro/`)
    lands at the root, then a second pass extracts with that strip.

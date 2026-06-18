@@ -256,13 +256,14 @@ public class RootfsBackupTest {
     }
 
     /**
-     * Restore autodetects compression: the same tar bytes are read whether or
-     * not they are gzip-wrapped, so a plain (uncompressed) {@code .tar} restores
-     * just like one of our own gzip backups. Drives both branches of
-     * {@code tarStream} and confirms the member name survives the round trip.
+     * Restore autodetects compression from the leading magic bytes: the same tar
+     * content is read whether it is plain, gzip-wrapped, or xz-wrapped (the codec
+     * the bundled rootfs ships in), so a foreign {@code .tar}/{@code .tar.gz}/
+     * {@code .tar.xz} restores like one of our own backups. Drives each branch of
+     * {@code tarStream} and confirms the member survives the round trip.
      */
     @Test
-    public void tarStreamReadsPlainAndGzip() throws Exception {
+    public void tarStreamAutodetectsCompression() throws Exception {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         tarFile(raw, "etc/hostname", "host\n");
         raw.write(new byte[512]); // end-of-archive marker
@@ -275,10 +276,18 @@ public class RootfsBackupTest {
             gz.write(plain);
         }
 
-        // Plain bytes start with the tar name field, not the gzip magic.
+        ByteArrayOutputStream xzipped = new ByteArrayOutputStream();
+        try (org.tukaani.xz.XZOutputStream xz = new org.tukaani.xz.XZOutputStream(
+                xzipped, new org.tukaani.xz.LZMA2Options())) {
+            xz.write(plain);
+        }
+
+        // Plain bytes start with the tar name field, not a compression magic.
         assertEquals("host\n", firstMemberContent(plain));
         // Gzip bytes start with 0x1f 0x8b and are transparently inflated.
         assertEquals("host\n", firstMemberContent(gzipped.toByteArray()));
+        // xz bytes start with FD 37 7A 58 5A 00 and are transparently decoded.
+        assertEquals("host\n", firstMemberContent(xzipped.toByteArray()));
     }
 
     /**

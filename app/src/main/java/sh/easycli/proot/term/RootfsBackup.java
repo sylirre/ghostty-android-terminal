@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import org.tukaani.xz.XZInputStream;
+
 /**
  * Backs up and restores the Debian rootfs ({@link DebianRootfs#dir}) to and
  * from a single gzip-compressed tar file. A {@link #backup} always writes
@@ -139,9 +141,10 @@ public final class RootfsBackup {
      * flip {@code cancelled} to abort.
      *
      * <p>The archive need not be one of our own backups. Compression is
-     * autodetected: a leading gzip magic ({@code 0x1f 0x8b}) is decompressed on
-     * the fly, otherwise the stream is read as a plain (uncompressed) {@code .tar}
-     * — so a hand-rolled or already-decompressed tarball restores too (see
+     * autodetected from the leading magic bytes — gzip or xz (the codec the
+     * bundled rootfs ships in) are decompressed on the fly, otherwise the stream
+     * is read as a plain (uncompressed) {@code .tar} — so a hand-rolled,
+     * xz-recompressed, or already-decompressed tarball restores too (see
      * {@link #tarStream}). A first pass then probes the leading member names
      * ({@link DebianRootfs#probeStripCount}) to detect how many wrapper
      * directories to strip so a foreign rootfs tarball (e.g. one nested under
@@ -181,23 +184,46 @@ public final class RootfsBackup {
         }
     }
 
+    /** xz stream header magic: {@code FD 37 7A 58 5A 00} ("\xFD7zXZ\0"). */
+    private static final byte[] XZ_MAGIC =
+            {(byte) 0xFD, '7', 'z', 'X', 'Z', 0x00};
+    /** gzip member header magic: {@code 1F 8B}. */
+    private static final byte[] GZIP_MAGIC = {(byte) 0x1F, (byte) 0x8B};
+
     /**
      * Returns a tar stream over {@code buffered}, transparently decompressing it
-     * when it carries the gzip magic ({@code 0x1f 0x8b}) and reading it verbatim
-     * otherwise — so {@link #restore} accepts both our own gzip backups and a
-     * plain (uncompressed) {@code .tar}. The first two bytes are sniffed through
-     * the buffer's {@code mark}/{@code reset} and pushed back, so the chosen
-     * reader still sees the whole stream. The caller supplies the
-     * {@link BufferedInputStream} so a restore can interpose a byte counter
-     * beneath it. Package-private so a test can drive both branches. A stream
-     * shorter than two bytes is treated as plain (and the tar reader rejects it).
+     * by sniffing the leading bytes — xz ({@link #XZ_MAGIC}), gzip
+     * ({@link #GZIP_MAGIC}), or read verbatim otherwise — so {@link #restore}
+     * accepts our own gzip backups, an {@code .tar.xz} (the same codec the
+     * bundled rootfs ships in), and a plain (uncompressed) {@code .tar}. Up to
+     * six bytes are read through the buffer's {@code mark}/{@code reset} and
+     * pushed back, so the chosen reader still sees the whole stream. The caller
+     * supplies the {@link BufferedInputStream} so a restore can interpose a byte
+     * counter beneath it. Package-private so a test can drive each branch. A
+     * stream too short to match any magic is treated as plain (and the tar reader
+     * rejects it if it isn't a tar).
      */
     static InputStream tarStream(BufferedInputStream buffered) throws IOException {
-        buffered.mark(2);
-        int b0 = buffered.read();
-        int b1 = buffered.read();
+        byte[] head = new byte[XZ_MAGIC.length];
+        buffered.mark(head.length);
+        int n = 0;
+        int r;
+        while (n < head.length && (r = buffered.read(head, n, head.length - n)) >= 0) {
+            n += r;
+        }
         buffered.reset();
-        return (b0 == 0x1f && b1 == 0x8b) ? new GZIPInputStream(buffered) : buffered;
+        if (startsWith(head, n, XZ_MAGIC)) return new XZInputStream(buffered);
+        if (startsWith(head, n, GZIP_MAGIC)) return new GZIPInputStream(buffered);
+        return buffered;
+    }
+
+    /** True when the first {@code len} bytes of {@code head} begin with {@code magic}. */
+    private static boolean startsWith(byte[] head, int len, byte[] magic) {
+        if (len < magic.length) return false;
+        for (int i = 0; i < magic.length; i++) {
+            if (head[i] != magic[i]) return false;
+        }
+        return true;
     }
 
     /**
