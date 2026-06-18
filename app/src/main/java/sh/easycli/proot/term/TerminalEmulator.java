@@ -88,6 +88,36 @@ public final class TerminalEmulator implements AutoCloseable {
     /** Fills out with the current viewport; returns false after close(). */
     public synchronized boolean snapshot(ScreenSnapshot out) {
         if (handle == 0) return false;
+        return fillSnapshot(out);
+    }
+
+    /** Reusable scrollbar scratch for {@link #snapshotSmooth}; lock-guarded. */
+    private final int[] sbScratch = new int[3];
+
+    /**
+     * Snapshots the current viewport into {@code out} plus, for smooth (sub-row)
+     * scrolling, the single row immediately above the viewport into {@code above}
+     * as its row 0. Both snapshots are taken under one lock so the reader thread
+     * cannot shift the viewport between them (the row-above is revealed by a
+     * transient one-row scroll that is restored before returning).
+     *
+     * Returns 0 when closed (nothing filled), 1 when only {@code out} was filled
+     * because the viewport is already at the top of history (no row above), and 2
+     * when both {@code out} and {@code above} were filled.
+     */
+    public synchronized int snapshotSmooth(ScreenSnapshot out, ScreenSnapshot above) {
+        if (handle == 0) return 0;
+        if (!fillSnapshot(out)) return 0;
+        TerminalNative.terminalScrollbar(handle, sbScratch);
+        if (sbScratch[1] <= 0) return 1; // at the top: no row above to reveal
+        TerminalNative.terminalScroll(handle, 2, -1); // reveal one row of history
+        fillSnapshot(above);
+        TerminalNative.terminalScroll(handle, 2, 1);  // restore the viewport
+        return 2;
+    }
+
+    /** Snapshot body; caller must hold the lock and have a live handle. */
+    private boolean fillSnapshot(ScreenSnapshot out) {
         int dims = TerminalNative.terminalSnapshot(handle, out.codepoints,
                 out.fg, out.bg, out.attrs, out.meta, out.graphemes);
         int cols = dims >>> 16, rows = dims & 0xFFFF;

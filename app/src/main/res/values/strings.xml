@@ -37,6 +37,10 @@
     <string name="setting_grapheme_title">Combine grapheme clusters</string>
     <string name="setting_grapheme_summary">Render combining marks, emoji sequences and Indic conjuncts (e.g. स्व) as single glyphs (DEC mode 2027). May misalign programs that measure text width themselves.</string>
 
+    <!-- Settings: Smooth scrolling -->
+    <string name="setting_smooth_scroll_title">Smooth scrolling</string>
+    <string name="setting_smooth_scroll_summary">Scroll the history pixel-by-pixel instead of one whole line at a time. Has no effect inside full-screen apps (vim, less) which have no scrollback.</string>
+
     <!-- Settings: Touch keyboard -->
     <string name="setting_touch_keyboard_title">Show touch keyboard</string>
     <string name="setting_touch_keyboard_summary">Automatically raise the soft keyboard when opening the app, creating a session, or tapping the terminal. Search always shows the keyboard regardless.</string>

@@ -75,6 +75,10 @@ public class TerminalView extends View {
 
     private TerminalSession session;
     private final ScreenSnapshot snapshot = new ScreenSnapshot();
+    // Holds the single row just above the viewport while smooth-scrolling, so
+    // the renderer can draw the partial row exposed at the top by a sub-row
+    // pixel offset. Only filled (via snapshotSmooth) when pixelScrollOffset > 0.
+    private final ScreenSnapshot aboveSnapshot = new ScreenSnapshot();
     private StickyModifiers sticky = new StickyModifiers();
 
     // Cursor blink. The VT engine only reports whether the cursor *should*
@@ -172,6 +176,16 @@ public class TerminalView extends View {
     private final ScaleGestureDetector scaleGestures;
     private float scrollRemainder;
     private float fontSizeSp;
+
+    // --- Smooth (sub-row) scrolling. When enabled, scroll/fling motion is
+    // tracked in pixels: whole rows still go through emulator.scrollBy(), and
+    // pixelScrollOffset carries the leftover [0, cellHeight) that the renderer
+    // applies as a canvas translation (drawing one extra row of history above
+    // the viewport to fill the gap it opens). Off → the integer scrollRemainder
+    // path above is used unchanged. Only active on the main screen (the alt
+    // screen has no scrollback). See onDraw and scrollByPixels.
+    private boolean smoothScroll = true;
+    private float pixelScrollOffset;
 
     // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
     // to an OverScroller, whose decelerating position is sampled once per
@@ -291,6 +305,15 @@ public class TerminalView extends View {
             @Override
             public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
                 if (session == null) return true;
+                // Smooth path: track pixels on the main screen (not while
+                // selecting, where the swipe scrolls the selection into view in
+                // whole rows). dy > 0 is a finger-up swipe revealing lower
+                // content, matching scrollBy(+) / scrollByPixels(+).
+                if (smoothScroll && !selecting && !snapshot.altScreen()) {
+                    scrollByPixels(dy);
+                    invalidate();
+                    return true;
+                }
                 scrollRemainder += dy / cellHeight;
                 int lines = (int) scrollRemainder;
                 if (lines != 0) {
@@ -352,6 +375,24 @@ public class TerminalView extends View {
         public void run() {
             if (session == null || !scroller.computeScrollOffset()) return;
             int y = scroller.getCurrY();
+            // Smooth path: feed the per-frame pixel delta straight through;
+            // scrollByPixels reports when the viewport pins against the edge
+            // we're heading for, which ends the coast (it never reaches the
+            // alt screen — onFling refuses to start there).
+            if (smoothScroll && !snapshot.altScreen()) {
+                float deltaPx = y - lastFlingY;
+                lastFlingY = y;
+                if (deltaPx != 0f) {
+                    boolean pinned = scrollByPixels(deltaPx);
+                    invalidate();
+                    if (pinned) {
+                        scroller.forceFinished(true);
+                        return;
+                    }
+                }
+                postOnAnimation(this);
+                return;
+            }
             flingRemainder += (y - lastFlingY) / (float) cellHeight;
             lastFlingY = y;
             int lines = (int) flingRemainder;
@@ -375,6 +416,60 @@ public class TerminalView extends View {
             postOnAnimation(this);
         }
     };
+
+    /**
+     * Smooth-scroll core: advances the viewport by {@code deltaPx} pixels
+     * (positive reveals lower content, matching {@link TerminalEmulator#scrollBy}).
+     * Whole rows crossed are applied via scrollBy; the leftover sub-row amount is
+     * kept in {@link #pixelScrollOffset} ∈ [0, cellHeight) for the renderer to
+     * translate by. Clamps the offset to 0 at the history edges (no partial row
+     * exists past the top, and the live bottom can't be passed). Returns true
+     * when the viewport is pinned against the edge it was moving toward.
+     */
+    private boolean scrollByPixels(float deltaPx) {
+        // pixelScrollOffset measures how far the viewport is scrolled up from a
+        // row boundary, so moving toward present (deltaPx > 0) decreases it.
+        pixelScrollOffset -= deltaPx;
+        int lines = 0;
+        while (pixelScrollOffset < 0) {
+            pixelScrollOffset += cellHeight;
+            lines += 1; // crossed a boundary toward present
+        }
+        while (pixelScrollOffset >= cellHeight) {
+            pixelScrollOffset -= cellHeight;
+            lines -= 1; // crossed a boundary into history
+        }
+        session.emulator.scrollbar(scrollState);
+        int before = scrollState[1];
+        if (lines != 0) session.emulator.scrollBy(lines);
+        session.emulator.scrollbar(scrollState);
+        int after = scrollState[1];
+        boolean atTop = after <= 0;
+        boolean atBottom = after + scrollState[2] >= scrollState[0];
+        if (atTop) {
+            pixelScrollOffset = 0; // no row above the top to expose
+        } else if (atBottom && deltaPx > 0 && after == before) {
+            // Pushed toward present but already pinned to the live bottom: the
+            // borrowed boundary can't be honored, so settle on the boundary.
+            pixelScrollOffset = 0;
+        }
+        if (scrollState[0] > scrollState[2]) awakenScrollBars();
+        return (deltaPx > 0 && atBottom) || (deltaPx < 0 && atTop);
+    }
+
+    /**
+     * Enables or disables smooth (pixel-level) scrolling of the scrollback.
+     * When turned off, any in-progress sub-row offset is cleared so the grid
+     * snaps back to whole-row alignment.
+     */
+    public void setSmoothScroll(boolean enabled) {
+        if (smoothScroll == enabled) return;
+        smoothScroll = enabled;
+        if (!enabled && pixelScrollOffset != 0) {
+            pixelScrollOffset = 0;
+            invalidate();
+        }
+    }
 
     private void setTextSizePx(float px) {
         textPaint.setTextSize(px);
@@ -472,6 +567,7 @@ public class TerminalView extends View {
             gfxCount = 0;
             resetRichInput(); // the mirror belonged to the old session's line
             scroller.forceFinished(true); // don't coast into the new session
+            pixelScrollOffset = 0; // the old session's sub-row offset is meaningless
         }
         session = s;
         if (s != null && getWidth() > 0) {
@@ -522,6 +618,9 @@ public class TerminalView extends View {
     private void updateGridSize(int w, int h) {
         cols = Math.max(4, (int) ((w - textMarginLeft - textMarginRight) / cellWidth));
         rows = Math.max(2, h / cellHeight);
+        // A new cell height invalidates the sub-row offset (it is measured in
+        // the old cell pixels); snap back to a row boundary.
+        pixelScrollOffset = 0;
         if (session != null) {
             session.resize(cols, rows, (int) cellWidth, cellHeight);
         }
@@ -596,6 +695,10 @@ public class TerminalView extends View {
 
     private void startSelection(float px, float py) {
         if (session == null || selecting) return;
+        // Snap any smooth-scroll sub-row offset away so the grid is row-aligned
+        // for the whole selection: hit-testing here and the handle/drag math all
+        // map screen pixels through cellHeight assuming no sub-row translation.
+        pixelScrollOffset = 0;
         int cx = clampToGrid((px - textMarginLeft) / cellWidth, cols);
         int cy = clampToGrid(py / (float) cellHeight, rows);
         if (!session.emulator.selectWord(cx, cy)) return;
@@ -761,12 +864,22 @@ public class TerminalView extends View {
         if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("terminal", text));
     }
 
+    /**
+     * Snaps the viewport to the live bottom and clears any smooth-scroll
+     * sub-row offset. Used by the write paths (typing, paste, line editing)
+     * so output always lands row-aligned at the present.
+     */
+    private void jumpToPresent() {
+        if (session != null) session.emulator.scrollToBottom();
+        pixelScrollOffset = 0;
+    }
+
     private void pasteClipboard() {
         String text = clipboardText();
         if (text == null || session == null) return;
         byte[] encoded = session.emulator.encodePaste(text);
         if (encoded == null) return;
-        session.emulator.scrollToBottom();
+        jumpToPresent();
         session.writeBytes(encoded);
         invalidate();
     }
@@ -904,42 +1017,51 @@ public class TerminalView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        if (session == null || !session.emulator.snapshot(snapshot)) {
+        // While a sub-row offset is pending, snapshotSmooth grabs the viewport
+        // and the single row above it (atomically) so the partial top row the
+        // offset exposes can be drawn; otherwise a plain viewport snapshot.
+        boolean haveAbove = false;
+        if (session != null && smoothScroll && pixelScrollOffset > 0) {
+            int rc = session.emulator.snapshotSmooth(snapshot, aboveSnapshot);
+            if (rc == 0) { canvas.drawColor(0xFF000000); return; }
+            haveAbove = rc == 2;
+            if (!haveAbove) pixelScrollOffset = 0; // at the top: nothing above
+        } else if (session == null || !session.emulator.snapshot(snapshot)) {
             canvas.drawColor(0xFF000000);
             return;
         }
+        float offsetPx = haveAbove ? pixelScrollOffset : 0;
         session.emulator.scrollbar(scrollState); // keep the indicator current
         updateRichInputActive();
         canvas.drawColor(snapshot.defaultBg());
         drawBackgroundImage(canvas);
 
         int sc = snapshot.cols, sr = snapshot.rows;
+        // The grid (backgrounds, images, cursor, text) is drawn shifted down by
+        // the sub-row offset; the exposed strip at the top is filled by the
+        // row-above snapshot drawn at logical row -1. Everything is clipped to
+        // the view, so the partial top and bottom rows trim for free.
+        canvas.save();
+        if (offsetPx != 0) canvas.translate(0, offsetPx);
+
         // Background runs first so glyphs never get painted over.
+        if (haveAbove) drawRowBackground(canvas, aboveSnapshot, 0, -cellHeight);
         for (int y = 0; y < sr; y++) {
-            float top = y * cellHeight, bottom = top + cellHeight;
-            int runStart = 0;
-            int runBg = snapshot.bg[y * sc];
-            for (int x = 1; x <= sc; x++) {
-                int bg = x < sc ? snapshot.bg[y * sc + x] : 0;
-                if (x == sc || bg != runBg) {
-                    if (runBg != snapshot.defaultBg()) {
-                        bgPaint.setColor(runBg);
-                        canvas.drawRect(textMarginLeft + runStart * cellWidth, top,
-                                textMarginLeft + x * cellWidth, bottom, bgPaint);
-                    }
-                    runStart = x;
-                    runBg = bg;
-                }
-            }
+            drawRowBackground(canvas, snapshot, y, y * cellHeight);
         }
         updateGraphics();
         drawImages(canvas, true); // z < 0: above background, below text
         updateCursorBlink();
         drawCursor(canvas);
         for (int y = 0; y < sr; y++) {
-            drawRowText(canvas, y, sc);
+            drawRowText(canvas, snapshot, y, sc, y * cellHeight);
+        }
+        if (haveAbove) {
+            drawRowText(canvas, aboveSnapshot, 0, aboveSnapshot.cols, -cellHeight);
         }
         drawImages(canvas, false); // z >= 0: above text (the Kitty default)
+        canvas.restore();
+
         drawSizeOverlay(canvas); // grid-size HUD sits above all cell content
         drawSelectionHandles(canvas);
         if (selecting && !snapshot.hasSelection()) {
@@ -1119,22 +1241,56 @@ public class TerminalView extends View {
 
     private final StringBuilder runText = new StringBuilder(128);
 
-    private void drawRowText(Canvas canvas, int y, int sc) {
-        float top = y * cellHeight;
+    /**
+     * Paints the per-cell background runs of one row of {@code snap} (source row
+     * {@code srcRow}) at the given pixel {@code top}. Cells at the default
+     * background are skipped (the view is already cleared to it). Split out so
+     * the same routine fills the viewport rows and the row-above strip exposed
+     * by a smooth-scroll offset.
+     */
+    private void drawRowBackground(Canvas canvas, ScreenSnapshot snap, int srcRow, float top) {
+        int sc = snap.cols;
+        float bottom = top + cellHeight;
+        int base = srcRow * sc;
+        int def = snap.defaultBg();
+        int runStart = 0;
+        int runBg = snap.bg[base];
+        for (int x = 1; x <= sc; x++) {
+            int bg = x < sc ? snap.bg[base + x] : 0;
+            if (x == sc || bg != runBg) {
+                if (runBg != def) {
+                    bgPaint.setColor(runBg);
+                    canvas.drawRect(textMarginLeft + runStart * cellWidth, top,
+                            textMarginLeft + x * cellWidth, bottom, bgPaint);
+                }
+                runStart = x;
+                runBg = bg;
+            }
+        }
+    }
+
+    /**
+     * Draws one row of glyphs from {@code snap} (source row {@code srcRow}) at
+     * pixel {@code top}. {@code sc} is the row width in cells. Separating source
+     * row from destination pixel lets the renderer place the row-above strip
+     * (drawn at a negative top) for smooth scrolling.
+     */
+    private void drawRowText(Canvas canvas, ScreenSnapshot snap, int srcRow, int sc, float top) {
+        int rowBase = srcRow * sc;
         int runStart = -1, runFg = 0, runAttr = 0;
         runText.setLength(0);
         for (int x = 0; x <= sc; x++) {
-            int i = y * sc + x;
-            int cp = x < sc ? snapshot.codepoints[i] : 0;
-            int fg = x < sc ? snapshot.fg[i] : 0;
-            int attr = x < sc ? (snapshot.attrs[i] & ~TerminalNative.ATTR_WIDE) : 0;
+            int i = rowBase + x;
+            int cp = x < sc ? snap.codepoints[i] : 0;
+            int fg = x < sc ? snap.fg[i] : 0;
+            int attr = x < sc ? (snap.attrs[i] & ~TerminalNative.ATTR_WIDE) : 0;
             // A grapheme cluster (base + combining/ZWJ marks) is several
             // codepoints rendered as one glyph; draw it whole so the font can
             // shape it, which means keeping it out of batched runs like wides.
-            String cluster = x < sc ? snapshot.graphemeAt(i) : null;
+            String cluster = x < sc ? snap.graphemeAt(i) : null;
             boolean breakRun = x == sc || cp == 0 || fg != runFg || attr != runAttr
                     // Wide glyphs advance two cells; keep them out of batched runs.
-                    || (x < sc && (snapshot.attrs[i] & TerminalNative.ATTR_WIDE) != 0)
+                    || (x < sc && (snap.attrs[i] & TerminalNative.ATTR_WIDE) != 0)
                     || cluster != null;
             if (breakRun && runStart >= 0 && runText.length() > 0) {
                 applyStyle(runFg, runAttr);
@@ -1148,7 +1304,7 @@ public class TerminalView extends View {
                 runText.setLength(0);
             }
             if (x == sc || cp == 0) continue;
-            if ((snapshot.attrs[i] & TerminalNative.ATTR_WIDE) != 0) {
+            if ((snap.attrs[i] & TerminalNative.ATTR_WIDE) != 0) {
                 applyStyle(fg, attr);
                 String s = cluster != null ? cluster : new String(Character.toChars(cp));
                 canvas.drawText(s, textMarginLeft + x * cellWidth, top + baseline, textPaint);
@@ -1351,13 +1507,13 @@ public class TerminalView extends View {
         resetRichInput();
         int mods = sticky.consume() | extraMods;
         if (mods == 0 || text.codePointCount(0, text.length()) > 1) {
-            session.emulator.scrollToBottom();
+            jumpToPresent();
             session.write(text);
         } else {
             char ch = text.charAt(0);
             byte[] encoded = session.emulator.encodeKey(
                     keycodeForChar(ch), mods, text, Character.toLowerCase(ch));
-            session.emulator.scrollToBottom();
+            jumpToPresent();
             if (encoded != null) {
                 session.writeBytes(encoded);
             } else if ((mods & TerminalNative.MOD_CTRL) != 0) {
@@ -1531,7 +1687,7 @@ public class TerminalView extends View {
         int deletions = richSent.codePointCount(prefix, richSent.length());
         sendBackspaces(deletions);
         if (prefix < next.length()) {
-            session.emulator.scrollToBottom();
+            jumpToPresent();
             session.write(next.substring(prefix));
         }
         richSent = next;
@@ -1554,7 +1710,7 @@ public class TerminalView extends View {
         for (int i = 0; i < count; i++) {
             System.arraycopy(one, 0, out, i * one.length, one.length);
         }
-        session.emulator.scrollToBottom();
+        jumpToPresent();
         session.writeBytes(out);
     }
 

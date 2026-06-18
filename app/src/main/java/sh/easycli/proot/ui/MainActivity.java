@@ -114,6 +114,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         applyKeepScreenOn(settings.keepScreenOn());
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        terminal.setSmoothScroll(settings.smoothScroll());
         applyTextMargins();
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
 
@@ -477,6 +478,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 enabled -> {
                     settings.setGraphemeClustering(enabled);
                     applyTheme(); // re-pushes the mode to every open session
+                }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_smooth_scroll_title),
+                getString(R.string.setting_smooth_scroll_summary),
+                settings::smoothScroll,
+                enabled -> {
+                    settings.setSmoothScroll(enabled);
+                    terminal.setSmoothScroll(enabled);
                 }));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),

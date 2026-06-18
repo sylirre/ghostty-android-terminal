@@ -31,6 +31,7 @@ public final class AppSettings {
     private static final String KEY_TEXT_MARGIN_RIGHT = "text_margin_right";
     private static final String KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN = "hide_extra_keys_when_kb_hidden";
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
+    private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -237,5 +238,22 @@ public final class AppSettings {
 
     public void setGraphemeClustering(boolean enabled) {
         prefs.edit().putBoolean(KEY_GRAPHEME_CLUSTERING, enabled).apply();
+    }
+
+    /**
+     * When true (default), dragging and flinging the scrollback moves the
+     * viewport pixel-by-pixel rather than snapping a whole line at a time.
+     * Only affects the main screen — the alternate screen (vim/less/htop) has
+     * no scrollback, so swipes there are still translated to arrow keys.
+     * Applied to the view by {@code MainActivity}; the renderer carries a
+     * sub-row pixel offset while a scroll or fling is in flight (see
+     * {@link TerminalView}).
+     */
+    public boolean smoothScroll() {
+        return prefs.getBoolean(KEY_SMOOTH_SCROLL, true);
+    }
+
+    public void setSmoothScroll(boolean enabled) {
+        prefs.edit().putBoolean(KEY_SMOOTH_SCROLL, enabled).apply();
     }
 }
