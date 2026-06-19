@@ -18,7 +18,7 @@ Features:
 - Optional mouse reporting
 - Optional word-based input for rich keyboard features (word suggestions, etc)
 
-<img src="docs/screenshot.png" width="280" alt="App demo">
+<img src="docs/screenshot.png" alt="App demo">
 
 *Currently lacks storage permissions and some other important features as app
 is very fresh.*
