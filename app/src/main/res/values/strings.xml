@@ -149,6 +149,11 @@
         <item>Br. White</item>
     </string-array>
 
+    <!-- Settings: Debian -->
+    <string name="setting_proot_shell_title">Debian login shell</string>
+    <string name="setting_proot_shell_summary">Guest path of the shell PRoot starts as the login shell. Takes effect for sessions opened afterwards.</string>
+    <string name="setting_proot_shell_hint">/bin/bash</string>
+
     <!-- Settings: Debian backup & restore -->
     <string name="setting_backup_title">Back up Debian</string>
     <string name="setting_backup_summary">Save the Debian rootfs — all files, symlinks, and permissions — to a .tar.gz file.</string>

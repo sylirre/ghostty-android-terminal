@@ -33,6 +33,7 @@ public final class AppSettings {
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
+    private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -272,5 +273,18 @@ public final class AppSettings {
 
     public void setMouseTracking(boolean enabled) {
         prefs.edit().putBoolean(KEY_MOUSE_TRACKING, enabled).apply();
+    }
+
+    /**
+     * Guest-absolute path of the shell PRoot execs as the login shell
+     * (e.g. {@code /bin/bash}, {@code /bin/zsh}). Defaults to
+     * {@code /bin/bash}. Takes effect for sessions created afterwards.
+     */
+    public String prootLoginShell() {
+        return prefs.getString(KEY_PROOT_LOGIN_SHELL, "/bin/bash");
+    }
+
+    public void setProotLoginShell(String shell) {
+        prefs.edit().putString(KEY_PROOT_LOGIN_SHELL, shell.trim()).apply();
     }
 }

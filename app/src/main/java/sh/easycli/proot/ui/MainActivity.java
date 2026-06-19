@@ -23,6 +23,8 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
+import android.text.InputType;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -312,7 +314,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
-                    settings.scrollbackLines(), debian, this);
+                    settings.scrollbackLines(), debian, settings.prootLoginShell(), this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
             if (settings.touchKeyboard()) showKeyboard();
@@ -549,9 +551,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setTextMarginRight(dp);
                     applyTextMargins();
                 }));
-        // Debian backup/restore: only meaningful on an ABI that can run it.
-        // Backing up needs something installed; restoring can create the rootfs.
+        // Debian-specific settings: only meaningful on an ABI that can run it.
         if (DebianRootfs.assetName() != null) {
+            items.add(new Setting.Action(
+                    getString(R.string.setting_proot_shell_title),
+                    getString(R.string.setting_proot_shell_summary),
+                    settings::prootLoginShell,
+                    this::showLoginShellDialog));
             items.add(new Setting.Action(
                     getString(R.string.setting_backup_title),
                     getString(R.string.setting_backup_summary),
@@ -565,6 +571,33 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     this::confirmRestore));
         }
         SettingsDialog.show(this, items);
+    }
+
+    // --- Debian rootfs settings ---
+
+    private void showLoginShellDialog() {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setSingleLine(true);
+        input.setHint(R.string.setting_proot_shell_hint);
+        input.setText(settings.prootLoginShell());
+
+        LinearLayout container = new LinearLayout(this);
+        int p = (int) (20 * getResources().getDisplayMetrics().density);
+        container.setPadding(p, p / 2, p, 0);
+        container.addView(input, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.setting_proot_shell_title)
+                .setView(container)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    String shell = input.getText().toString().trim();
+                    if (!shell.isEmpty()) settings.setProotLoginShell(shell);
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     // --- Debian rootfs backup & restore ---

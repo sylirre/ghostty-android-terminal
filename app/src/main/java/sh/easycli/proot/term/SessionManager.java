@@ -31,13 +31,15 @@ public final class SessionManager {
      *
      * @param debian Debian login shell under PRoot (rootfs must be
      *               installed) instead of /system/bin/sh.
+     * @param loginShell guest-absolute path of the login shell (e.g.
+     *                   {@code /bin/bash}); ignored when {@code debian} is false.
      * @param scrollbackLines lines of history the new session keeps.
      */
     public TerminalSession create(Context context, int cols, int rows,
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
-            TerminalSession.Listener listener) throws IOException {
+            String loginShell, TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
-                ? DebianRootfs.command(context)
+                ? DebianRootfs.command(context, loginShell)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());

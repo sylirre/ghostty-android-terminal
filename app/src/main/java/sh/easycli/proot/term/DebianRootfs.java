@@ -204,12 +204,18 @@ public final class DebianRootfs {
      * PRoot command for a Debian login shell. Requires an installed rootfs
      * and the loader executable that APK packaging extracted into
      * nativeLibraryDir (its only exec-allowed location under W^X).
+     *
+     * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
      */
-    public static SessionCommand command(Context ctx) throws IOException {
+    public static SessionCommand command(Context ctx, String shell) throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Debian rootfs not installed");
         if (!hasShell(dir(ctx))) {
             throw new IOException("Debian rootfs is incomplete: /bin/bash is "
                     + "missing (was it deleted outside the app?)");
+        }
+        String shellRel = shell.startsWith("/") ? shell.substring(1) : shell;
+        if (!new File(dir(ctx), shellRel).exists()) {
+            throw new IOException("Login shell " + shell + " not found in Debian rootfs");
         }
         File loader = new File(ctx.getApplicationInfo().nativeLibraryDir,
                 "libproot-loader.so");
@@ -238,7 +244,7 @@ public final class DebianRootfs {
                 "TERM=xterm-256color",
                 "LANG=C.UTF-8",
                 "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                "/bin/bash", "--login",
+                shell, "--login",
         };
         String[] env = {
                 "PROOT_LOADER=" + loader.getAbsolutePath(),
