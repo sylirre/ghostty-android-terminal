@@ -2,6 +2,7 @@ package sh.easycli.proot.ui;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.widget.HorizontalScrollView;
@@ -75,11 +76,21 @@ public class TabStripView extends HorizontalScrollView {
         TextView v = new TextView(getContext());
         v.setText(label);
         v.setTextColor(active ? Color.WHITE : 0xFF9999A6);
-        v.setBackgroundColor(active ? BG_ACTIVE : BG);
+        v.setBackground(tabBg(active ? BG_ACTIVE : BG, !active));
         v.setGravity(Gravity.CENTER);
         float d = getResources().getDisplayMetrics().density;
         v.setPadding((int) (14 * d), (int) (10 * d), (int) (14 * d), (int) (10 * d));
         v.setClickable(true);
         return v;
+    }
+
+    private GradientDrawable tabBg(int fill, boolean border) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill);
+        if (border) {
+            float density = getResources().getDisplayMetrics().density;
+            d.setStroke((int) (density + 0.5f), 0xFF2A2A35);
+        }
+        return d;
     }
 }

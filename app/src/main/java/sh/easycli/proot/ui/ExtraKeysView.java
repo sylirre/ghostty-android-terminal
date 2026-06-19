@@ -3,6 +3,7 @@ package sh.easycli.proot.ui;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -143,6 +144,7 @@ public class ExtraKeysView extends HorizontalScrollView {
         view.setGravity(Gravity.CENTER);
         int pad = dp(14);
         view.setPadding(pad, dp(12), pad, dp(12));
+        view.setBackground(buttonBg(BG));
         view.setClickable(true);
         switch (key.kind) {
             case MODIFIER:
@@ -239,8 +241,15 @@ public class ExtraKeysView extends HorizontalScrollView {
         for (ModButton b : modButtons) {
             boolean active = modifierActive(b.modifier);
             boolean locked = modifierLocked(b.modifier);
-            b.view.setBackgroundColor(!active ? BG : locked ? BG_LOCKED : BG_ACTIVE);
+            b.view.setBackground(buttonBg(!active ? BG : locked ? BG_LOCKED : BG_ACTIVE));
         }
+    }
+
+    private GradientDrawable buttonBg(int fill) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(fill);
+        d.setStroke(dp(1), 0xFF3A3A44);
+        return d;
     }
 
     private int dp(int v) {
