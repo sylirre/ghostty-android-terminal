@@ -1,32 +1,56 @@
 # Terminal
 
 Terminal emulator for Android backed by the
-[Ghostty](https://github.com/ghostty-org/ghostty) VT engine
-(`libghostty-vt`). Runs a full **Debian userland under
-[PRoot](https://proot-me.github.io/)** (bash, apt, dpkg — no root
-required) when a rootfs is bundled, and the stock `/system/bin/sh`
-otherwise.
+[Ghostty](https://github.com/ghostty-org/ghostty) VT engine.
 
-<img src="docs/screenshot.png" width="280" alt="Terminal running ls /system">
+Features:
 
+- All or almost all features of Ghostty VT engine, including Kitty graphics
+  protocol, etc
+- Fast terminal rendering
+- 2 session modes: Linux userland (Debian proot, default) and standard
+  Android `/system/bin/sh`
+- Pinch-zoom to change font size
+- Terminal text search
+- Userland backup/restore via tar archives
+- Configurable terminal themes with preview + builder for custom themes
+- Configurable extra keys
+- Optional mouse reporting
+- Optional word-based input for rich keyboard features (word suggestions, etc)
 
-- Debian login shell (fake root, working apt/dpkg) via PRoot, which is
-  linked into the JNI library and traced entirely in-process — see
-  [docs/architecture.md](docs/architecture.md)
-- Android shell: `/system/bin/sh` with `PATH=/system/bin`
-- Multiple sessions in tabs (both kinds side by side)
-- Special-key toolbar (ESC, CTRL, ALT, TAB, arrows, …) above the touch
-  keyboard
-- VT emulation, key encoding and scrollback come from Ghostty's terminal
-  core via JNI; UI and session management are plain Java
+<img src="docs/screenshot.png" width="280" alt="App demo">
+
+*Currently lacks storage permissions and some other important features as app
+is very fresh.*
+
+Some features will NOT be implemented:
+
+- Google Play, F-Droid or other stores distribution
+- Right-to-left input (VT engine issue)
+- Ambiguous-width characters as double width (VT engine issue)
+- Native, [Termux](httos://github.com/termux/termux-app)-like
+  Android-compatible userland
+- Android API bridge like [Termux:API](https://github.com/termux/termux-api)
+- On-boot automation like [Termux:Boot](https://github.com/termux/termux-boot)
+- Tasker and other automation apps integration
+- Camera, microphone and other hardware access
+- Chroot instead of proot for rooted devices
+- AI and other external services integration
 
 ## Requirements
+
+End user:
+
+- Android OS version 10 and newer (the Zig-built Ghostty library needs Bionic
+  ELF TLS)
+- 64-bit CPU architecture (AArch64 or x86_64)
+
+Developer:
 
 - Android SDK (platform 36, build-tools) and NDK r27+
 - JDK 17–21 to run Gradle
 - Host `cmake` ≥ 3.22 and `ninja` (or install the SDK cmake package)
-- Device/emulator with API 29+ (the Zig-built Ghostty library needs
-  bionic ELF TLS support)
+- Device/emulator with API 29+
 
 Zig is **not** required to build the app; it is only needed to regenerate
 the prebuilt Ghostty library (see [docs/native-build.md](docs/native-build.md)).
