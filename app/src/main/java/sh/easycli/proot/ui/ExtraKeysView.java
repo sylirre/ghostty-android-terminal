@@ -5,6 +5,9 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -51,6 +54,8 @@ public class ExtraKeysView extends HorizontalScrollView {
 
     private static final int BG = 0xFF21212A;
     private static final int BG_ACTIVE = 0xFF3D5AFE;
+    private static final int BG_LOCKED = 0xFF1565C0;
+    private static final int REPEAT_INTERVAL_MS = 80;
 
     private static final class ModButton {
         final TextView view;
@@ -143,28 +148,79 @@ public class ExtraKeysView extends HorizontalScrollView {
             case MODIFIER:
                 modButtons.add(new ModButton(view, key.modifier));
                 view.setOnClickListener(v -> {
-                    toggleModifier(key.modifier);
+                    setModifier(key.modifier, !modifierActive(key.modifier), false);
                     updateToggles();
+                });
+                view.setOnLongClickListener(v -> {
+                    if (modifierActive(key.modifier)) {
+                        setModifier(key.modifier, false, false);
+                    } else {
+                        setModifier(key.modifier, true, true);
+                    }
+                    updateToggles();
+                    return true;
                 });
                 break;
             case KEY:
-                view.setOnClickListener(v -> {
-                    if (terminal != null) terminal.dispatchKey(key.keyCode, key.mods);
-                });
+                wireRepeat(view, () -> { if (terminal != null) terminal.dispatchKey(key.keyCode, key.mods); });
                 break;
             case TEXT:
-                view.setOnClickListener(v -> {
-                    if (terminal != null) terminal.dispatchText(key.text, key.mods);
-                });
+                wireRepeat(view, () -> { if (terminal != null) terminal.dispatchText(key.text, key.mods); });
                 break;
         }
         row.addView(view, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
     }
 
-    private void toggleModifier(int modifier) {
-        if (modifier == TerminalNative.MOD_CTRL) sticky.ctrl = !sticky.ctrl;
-        else if (modifier == TerminalNative.MOD_ALT) sticky.alt = !sticky.alt;
+    private void wireRepeat(TextView view, Runnable emit) {
+        final long longPressMs = ViewConfiguration.getLongPressTimeout();
+        final boolean[] longPressed = {false};
+        final Runnable[] longPressRun = {null};
+        final Runnable[] repeatRun = {null};
+        view.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    longPressed[0] = false;
+                    longPressRun[0] = () -> {
+                        longPressed[0] = true;
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                        emit.run();
+                        repeatRun[0] = new Runnable() {
+                            @Override
+                            public void run() {
+                                emit.run();
+                                view.postDelayed(this, REPEAT_INTERVAL_MS);
+                            }
+                        };
+                        view.postDelayed(repeatRun[0], REPEAT_INTERVAL_MS);
+                    };
+                    view.postDelayed(longPressRun[0], longPressMs);
+                    break;
+                case MotionEvent.ACTION_UP:
+                    view.removeCallbacks(longPressRun[0]);
+                    if (repeatRun[0] != null) {
+                        view.removeCallbacks(repeatRun[0]);
+                        repeatRun[0] = null;
+                    }
+                    if (!longPressed[0]) emit.run();
+                    longPressed[0] = false;
+                    break;
+                case MotionEvent.ACTION_CANCEL:
+                    view.removeCallbacks(longPressRun[0]);
+                    if (repeatRun[0] != null) {
+                        view.removeCallbacks(repeatRun[0]);
+                        repeatRun[0] = null;
+                    }
+                    longPressed[0] = false;
+                    break;
+            }
+            return true;
+        });
+    }
+
+    private void setModifier(int modifier, boolean active, boolean locked) {
+        if (modifier == TerminalNative.MOD_CTRL) { sticky.ctrl = active; sticky.ctrlLocked = locked; }
+        else if (modifier == TerminalNative.MOD_ALT) { sticky.alt = active; sticky.altLocked = locked; }
     }
 
     private boolean modifierActive(int modifier) {
@@ -173,9 +229,17 @@ public class ExtraKeysView extends HorizontalScrollView {
         return false;
     }
 
+    private boolean modifierLocked(int modifier) {
+        if (modifier == TerminalNative.MOD_CTRL) return sticky.ctrlLocked;
+        if (modifier == TerminalNative.MOD_ALT) return sticky.altLocked;
+        return false;
+    }
+
     private void updateToggles() {
         for (ModButton b : modButtons) {
-            b.view.setBackgroundColor(modifierActive(b.modifier) ? BG_ACTIVE : BG);
+            boolean active = modifierActive(b.modifier);
+            boolean locked = modifierLocked(b.modifier);
+            b.view.setBackgroundColor(!active ? BG : locked ? BG_LOCKED : BG_ACTIVE);
         }
     }
 

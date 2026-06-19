@@ -60,14 +60,19 @@ public class TerminalView extends View {
     public static class StickyModifiers {
         public boolean ctrl;
         public boolean alt;
+        // When locked the modifier survives consume() — stays active across keys.
+        public boolean ctrlLocked;
+        public boolean altLocked;
         public Runnable onChanged;
 
         int consume() {
             int mods = (ctrl ? TerminalNative.MOD_CTRL : 0)
                     | (alt ? TerminalNative.MOD_ALT : 0);
             if (mods != 0) {
-                ctrl = alt = false;
-                if (onChanged != null) onChanged.run();
+                boolean changed = (!ctrlLocked && ctrl) || (!altLocked && alt);
+                if (!ctrlLocked) ctrl = false;
+                if (!altLocked) alt = false;
+                if (changed && onChanged != null) onChanged.run();
             }
             return mods;
         }
