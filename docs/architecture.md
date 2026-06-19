@@ -401,6 +401,20 @@ edge-to-edge (targetSdk 36 enforces it); an insets listener pads the root by
 `max(ime, navigationBars)` so the toolbar always rides directly above the
 soft keyboard.
 
+**Button glyphs are vectors, not font glyphs.** Symbol labels (arrows, Enter,
+Backspace, close, search, settings, drag handle, the `⌥`/`⇧` combo prefixes…)
+would otherwise depend on the device's system font and render differently — or
+as tofu — per OEM. `Glyphs` keeps every button a plain `TextView` and, at build
+time, swaps each known symbol codepoint for a tinted `ImageSpan` backed by an
+`ic_glyph_*` vector drawable (`ImageSpan.ALIGN_CENTER`, hence minSdk 29);
+letters/digits/ASCII punctuation stay as text. This handles composite labels
+(a `Ctrl-←` combo shows the caret as text and the arrow as an icon) and is
+self-falling-back — an unmapped glyph is left as the font glyph. Both arrow
+styles in the catalog (filled triangles ▲▼◀▶ and thin ←→↑↓) map to one icon
+set. No PNG fallback is needed: minSdk 29 guarantees framework VectorDrawable.
+Call sites: `ExtraKeysView`, `TabStripView`, `SearchBarView`, `MainActivity`
+(top bar), `ExtraKeysActivity` (editor).
+
 ### Sessions and tabs
 
 `SessionManager` is a process singleton, so rotation/recreation keeps shells

@@ -178,6 +178,7 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         b.setPadding(pad, dp(12), pad, dp(12));
         b.setClickable(true);
         b.setOnClickListener(v -> action.run());
+        Glyphs.applyTo(b);  // ▲ ▼ ✕ → vector icons; "Aa" stays text
         addView(b, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
         return b;
     }

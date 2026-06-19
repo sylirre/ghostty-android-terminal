@@ -57,6 +57,7 @@ public class TabStripView extends HorizontalScrollView {
             row.addView(tab);
             if (active) {
                 TextView close = makeButton("×", true);
+                Glyphs.applyTo(close);  // × → vector icon, not a font glyph
                 close.setContentDescription(getContext().getString(R.string.tab_close_description));
                 close.setOnClickListener(v -> listener.onTabClosed(index));
                 row.addView(close);

@@ -120,6 +120,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setMouseTracking(settings.mouseTracking());
         applyTextMargins();
         findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
+        Glyphs.applyTo(findViewById(R.id.settings_button));
 
         searchBar = findViewById(R.id.search_bar);
         searchBar.setListener(new SearchBarView.Listener() {
@@ -135,6 +136,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             if (searchBar.isOpen()) hideSearch();
             else searchBar.show();
         });
+        Glyphs.applyTo(findViewById(R.id.search_button));
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {

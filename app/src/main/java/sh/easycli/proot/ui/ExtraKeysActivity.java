@@ -11,6 +11,7 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -199,8 +200,23 @@ public final class ExtraKeysActivity extends Activity {
         for (int i = 1; i <= 12; i++) addSpecial(labels, tokens, "F" + i, "f" + i);
 
         Spinner spinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item, labels);
+        // Render the arrow labels ("← Left", …) with vector icons too, in both
+        // the closed spinner view and the dropdown.
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_spinner_item, labels) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View v = super.getView(position, convertView, parent);
+                Glyphs.applyTo((TextView) v);
+                return v;
+            }
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                View v = super.getDropDownView(position, convertView, parent);
+                Glyphs.applyTo((TextView) v);
+                return v;
+            }
+        };
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
 
@@ -298,6 +314,7 @@ public final class ExtraKeysActivity extends Activity {
             chip.setGravity(Gravity.CENTER);
             int pad = dp(14);
             chip.setPadding(pad, dp(12), pad, dp(12));
+            Glyphs.applyTo(chip);
             previewRow.addView(chip);
         }
     }
@@ -310,7 +327,11 @@ public final class ExtraKeysActivity extends Activity {
             final int index = i;
             ExtraKey key = ExtraKeysConfig.resolve(this, ids.get(i));
             View rowView = inf.inflate(R.layout.extra_keys_edit_row, enabledList, false);
-            ((TextView) rowView.findViewById(R.id.row_label)).setText(labelFor(key));
+            TextView rowLabel = rowView.findViewById(R.id.row_label);
+            rowLabel.setText(labelFor(key));
+            Glyphs.applyTo(rowLabel);
+            Glyphs.applyTo(rowView.findViewById(R.id.row_handle));  // ☰ → icon
+            Glyphs.applyTo(rowView.findViewById(R.id.row_remove));  // ✕ → icon
             rowView.findViewById(R.id.row_remove).setOnClickListener(v -> removeAt(index));
             drag.attach(rowView.findViewById(R.id.row_handle), rowView);
             enabledList.addView(rowView);
@@ -335,6 +356,7 @@ public final class ExtraKeysActivity extends Activity {
         chip.setBackgroundColor(0xFF262630);
         chip.setClickable(true);
         chip.setOnClickListener(v -> addId(key.id));
+        Glyphs.applyTo(chip);
 
         GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
         lp.width = 0;

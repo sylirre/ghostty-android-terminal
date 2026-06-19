@@ -146,6 +146,10 @@ public class ExtraKeysView extends HorizontalScrollView {
         view.setPadding(pad, dp(12), pad, dp(12));
         view.setBackground(buttonBg(BG));
         view.setClickable(true);
+        // Render arrows and other symbol glyphs as vectors, not font glyphs, so
+        // they look the same on every device (combo labels keep their ASCII
+        // prefix as text and only the glyph parts become icons).
+        Glyphs.applyTo(view);
         switch (key.kind) {
             case MODIFIER:
                 modButtons.add(new ModButton(view, key.modifier));
