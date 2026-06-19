@@ -2022,6 +2022,17 @@ public class TerminalView extends View {
         String utf8 = unicode > 0 ? new String(Character.toChars(unicode)) : null;
         int unshifted = event.getUnicodeChar(0);
 
+        // Shift was consumed by character production when it changed the
+        // output (Shift+; → ':' vs ';'). Keep it as a terminal modifier
+        // only when the character is the same with or without shift (e.g.
+        // Shift+Tab), otherwise the Ghostty encoder wraps it in a kitty
+        // keyboard sequence (\033[59;2u) that terminals at protocol levels
+        // 1–2 don't use for plain printable input.
+        if ((mods & TerminalNative.MOD_SHIFT) != 0 && utf8 != null
+                && unicode != unshifted) {
+            mods &= ~TerminalNative.MOD_SHIFT;
+        }
+
         if (mods == 0 && utf8 != null && keyCode != KeyEvent.KEYCODE_ENTER
                 && keyCode != KeyEvent.KEYCODE_TAB) {
             dispatchText(utf8); // resets the rich-input mirror itself
