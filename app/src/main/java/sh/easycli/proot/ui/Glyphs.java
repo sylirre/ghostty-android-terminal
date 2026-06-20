@@ -29,6 +29,13 @@ final class Glyphs {
 
     private Glyphs() {}
 
+    /**
+     * Icons render this much taller than the button text so symbols read as
+     * prominent glyphs rather than at letter cap-height. ImageSpan.ALIGN_CENTER
+     * grows the line to fit, so the only effect is marginally taller buttons.
+     */
+    private static final float ICON_SCALE = 1.1f;
+
     /** Symbol codepoint → vector drawable. Both arrow styles map to one icon set. */
     private static final SparseIntArray MAP = new SparseIntArray();
     static {
@@ -60,7 +67,7 @@ final class Glyphs {
     static CharSequence apply(Context ctx, CharSequence label, float sizePx, int color) {
         if (label == null || label.length() == 0) return label;
         SpannableStringBuilder out = null;  // built lazily on first match
-        int size = Math.max(1, Math.round(sizePx));
+        int size = Math.max(1, Math.round(sizePx * ICON_SCALE));
         for (int i = 0; i < label.length(); ) {
             int cp = Character.codePointAt(label, i);
             int len = Character.charCount(cp);
