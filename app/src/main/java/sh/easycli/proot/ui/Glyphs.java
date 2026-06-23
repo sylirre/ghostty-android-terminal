@@ -1,6 +1,8 @@
 package sh.easycli.proot.ui;
 
 import android.content.Context;
+import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -30,9 +32,11 @@ final class Glyphs {
     private Glyphs() {}
 
     /**
-     * Icons render this much taller than the button text so symbols read as
-     * prominent glyphs rather than at letter cap-height. ImageSpan.ALIGN_CENTER
-     * grows the line to fit, so the only effect is marginally taller buttons.
+     * Icons render this much larger than the button text so symbols read as
+     * prominent glyphs rather than at letter cap-height. It only controls glyph
+     * prominence, not button height: {@link CenteredIconSpan} centers the icon
+     * in the text's own line box and never lets that box shrink, so a glyph-only
+     * button stays exactly as tall as a text button.
      */
     private static final float ICON_SCALE = 1.1f;
 
@@ -77,7 +81,7 @@ final class Glyphs {
                     d.setTint(color);
                     d.setBounds(0, 0, size, size);
                     if (out == null) out = new SpannableStringBuilder(label);
-                    out.setSpan(new ImageSpan(d, ImageSpan.ALIGN_CENTER),
+                    out.setSpan(new CenteredIconSpan(d),
                             i, i + len, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 }
             }
@@ -91,5 +95,36 @@ final class Glyphs {
         CharSequence text = tv.getText();
         CharSequence spanned = apply(tv.getContext(), text, tv.getTextSize(), tv.getCurrentTextColor());
         if (spanned != text) tv.setText(spanned);
+    }
+
+    /**
+     * A centered {@link ImageSpan} that never reports a line shorter than the
+     * font. Stock {@code ALIGN_CENTER} overrides the line's ascent/descent with
+     * the drawable's own height; since our icons are sized just under the font's
+     * line box, a glyph-only label (e.g. an arrow key or the tab ✕) measured
+     * shorter than a text one, leaving its button visibly stunted. This reports
+     * the union of the font box and the centered-icon box, so glyph-only buttons
+     * match text buttons while a taller-than-font icon still grows the line.
+     */
+    private static final class CenteredIconSpan extends ImageSpan {
+        CenteredIconSpan(Drawable d) {
+            super(d, ALIGN_CENTER);
+        }
+
+        @Override
+        public int getSize(Paint paint, CharSequence text, int start, int end,
+                           Paint.FontMetricsInt fm) {
+            Rect b = getDrawable().getBounds();
+            if (fm != null) {
+                Paint.FontMetricsInt pfm = paint.getFontMetricsInt();
+                int center = (pfm.ascent + pfm.descent) / 2;  // text mid, vs. baseline
+                int half = b.height() / 2;
+                fm.ascent = Math.min(pfm.ascent, center - half);
+                fm.descent = Math.max(pfm.descent, center + half);
+                fm.top = Math.min(pfm.top, fm.ascent);
+                fm.bottom = Math.max(pfm.bottom, fm.descent);
+            }
+            return b.right;
+        }
     }
 }

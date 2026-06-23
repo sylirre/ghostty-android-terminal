@@ -406,8 +406,10 @@ Backspace, close, search, settings, drag handle, the `⌥`/`⇧` combo prefixes�
 would otherwise depend on the device's system font and render differently — or
 as tofu — per OEM. `Glyphs` keeps every button a plain `TextView` and, at build
 time, swaps each known symbol codepoint for a tinted `ImageSpan` backed by an
-`ic_glyph_*` vector drawable (`ImageSpan.ALIGN_CENTER`, hence minSdk 29);
-letters/digits/ASCII punctuation stay as text. This handles composite labels
+`ic_glyph_*` vector drawable (a centered span that floors the line at the text's
+own height, so a glyph-only button is the same height as a text button —
+otherwise `ALIGN_CENTER` shrinks the line to the icon and stunts the button;
+hence minSdk 29); letters/digits/ASCII punctuation stay as text. This handles composite labels
 (a `Ctrl-←` combo shows the caret as text and the arrow as an icon) and is
 self-falling-back — an unmapped glyph is left as the font glyph. Both arrow
 styles in the catalog (filled triangles ▲▼◀▶ and thin ←→↑↓) map to one icon
