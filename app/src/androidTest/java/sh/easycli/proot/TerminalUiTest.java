@@ -161,17 +161,11 @@ public class TerminalUiTest {
     @Test
     public void extraKeysTypeIntoShell() {
         waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
-        // The "/" and "─" keys live at the right end of the scrollable
-        // toolbar; bring them on screen so Espresso can click them.
-        scenario.onActivity(a -> {
-            android.widget.HorizontalScrollView strip = a.findViewById(R.id.extra_keys);
-            // Instant jump: a smooth scroll can still be animating when
-            // Espresso clicks, landing the tap on the wrong key.
-            strip.setSmoothScrollingEnabled(false);
-            strip.fullScroll(View.FOCUS_RIGHT);
-        });
-        onView(withText("/")).perform(click());
-        onView(withText("─")).perform(click()); // sends "-"
+        // The "/" and "─" keys sit near the right end of the toolbar row.
+        // scrollTo() brings each into view via its FillRow (HorizontalScrollView)
+        // ancestor when the row scrolls, and is a no-op when it fits the width.
+        onView(withText("/")).perform(scrollTo(), click());
+        onView(withText("─")).perform(scrollTo(), click()); // sends "-"
         // Run the typed "/-" instead of asserting on the edit line: mksh
         // may cosmetically wipe the line on a late IME resize (SIGWINCH),
         // but the command error output ("/-: ... not found") persists.

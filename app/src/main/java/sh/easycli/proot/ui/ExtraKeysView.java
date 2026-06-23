@@ -8,6 +8,7 @@ import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewConfiguration;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
@@ -21,20 +22,25 @@ import sh.easycli.proot.term.TerminalNative;
 /**
  * Special-key toolbar shown above the soft keyboard.
  *
- * The set, order and presence of keys is driven by an {@link ExtraKeysConfig}
- * (edited in {@link ExtraKeysActivity}); call {@link #setConfig} once and
- * {@link #reload} whenever the config may have changed.
+ * The set, order, grouping into rows and presence of keys is driven by an
+ * {@link ExtraKeysConfig} (edited in {@link ExtraKeysActivity}); call
+ * {@link #setConfig} once and {@link #reload} whenever the config may have
+ * changed.
+ *
+ * The toolbar is a vertical stack of 1–3 rows. Each row is a {@link FillRow}:
+ * its keys stretch to fill the width evenly when they fit, and it falls back to
+ * horizontal scrolling only when they don't — so a stable keyboard-grid layout
+ * is the norm and a crowded row degrades gracefully instead of hiding keys.
  *
  * CTRL and ALT are sticky: they highlight and apply to the next key or typed
  * character (via {@link TerminalView.StickyModifiers}). Everything else sends
  * immediately — non-printable keys through the VT key encoder, literal text
  * straight to the PTY.
  */
-public class ExtraKeysView extends HorizontalScrollView {
+public class ExtraKeysView extends LinearLayout {
 
     private TerminalView terminal;
     private final TerminalView.StickyModifiers sticky = new TerminalView.StickyModifiers();
-    private final LinearLayout row;
     private ExtraKeysConfig config;
 
     // When false the toolbar is hidden regardless of the configured keys; the
@@ -57,6 +63,8 @@ public class ExtraKeysView extends HorizontalScrollView {
     private static final int BG_ACTIVE = 0xFF3D5AFE;
     private static final int BG_LOCKED = 0xFF1565C0;
     private static final int REPEAT_INTERVAL_MS = 80;
+    // Floor on a key's tap width so scroll-mode (content-width) keys stay usable.
+    private static final int MIN_KEY_WIDTH_DP = 40;
 
     private static final class ModButton {
         final TextView view;
@@ -69,13 +77,8 @@ public class ExtraKeysView extends HorizontalScrollView {
 
     public ExtraKeysView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        setOrientation(VERTICAL);
         setBackgroundColor(BG);
-        setHorizontalScrollBarEnabled(false);
-
-        row = new LinearLayout(context);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        addView(row, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
-
         sticky.onChanged = this::updateToggles;
     }
 
@@ -119,14 +122,18 @@ public class ExtraKeysView extends HorizontalScrollView {
         applyVisibility();
     }
 
-    /** Rebuilds the key row from the current config (call after edits). */
+    /** Rebuilds the key rows from the current config (call after edits). */
     public void reload() {
-        row.removeAllViews();
+        removeAllViews();
         modButtons.clear();
         if (config == null) return;
-        List<ExtraKey> keys = config.enabledKeys(getContext());
-        hasKeys = !keys.isEmpty();
-        for (ExtraKey key : keys) addKey(key);
+        List<List<ExtraKey>> rows = config.enabledRows(getContext());
+        hasKeys = !rows.isEmpty();
+        for (List<ExtraKey> row : rows) {
+            FillRow rowView = new FillRow(getContext());
+            for (ExtraKey key : row) addKey(key, rowView.content());
+            addView(rowView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        }
         applyVisibility();
         updateToggles();
     }
@@ -136,7 +143,7 @@ public class ExtraKeysView extends HorizontalScrollView {
         setVisibility(show ? VISIBLE : GONE);
     }
 
-    private void addKey(ExtraKey key) {
+    private void addKey(ExtraKey key, LinearLayout row) {
         TextView view = new TextView(getContext());
         view.setText(key.label);
         view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
@@ -144,6 +151,7 @@ public class ExtraKeysView extends HorizontalScrollView {
         view.setGravity(Gravity.CENTER);
         int pad = dp(14);
         view.setPadding(pad, dp(12), pad, dp(12));
+        view.setMinWidth(dp(MIN_KEY_WIDTH_DP));
         view.setBackground(buttonBg(BG));
         view.setClickable(true);
         // Render arrows and other symbol glyphs as vectors, not font glyphs, so
@@ -174,8 +182,10 @@ public class ExtraKeysView extends HorizontalScrollView {
                 wireRepeat(view, () -> { if (terminal != null) terminal.dispatchText(key.text, key.mods); });
                 break;
         }
+        // Width/weight are managed per measure by FillRow (fill vs scroll); start
+        // from wrap-content so the row can find its natural width.
         row.addView(view, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT));
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private void wireRepeat(TextView view, Runnable emit) {
@@ -258,5 +268,59 @@ public class ExtraKeysView extends HorizontalScrollView {
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density);
+    }
+
+    /**
+     * One toolbar row. Wraps a horizontal {@link LinearLayout} of key buttons in
+     * a {@link HorizontalScrollView} and decides, each measure, between two
+     * modes: when the keys' natural width fits the viewport they stretch to fill
+     * it as equal columns (no scrolling, stable positions); when they don't, the
+     * keys keep their natural width and the row scrolls sideways like the old
+     * single-row toolbar. Picking the mode from a real measurement means it
+     * adapts to label widths, screen width and rotation automatically.
+     */
+    private static final class FillRow extends HorizontalScrollView {
+        private final LinearLayout content;
+
+        FillRow(Context c) {
+            super(c);
+            setHorizontalScrollBarEnabled(false);
+            setOverScrollMode(OVER_SCROLL_NEVER);
+            content = new LinearLayout(c);
+            content.setOrientation(LinearLayout.HORIZONTAL);
+            addView(content, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        }
+
+        LinearLayout content() { return content; }
+
+        @Override
+        protected void onMeasure(int widthSpec, int heightSpec) {
+            // Natural pass: a HorizontalScrollView measures its child with an
+            // unbounded width, so this yields the row's intrinsic (wrap) width.
+            setChildLayout(LinearLayout.LayoutParams.WRAP_CONTENT, 0f);
+            super.onMeasure(widthSpec, heightSpec);
+
+            int avail = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+            boolean fill = content.getChildCount() > 0 && content.getMeasuredWidth() <= avail;
+            if (!fill) return;  // scroll mode: the natural pass already fits
+
+            // Fill mode: equal columns. Give every key width=0/weight=1 and
+            // re-measure the row exactly at the viewport width so LinearLayout's
+            // weight pass splits it evenly. The scroll view's own measured size
+            // (full width, content height) stays as the natural pass set it.
+            setChildLayout(0, 1f);
+            content.measure(
+                    MeasureSpec.makeMeasureSpec(avail, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(content.getMeasuredHeight(), MeasureSpec.EXACTLY));
+        }
+
+        private void setChildLayout(int width, float weight) {
+            for (int i = 0; i < content.getChildCount(); i++) {
+                LinearLayout.LayoutParams lp =
+                        (LinearLayout.LayoutParams) content.getChildAt(i).getLayoutParams();
+                lp.width = width;
+                lp.weight = weight;
+            }
+        }
     }
 }

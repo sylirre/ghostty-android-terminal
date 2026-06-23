@@ -18,6 +18,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import sh.easycli.proot.term.TerminalNative;
@@ -171,5 +172,64 @@ public class ExtraKeysConfigTest {
         }
         assertFalse("enabled key must not appear in the add palette", escListed);
         assertTrue("a disabled built-in should be offered", tabListed);
+    }
+
+    // --- Multi-row layout ---
+
+    @Test
+    public void defaultRowsIsLegacyDefaultAsSingleRow() {
+        assertEquals(Collections.singletonList(ExtraKeysConfig.DEFAULT_IDS),
+                ExtraKeysConfig.DEFAULT_ROWS);
+        // Unset config falls back to that default.
+        assertEquals(ExtraKeysConfig.DEFAULT_ROWS, config.rows());
+    }
+
+    @Test
+    public void legacyFlatOrderReadsAsSingleRow() {
+        // setOrder() persists the old flat format; rows() must read it as one row.
+        config.setOrder(Arrays.asList("esc", "ctrl", "tab"));
+        assertEquals(Collections.singletonList(Arrays.asList("esc", "ctrl", "tab")),
+                config.rows());
+    }
+
+    @Test
+    public void setRowsRoundTrips() {
+        List<List<String>> rows = Arrays.asList(
+                Arrays.asList("esc", "ctrl"), Arrays.asList("tab", "up"));
+        config.setRows(rows);
+        assertEquals(rows, config.rows());
+        // A fresh instance reads the same persisted value.
+        assertEquals(rows, new ExtraKeysConfig(context).rows());
+        // order() flattens across rows.
+        assertEquals(Arrays.asList("esc", "ctrl", "tab", "up"), config.order());
+    }
+
+    @Test
+    public void setRowsDropsEmptyRows() {
+        config.setRows(Arrays.asList(
+                Arrays.asList("esc"), Arrays.asList(), Arrays.asList("tab")));
+        assertEquals(Arrays.asList(Arrays.asList("esc"), Arrays.asList("tab")),
+                config.rows());
+    }
+
+    @Test
+    public void rowsCappedAtMax() {
+        config.setRows(Arrays.asList(
+                Arrays.asList("esc"), Arrays.asList("tab"),
+                Arrays.asList("up"), Arrays.asList("down")));
+        assertEquals(ExtraKeysConfig.MAX_ROWS, config.rows().size());
+    }
+
+    @Test
+    public void enabledRowsSkipUnknownIdsAndEmptyRows() {
+        config.setRows(Arrays.asList(
+                Arrays.asList("esc", "bogus"),  // unknown id dropped
+                Arrays.asList("nope"),          // whole row resolves empty → dropped
+                Arrays.asList("tab")));
+        List<List<ExtraKey>> rows = config.enabledRows(context);
+        assertEquals(2, rows.size());
+        assertEquals(1, rows.get(0).size());
+        assertEquals("esc", rows.get(0).get(0).id);
+        assertEquals("tab", rows.get(1).get(0).id);
     }
 }

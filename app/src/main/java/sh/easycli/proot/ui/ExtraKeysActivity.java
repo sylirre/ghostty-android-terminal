@@ -18,6 +18,7 @@ import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.GridLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -35,10 +36,11 @@ import sh.easycli.proot.term.TerminalNative;
 
 /**
  * Full-screen editor for the extra-keys toolbar, reached from Settings. Lets the
- * user choose which keys appear, reorder them by dragging a row's handle, remove
- * keys, and add custom text keys.
+ * user choose which keys appear, group them into rows, reorder them (and the row
+ * dividers between them) by dragging a handle, remove keys, and add custom text
+ * keys.
  *
- * Model mirrors {@link ThemeActivity}: a mutable working list ({@code ids}) is
+ * Model mirrors {@link ThemeActivity}: a mutable working list ({@code items}) is
  * loaded from {@link ExtraKeysConfig} and persisted immediately on every change,
  * so {@link MainActivity} reflects edits when it reloads the toolbar in
  * {@code onResume}. There is no Save/dirty step.
@@ -46,13 +48,27 @@ import sh.easycli.proot.term.TerminalNative;
 public final class ExtraKeysActivity extends Activity {
 
     private ExtraKeysConfig config;
-    private final List<String> ids = new ArrayList<>();
+
+    /**
+     * The working layout as a flat list, where {@link #ROW_BREAK} marks a
+     * boundary between toolbar rows and every other entry is a key id. This lets
+     * the existing single-list {@link DragController} compose rows: keys and the
+     * dividers between them are dragged in one list. Split at the breaks on save.
+     */
+    private final List<String> items = new ArrayList<>();
+
+    /**
+     * Sentinel item marking a row boundary. A NUL can never be a real key id
+     * (catalog ids, {@code lit:…} and {@code combo:…} are all printable).
+     */
+    private static final String ROW_BREAK = "\u0000";
 
     private ScrollView pageScroll;
-    private LinearLayout previewRow;
+    private LinearLayout previewRows;
     private LinearLayout enabledList;
     private TextView enabledEmpty;
     private GridLayout availableGrid;
+    private View addRowButton;
 
     private final DragController drag = new DragController();
 
@@ -79,50 +95,111 @@ public final class ExtraKeysActivity extends Activity {
 
         config = new ExtraKeysConfig(this);
         pageScroll = findViewById(R.id.page_scroll);
-        previewRow = findViewById(R.id.preview_row);
+        previewRows = findViewById(R.id.preview_rows);
         enabledList = findViewById(R.id.enabled_list);
         enabledEmpty = findViewById(R.id.enabled_empty);
         availableGrid = findViewById(R.id.available_grid);
+        addRowButton = findViewById(R.id.extra_keys_add_row);
 
         findViewById(R.id.extra_keys_done).setOnClickListener(v -> finish());
         findViewById(R.id.extra_keys_reset).setOnClickListener(v -> resetToDefaults());
         findViewById(R.id.extra_keys_add_custom).setOnClickListener(v -> promptCustom());
         findViewById(R.id.extra_keys_add_combo).setOnClickListener(v -> promptCombo());
+        addRowButton.setOnClickListener(v -> addRow());
 
-        loadIds();
+        loadItems();
         render();
     }
 
-    /** Loads the saved order, dropping any id that no longer resolves. */
-    private void loadIds() {
-        ids.clear();
-        for (String id : config.order()) {
-            if (ExtraKeysConfig.resolve(this, id) != null) ids.add(id);
+    /** Loads the saved rows into the flat working list, dropping unresolved ids and empty rows. */
+    private void loadItems() {
+        items.clear();
+        for (List<String> row : config.rows()) {
+            List<String> resolved = new ArrayList<>();
+            for (String id : row) {
+                if (ExtraKeysConfig.resolve(this, id) != null) resolved.add(id);
+            }
+            if (resolved.isEmpty()) continue;
+            if (!items.isEmpty()) items.add(ROW_BREAK);
+            items.addAll(resolved);
         }
     }
 
     private void persistAndRender() {
-        config.setOrder(ids);
+        normalizeItems();
+        config.setRows(toRows());
         render();
     }
 
     private void resetToDefaults() {
         config.reset();
-        loadIds();
+        loadItems();
         render();
+    }
+
+    /** Splits the working list into rows at each {@link #ROW_BREAK}, dropping empty rows. */
+    private List<List<String>> toRows() {
+        List<List<String>> rows = new ArrayList<>();
+        List<String> cur = new ArrayList<>();
+        for (String item : items) {
+            if (ROW_BREAK.equals(item)) {
+                if (!cur.isEmpty()) { rows.add(cur); cur = new ArrayList<>(); }
+            } else {
+                cur.add(item);
+            }
+        }
+        if (!cur.isEmpty()) rows.add(cur);
+        return rows;
+    }
+
+    /**
+     * Tidies the working list after an edit or drag: drops leading breaks and
+     * collapses runs of breaks, so no empty rows form in the middle. A single
+     * trailing break is kept — that's an intentional empty new row the user can
+     * drag keys into (it just isn't persisted until it has a key).
+     */
+    private void normalizeItems() {
+        List<String> out = new ArrayList<>(items.size());
+        boolean prevBreak = true;  // treat the start as a break to drop leading ones
+        for (String item : items) {
+            if (ROW_BREAK.equals(item)) {
+                if (prevBreak) continue;
+                out.add(item);
+                prevBreak = true;
+            } else {
+                out.add(item);
+                prevBreak = false;
+            }
+        }
+        items.clear();
+        items.addAll(out);
+    }
+
+    /** Rows currently in the editor, counting a pending empty trailing row toward the cap. */
+    private int editorRowCount() {
+        int rows = toRows().size();
+        if (!items.isEmpty() && ROW_BREAK.equals(items.get(items.size() - 1))) rows++;
+        return rows;
     }
 
     // --- Mutations ---
 
     private void addId(String id) {
-        if (ids.contains(id)) return;
-        ids.add(id);
+        if (items.contains(id)) return;
+        items.add(id);
+        persistAndRender();
+    }
+
+    private void addRow() {
+        if (items.isEmpty() || editorRowCount() >= ExtraKeysConfig.MAX_ROWS) return;
+        if (ROW_BREAK.equals(items.get(items.size() - 1))) return;  // already a pending row
+        items.add(ROW_BREAK);
         persistAndRender();
     }
 
     private void removeAt(int index) {
-        if (index < 0 || index >= ids.size()) return;
-        ids.remove(index);
+        if (index < 0 || index >= items.size()) return;
+        items.remove(index);
         persistAndRender();
     }
 
@@ -149,7 +226,7 @@ public final class ExtraKeysActivity extends Activity {
                         return;
                     }
                     String id = ExtraKeysConfig.literalId(text);
-                    if (ids.contains(id)) {
+                    if (items.contains(id)) {
                         toast(R.string.extra_keys_custom_exists);
                         return;
                     }
@@ -266,7 +343,7 @@ public final class ExtraKeysActivity extends Activity {
                         base = tokens.get(pos - 1);
                     }
                     String id = ExtraKeysConfig.comboId(mods, base);
-                    if (ids.contains(id)) {
+                    if (items.contains(id)) {
                         toast(R.string.extra_keys_custom_exists);
                         return;
                     }
@@ -300,36 +377,61 @@ public final class ExtraKeysActivity extends Activity {
         buildPreview();
         buildEnabledList();
         buildAvailableGrid();
+        updateAddRowState();
     }
 
+    /** Live preview of the toolbar: one horizontal (scrollable) strip per row. */
     private void buildPreview() {
-        previewRow.removeAllViews();
-        for (String id : ids) {
-            ExtraKey key = ExtraKeysConfig.resolve(this, id);
-            if (key == null) continue;
-            TextView chip = new TextView(this);
-            chip.setText(key.label);
-            chip.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-            chip.setTextColor(Color.WHITE);
-            chip.setGravity(Gravity.CENTER);
-            int pad = dp(14);
-            chip.setPadding(pad, dp(12), pad, dp(12));
-            Glyphs.applyTo(chip);
-            previewRow.addView(chip);
+        previewRows.removeAllViews();
+        List<List<String>> rows = toRows();
+        for (int r = 0; r < rows.size(); r++) {
+            HorizontalScrollView scroll = new HorizontalScrollView(this);
+            scroll.setHorizontalScrollBarEnabled(false);
+            scroll.setBackgroundColor(0xFF21212A);
+            LinearLayout strip = new LinearLayout(this);
+            strip.setOrientation(LinearLayout.HORIZONTAL);
+            for (String id : rows.get(r)) {
+                ExtraKey key = ExtraKeysConfig.resolve(this, id);
+                if (key == null) continue;
+                TextView chip = new TextView(this);
+                chip.setText(key.label);
+                chip.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+                chip.setTextColor(Color.WHITE);
+                chip.setGravity(Gravity.CENTER);
+                int pad = dp(14);
+                chip.setPadding(pad, dp(12), pad, dp(12));
+                Glyphs.applyTo(chip);
+                strip.addView(chip);
+            }
+            scroll.addView(strip, new HorizontalScrollView.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            if (r > 0) lp.topMargin = dp(1);  // hairline gap so stacked rows read apart
+            previewRows.addView(scroll, lp);
         }
     }
 
+    /**
+     * Builds the draggable editor list: a key row per key id and a divider row
+     * per {@link #ROW_BREAK}. Both kinds carry the same handle/remove ids so the
+     * drag controller and glyph swap treat them uniformly.
+     */
     private void buildEnabledList() {
         enabledList.removeAllViews();
-        enabledEmpty.setVisibility(ids.isEmpty() ? View.VISIBLE : View.GONE);
+        enabledEmpty.setVisibility(hasAnyKey() ? View.GONE : View.VISIBLE);
         LayoutInflater inf = LayoutInflater.from(this);
-        for (int i = 0; i < ids.size(); i++) {
+        for (int i = 0; i < items.size(); i++) {
             final int index = i;
-            ExtraKey key = ExtraKeysConfig.resolve(this, ids.get(i));
-            View rowView = inf.inflate(R.layout.extra_keys_edit_row, enabledList, false);
-            TextView rowLabel = rowView.findViewById(R.id.row_label);
-            rowLabel.setText(labelFor(key));
-            Glyphs.applyTo(rowLabel);
+            String item = items.get(i);
+            int layout = ROW_BREAK.equals(item)
+                    ? R.layout.extra_keys_row_break : R.layout.extra_keys_edit_row;
+            View rowView = inf.inflate(layout, enabledList, false);
+            if (!ROW_BREAK.equals(item)) {
+                TextView rowLabel = rowView.findViewById(R.id.row_label);
+                rowLabel.setText(labelFor(ExtraKeysConfig.resolve(this, item)));
+                Glyphs.applyTo(rowLabel);
+            }
             Glyphs.applyTo(rowView.findViewById(R.id.row_handle));  // ☰ → icon
             Glyphs.applyTo(rowView.findViewById(R.id.row_remove));  // ✕ → icon
             rowView.findViewById(R.id.row_remove).setOnClickListener(v -> removeAt(index));
@@ -340,11 +442,26 @@ public final class ExtraKeysActivity extends Activity {
 
     private void buildAvailableGrid() {
         availableGrid.removeAllViews();
-        Set<String> enabled = new HashSet<>(ids);
+        Set<String> enabled = new HashSet<>();
+        for (String item : items) if (!ROW_BREAK.equals(item)) enabled.add(item);
         for (ExtraKey key : ExtraKeysConfig.catalog(this).values()) {
             if (enabled.contains(key.id)) continue;
             addAvailableChip(key);
         }
+    }
+
+    private boolean hasAnyKey() {
+        for (String item : items) if (!ROW_BREAK.equals(item)) return true;
+        return false;
+    }
+
+    /** Greys out "Add row" at the row cap or when a pending empty row already exists. */
+    private void updateAddRowState() {
+        boolean pendingRow = !items.isEmpty() && ROW_BREAK.equals(items.get(items.size() - 1));
+        boolean canAdd = hasAnyKey() && !pendingRow
+                && editorRowCount() < ExtraKeysConfig.MAX_ROWS;
+        addRowButton.setEnabled(canAdd);
+        addRowButton.setAlpha(canAdd ? 1f : 0.4f);
     }
 
     private void addAvailableChip(ExtraKey key) {
@@ -519,8 +636,8 @@ public final class ExtraKeysActivity extends Activity {
             autoDir = 0;
             // render() rebuilds the rows fresh, clearing every translation and the
             // dragged row's elevation/alpha, so no manual visual reset is needed.
-            if (target != origIndex && target >= 0 && target < ids.size()) {
-                ids.add(target, ids.remove(origIndex));
+            if (target != origIndex && target >= 0 && target < items.size()) {
+                items.add(target, items.remove(origIndex));
                 persistAndRender();
             } else {
                 render();

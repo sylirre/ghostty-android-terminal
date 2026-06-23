@@ -250,6 +250,9 @@
     <string name="extra_keys_drag_description">Drag to reorder</string>
     <string name="extra_keys_remove_label">&#10005;</string>
     <string name="extra_keys_remove_description">Remove key</string>
+    <string name="extra_keys_row_break">New row</string>
+    <string name="extra_keys_row_break_remove_description">Remove row break</string>
+    <string name="extra_keys_add_row">Add row</string>
     <string name="extra_keys_add_chip">+ %1$s</string>
     <string name="extra_keys_add_custom">Add custom text…</string>
     <string name="extra_keys_add_custom_title">Custom text key</string>

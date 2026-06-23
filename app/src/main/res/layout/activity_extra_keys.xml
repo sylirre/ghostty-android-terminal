@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Full-screen extra-keys toolbar editor, reached from Settings. Mirrors
      activity_theme.xml: a fixed top bar with a title and actions, then a
-     scrolling body. ExtraKeysActivity fills preview_row / enabled_list /
+     scrolling body. ExtraKeysActivity fills preview_rows / enabled_list /
      available_grid at runtime. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
@@ -81,24 +81,16 @@
                 android:orientation="vertical"
                 android:paddingBottom="32dp">
 
-                <!-- Live preview of the toolbar as configured. -->
+                <!-- Live preview of the toolbar as configured: one strip per row. -->
                 <TextView
                     style="@style/ExtraKeysSectionHeader"
                     android:text="@string/extra_keys_section_preview" />
 
-                <HorizontalScrollView
+                <LinearLayout
+                    android:id="@+id/preview_rows"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="#FF21212A"
-                    android:scrollbars="none">
-
-                    <LinearLayout
-                        android:id="@+id/preview_row"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal" />
-
-                </HorizontalScrollView>
+                    android:orientation="vertical" />
 
                 <!-- Enabled keys: reorder by dragging the handle, remove with ✕. -->
                 <TextView
@@ -123,6 +115,21 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
+
+                <TextView
+                    android:id="@+id/extra_keys_add_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/extra_keys_add_row"
+                    android:textColor="#FF6E8BFF"
+                    android:textSize="15sp"
+                    android:gravity="center"
+                    android:paddingTop="16dp"
+                    android:paddingBottom="16dp"
+                    android:layout_marginTop="8dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true" />
 
                 <!-- Available keys to add, plus a custom-text entry point. -->
                 <TextView
