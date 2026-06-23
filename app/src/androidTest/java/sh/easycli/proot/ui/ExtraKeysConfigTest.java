@@ -112,7 +112,7 @@ public class ExtraKeysConfigTest {
         assertEquals(ExtraKey.Kind.TEXT, k.kind);
         assertEquals("c", k.text);
         assertEquals(TerminalNative.MOD_CTRL, k.mods);
-        assertEquals("^C", k.label);
+        assertEquals("CTRL C", k.label);
     }
 
     @Test
@@ -123,6 +123,19 @@ public class ExtraKeysConfigTest {
         assertEquals(ExtraKey.Kind.KEY, k.kind);
         assertEquals(KeyEvent.KEYCODE_DPAD_RIGHT, k.keyCode);
         assertEquals(TerminalNative.MOD_CTRL, k.mods);
+    }
+
+    @Test
+    public void comboLabelSpellsOutModifiers() {
+        // Modifiers are spelled out as text, joined by "-", then a space before
+        // the base label: "SHIFT TAB", "CTRL-ALT C".
+        ExtraKey shiftTab = ExtraKeysConfig.resolve(context, "combo:S:tab");
+        assertNotNull(shiftTab);
+        assertEquals("SHIFT TAB", shiftTab.label);
+
+        ExtraKey ctrlAltC = ExtraKeysConfig.resolve(context, "combo:CA:c");
+        assertNotNull(ctrlAltC);
+        assertEquals("CTRL-ALT C", ctrlAltC.label);
     }
 
     @Test

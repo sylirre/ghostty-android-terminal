@@ -18,9 +18,9 @@ import sh.easycli.proot.R;
  * Buttons stay plain {@link TextView}s: {@link #apply} scans a label for known
  * symbol codepoints and swaps each for a tinted {@link ImageSpan} backed by a
  * vector, leaving every other character (letters, digits, ASCII punctuation) as
- * text. This keeps composite labels working — a combo like {@code "^◀"} renders
- * the caret as text and the arrow as an icon — and is self-falling-back: an
- * unmapped glyph is left as the font glyph it was before.
+ * text. This keeps composite labels working — a combo like {@code "CTRL ◀"}
+ * renders the modifier as text and the arrow as an icon — and is
+ * self-falling-back: an unmapped glyph is left as the font glyph it was before.
  *
  * No PNG fallback is needed: minSdk 29 guarantees framework VectorDrawable, so
  * {@link Context#getDrawable} always returns a working vector.
@@ -55,8 +55,6 @@ final class Glyphs {
         MAP.put(0x2630, R.drawable.ic_glyph_drag);         // ☰
         MAP.put(0x1F50D, R.drawable.ic_glyph_search);      // 🔍 (surrogate pair)
         MAP.put(0x2699, R.drawable.ic_glyph_settings);     // ⚙
-        MAP.put(0x2325, R.drawable.ic_glyph_alt);          // ⌥
-        MAP.put(0x21E7, R.drawable.ic_glyph_shift);        // ⇧
     }
 
     /**

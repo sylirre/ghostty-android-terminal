@@ -177,17 +177,17 @@ public final class ExtraKeysConfig {
         if (mods == 0 || base.isEmpty()) return null;
         ExtraKey special = baseCatalog(c).get(base);
         if (special != null && special.kind == ExtraKey.Kind.KEY) {
-            return ExtraKey.comboKey(id, modPrefix(mods) + special.label,
+            return ExtraKey.comboKey(id, modPrefix(c, mods) + " " + special.label,
                     special.keyCode, mods);
         }
         if (base.codePointCount(0, base.length()) == 1) {
-            return ExtraKey.comboText(id, modPrefix(mods) + displayBase(base),
+            return ExtraKey.comboText(id, modPrefix(c, mods) + " " + displayBase(base),
                     base, mods);
         }
         return null;
     }
 
-    /** Label-friendly form of a single-char base: letters upper-cased ("^C"). */
+    /** Label-friendly form of a single-char base: letters upper-cased ("CTRL C"). */
     private static String displayBase(String base) {
         return base.length() == 1 ? base.toUpperCase(Locale.ROOT) : base;
     }
@@ -210,13 +210,23 @@ public final class ExtraKeysConfig {
         return mods;
     }
 
-    /** Glyph prefix for a combo label: Ctrl "^", Alt "⌥", Shift "⇧". */
-    private static String modPrefix(int mods) {
+    /**
+     * Text prefix for a combo label, modifiers spelled out and joined by "-" in
+     * fixed Ctrl/Alt/Shift order: "CTRL", "CTRL-ALT", "SHIFT", … Always non-empty
+     * for a valid combo ({@link #buildCombo} rejects {@code mods == 0}). Labels
+     * come from the same resources as the standalone modifier buttons.
+     */
+    private static String modPrefix(Context c, int mods) {
         StringBuilder sb = new StringBuilder();
-        if ((mods & TerminalNative.MOD_CTRL) != 0) sb.append('^');
-        if ((mods & TerminalNative.MOD_ALT) != 0) sb.append('⌥');   // ⌥
-        if ((mods & TerminalNative.MOD_SHIFT) != 0) sb.append('⇧'); // ⇧
+        if ((mods & TerminalNative.MOD_CTRL) != 0) appendMod(sb, c.getString(R.string.key_ctrl));
+        if ((mods & TerminalNative.MOD_ALT) != 0) appendMod(sb, c.getString(R.string.key_alt));
+        if ((mods & TerminalNative.MOD_SHIFT) != 0) appendMod(sb, c.getString(R.string.key_shift));
         return sb.toString();
+    }
+
+    private static void appendMod(StringBuilder sb, String label) {
+        if (sb.length() > 0) sb.append('-');
+        sb.append(label);
     }
 
     /** The persisted enabled-id order, or the defaults if never set. */
