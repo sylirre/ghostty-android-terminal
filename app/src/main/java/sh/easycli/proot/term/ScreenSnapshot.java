@@ -21,7 +21,7 @@ public final class ScreenSnapshot {
     public int[] codepoints = new int[0];
     public int[] fg = new int[0];
     public int[] bg = new int[0];
-    public byte[] attrs = new byte[0];
+    public int[] attrs = new int[0];
     /** See terminal_jni.c terminalSnapshot for the layout. */
     public final int[] meta = new int[16];
 
@@ -106,7 +106,7 @@ public final class ScreenSnapshot {
         codepoints = new int[cells];
         fg = new int[cells];
         bg = new int[cells];
-        attrs = new byte[cells];
+        attrs = new int[cells];
     }
 
     /** Grows the grapheme buffer to hold {@code ints} record ints plus slot 0. */

@@ -448,16 +448,16 @@ static jint pack_rgb(GhosttyColorRgb c) {
                   (uint32_t)c.b);
 }
 
-/* Attribute bits in the attrs[] snapshot array, mirrored in ScreenSnapshot. */
+/* Attribute bits in the attrs[] snapshot array (jintArray), mirrored in ScreenSnapshot. */
 #define ATTR_BOLD 1
 #define ATTR_ITALIC 2
 #define ATTR_UNDERLINE 4
 #define ATTR_STRIKE 8
 #define ATTR_WIDE 16
+#define ATTR_BLINK 32
 /* Underline shape: a 3-bit field (the GhosttySgrUnderline value, 0..5) packed
    into bits 5-7. ATTR_UNDERLINE flags presence; this field names the style
-   (single/double/curly/dotted/dashed). Bit 7 is the sign bit of the signed
-   Java byte, so consumers mask with ATTR_UL_MASK before shifting down. */
+   (single/double/curly/dotted/dashed). */
 #define ATTR_UL_SHIFT 5
 #define ATTR_UL_MASK (7 << ATTR_UL_SHIFT)
 
@@ -507,7 +507,7 @@ static jint pack_rgb(GhosttyColorRgb c) {
 JNIEXPORT jint JNICALL
 Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     JNIEnv *env, jclass clazz, jlong h, jintArray jcp, jintArray jfg,
-    jintArray jbg, jbyteArray jattrs, jintArray jmeta, jintArray jgraphemes) {
+    jintArray jbg, jintArray jattrs, jintArray jmeta, jintArray jgraphemes) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
 
@@ -662,7 +662,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
     jint *row_cp = malloc(cols * sizeof(jint));
     jint *row_fg = malloc(cols * sizeof(jint));
     jint *row_bg = malloc(cols * sizeof(jint));
-    jbyte *row_attr = malloc(cols);
+    jint *row_attr = malloc(cols * sizeof(jint));
     if (!row_cp || !row_fg || !row_bg || !row_attr) goto done;
 
     ghostty_render_state_get(c->rs, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR,
@@ -778,14 +778,14 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
                 bg = tmp;
             }
 
-            jbyte attr = 0;
+            jint attr = 0;
             if (style.bold) attr |= ATTR_BOLD;
             if (style.italic) attr |= ATTR_ITALIC;
             if (style.underline)
-                attr |= ATTR_UNDERLINE |
-                        (jbyte)((style.underline & 7) << ATTR_UL_SHIFT);
+                attr |= ATTR_UNDERLINE | ((style.underline & 7) << ATTR_UL_SHIFT);
             if (style.strikethrough) attr |= ATTR_STRIKE;
             if (wide == GHOSTTY_CELL_WIDE_WIDE) attr |= ATTR_WIDE;
+            if (style.blink) attr |= ATTR_BLINK;
 
             row_cp[x] = (jint)cp;
             row_fg[x] = fg;
@@ -804,7 +804,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
         (*env)->SetIntArrayRegion(env, jcp, off, cols, row_cp);
         (*env)->SetIntArrayRegion(env, jfg, off, cols, row_fg);
         (*env)->SetIntArrayRegion(env, jbg, off, cols, row_bg);
-        (*env)->SetByteArrayRegion(env, jattrs, off, cols, row_attr);
+        (*env)->SetIntArrayRegion(env, jattrs, off, cols, row_attr);
         y++;
     }
 

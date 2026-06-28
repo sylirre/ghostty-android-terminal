@@ -104,6 +104,20 @@ public class TerminalView extends View {
         }
     };
 
+    // Text blink (SGR 5). Runs only while at least one cell in the current
+    // snapshot carries ATTR_BLINK; stops automatically when none do.
+    private static final long TEXT_BLINK_MS = 600;
+    private boolean textBlinkOn = true;
+    private boolean textBlinkRunning;
+    private final Runnable textBlinkTick = new Runnable() {
+        @Override
+        public void run() {
+            textBlinkOn = !textBlinkOn;
+            invalidate();
+            postDelayed(this, TEXT_BLINK_MS);
+        }
+    };
+
     // --- Rich keyboard input (opt-in; AppSettings.richKeyboard). When on AND
     // the terminal is in a plain line-editing state, the soft keyboard runs in
     // composing mode (TYPE_CLASS_TEXT) so suggestions/autocorrect/swipe work.
@@ -785,6 +799,8 @@ public class TerminalView extends View {
         super.onDetachedFromWindow();
         removeCallbacks(cursorBlinkTick);
         cursorBlinkRunning = false;
+        removeCallbacks(textBlinkTick);
+        textBlinkRunning = false;
         clearImageCache(); // release decoded bitmaps; rebuilt on next draw
         if (backgroundImage != null) {
             backgroundImage.recycle();
@@ -1233,6 +1249,7 @@ public class TerminalView extends View {
         updateGraphics();
         drawImages(canvas, true); // z < 0: above background, below text
         updateCursorBlink();
+        updateTextBlink();
         drawCursor(canvas);
         for (int y = 0; y < sr; y++) {
             drawRowText(canvas, snapshot, y, sc, y * cellHeight);
@@ -1463,6 +1480,9 @@ public class TerminalView extends View {
         for (int x = 0; x <= sc; x++) {
             int i = rowBase + x;
             int cp = x < sc ? snap.codepoints[i] : 0;
+            // On the blink "off" phase, treat blinking cells as blank so their
+            // background stays but the glyph disappears.
+            if (!textBlinkOn && cp != 0 && (snap.attrs[i] & TerminalNative.ATTR_BLINK) != 0) cp = 0;
             int fg = x < sc ? snap.fg[i] : 0;
             int attr = x < sc ? (snap.attrs[i] & ~TerminalNative.ATTR_WIDE) : 0;
             // A grapheme cluster (base + combining/ZWJ marks) is several
@@ -1617,6 +1637,31 @@ public class TerminalView extends View {
             cursorBlinkOn = true; // solid right after (re)start or a move
             removeCallbacks(cursorBlinkTick);
             postDelayed(cursorBlinkTick, CURSOR_BLINK_MS);
+        }
+    }
+
+    private void updateTextBlink() {
+        int[] attrs = snapshot.attrs;
+        int n = snapshot.cols * snapshot.rows;
+        boolean hasBlinking = false;
+        for (int i = 0; i < n; i++) {
+            if ((attrs[i] & TerminalNative.ATTR_BLINK) != 0) {
+                hasBlinking = true;
+                break;
+            }
+        }
+        if (!hasBlinking) {
+            if (textBlinkRunning) {
+                textBlinkRunning = false;
+                removeCallbacks(textBlinkTick);
+            }
+            textBlinkOn = true;
+            return;
+        }
+        if (!textBlinkRunning) {
+            textBlinkRunning = true;
+            removeCallbacks(textBlinkTick);
+            postDelayed(textBlinkTick, TEXT_BLINK_MS);
         }
     }
 

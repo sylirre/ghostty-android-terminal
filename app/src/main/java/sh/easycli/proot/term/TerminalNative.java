@@ -19,19 +19,18 @@ public final class TerminalNative {
     public static final int EVENT_BELL = 1;
     public static final int EVENT_TITLE = 2;
 
-    /** Attribute bits in the snapshot attrs array. */
+    /** Attribute bits in the snapshot attrs array (int[] per cell). */
     public static final int ATTR_BOLD = 1;
     public static final int ATTR_ITALIC = 2;
     public static final int ATTR_UNDERLINE = 4;
     public static final int ATTR_STRIKE = 8;
     public static final int ATTR_WIDE = 16;
+    public static final int ATTR_BLINK = 32;
 
     /**
-     * Underline shape: a 3-bit field in the attrs byte (bits 5-7) holding one
+     * Underline shape: a 3-bit field in the attrs int (bits 5-7) holding one
      * of the {@code UNDERLINE_*} values. {@link #ATTR_UNDERLINE} is set
-     * whenever this field is non-zero. Mask with {@link #ATTR_UL_MASK} before
-     * shifting right by {@link #ATTR_UL_SHIFT} — bit 7 is the byte's sign bit,
-     * so a bare shift would sign-extend.
+     * whenever this field is non-zero.
      */
     public static final int ATTR_UL_SHIFT = 5;
     public static final int ATTR_UL_MASK = 7 << ATTR_UL_SHIFT;
@@ -206,7 +205,7 @@ public final class TerminalNative {
      * the records didn't fit; grow the buffer and retry, same as the cells.
      */
     public static native int terminalSnapshot(long handle, int[] codepoints,
-            int[] fg, int[] bg, byte[] attrs, int[] meta, int[] graphemes);
+            int[] fg, int[] bg, int[] attrs, int[] meta, int[] graphemes);
 
     /**
      * Packs visible Kitty graphics placements into out (GFX_STRIDE ints each)
