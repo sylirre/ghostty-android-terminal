@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -417,6 +418,7 @@ public final class ThemeActivity extends Activity {
         btnFontItalicRemove.setOnClickListener(v -> removeFont(TerminalFontStore.ITALIC));
         btnFontBoldItalicRemove.setOnClickListener(v -> removeFont(TerminalFontStore.BOLD_ITALIC));
         updateFontButtons();
+        applyFontsToPreview();
     }
 
     private void pickFont(int requestCode) {
@@ -448,6 +450,7 @@ public final class ThemeActivity extends Activity {
             }
             setFontPath(kind, path);
             updateFontButtons();
+            applyFontsToPreview();
         } catch (IOException e) {
             toast(R.string.theme_font_failed);
         }
@@ -457,6 +460,7 @@ public final class ThemeActivity extends Activity {
         TerminalFontStore.clear(this, kind);
         setFontPath(kind, null);
         updateFontButtons();
+        applyFontsToPreview();
         toast(R.string.theme_font_removed);
     }
 
@@ -494,6 +498,25 @@ public final class ThemeActivity extends Activity {
                 settings.setTerminalFontPath(path);
                 break;
         }
+    }
+
+    private void applyFontsToPreview() {
+        Typeface regular = loadPreviewFont(settings.terminalFontPath(),
+                () -> settings.setTerminalFontPath(null));
+        Typeface bold = loadPreviewFont(settings.terminalBoldFontPath(),
+                () -> settings.setTerminalBoldFontPath(null));
+        Typeface italic = loadPreviewFont(settings.terminalItalicFontPath(),
+                () -> settings.setTerminalItalicFontPath(null));
+        Typeface boldItalic = loadPreviewFont(settings.terminalBoldItalicFontPath(),
+                () -> settings.setTerminalBoldItalicFontPath(null));
+        preview.setTerminalFonts(regular, bold, italic, boldItalic);
+        updateFontButtons();
+    }
+
+    private Typeface loadPreviewFont(String path, Runnable clearStalePath) {
+        Typeface face = TerminalFontStore.load(path);
+        if (path != null && face == null) clearStalePath.run();
+        return face;
     }
 
     // --- Swatch grid ---
