@@ -17,9 +17,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -74,6 +76,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
+    private static final long BELL_THROTTLE_MS = 200;
 
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
@@ -86,6 +89,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private ThemeStore themeStore;
     private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
+    private long lastBellUptime;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
     private final BroadcastReceiver exitReceiver = new BroadcastReceiver() {
@@ -527,6 +531,11 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     terminal.setMouseTracking(enabled);
                 }));
         items.add(new Setting.Toggle(
+                getString(R.string.setting_terminal_bell_title),
+                getString(R.string.setting_terminal_bell_summary),
+                settings::terminalBell,
+                settings::setTerminalBell));
+        items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),
                 getString(R.string.setting_extra_keys_enabled_summary),
                 settings::extraKeysEnabled,
@@ -902,7 +911,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     @Override
     public void onBell(TerminalSession session) {
-        // Deliberate no-op; a vibrate/flash option can hook in here.
+        if (!settings.terminalBell()) return;
+        if (session != current) return;
+        long now = SystemClock.uptimeMillis();
+        if (now - lastBellUptime < BELL_THROTTLE_MS) return;
+        lastBellUptime = now;
+        terminal.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
     }
 
     @Override

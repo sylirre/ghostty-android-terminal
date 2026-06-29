@@ -45,6 +45,10 @@
     <string name="setting_mouse_tracking_title">Mouse reporting</string>
     <string name="setting_mouse_tracking_summary">Send taps and swipes to programs that support the mouse: a tap is a left click, a swipe is wheel scroll (vertical and horizontal). Only active while a program enables mouse tracking.</string>
 
+    <!-- Settings: Terminal bell -->
+    <string name="setting_terminal_bell_title">Terminal bell</string>
+    <string name="setting_terminal_bell_summary">Vibrate when the active terminal session sends BEL.</string>
+
     <!-- Settings: Touch keyboard -->
     <string name="setting_touch_keyboard_title">Show touch keyboard</string>
     <string name="setting_touch_keyboard_summary">Automatically raise the soft keyboard when opening the app, creating a session, or tapping the terminal. Search always shows the keyboard regardless.</string>

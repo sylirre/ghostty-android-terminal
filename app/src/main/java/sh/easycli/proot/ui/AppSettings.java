@@ -33,6 +33,7 @@ public final class AppSettings {
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
+    private static final String KEY_TERMINAL_BELL = "terminal_bell";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
@@ -278,6 +279,15 @@ public final class AppSettings {
 
     public void setMouseTracking(boolean enabled) {
         prefs.edit().putBoolean(KEY_MOUSE_TRACKING, enabled).apply();
+    }
+
+    /** When true (default), BEL from the active terminal session triggers haptic feedback. */
+    public boolean terminalBell() {
+        return prefs.getBoolean(KEY_TERMINAL_BELL, true);
+    }
+
+    public void setTerminalBell(boolean enabled) {
+        prefs.edit().putBoolean(KEY_TERMINAL_BELL, enabled).apply();
     }
 
     /**
