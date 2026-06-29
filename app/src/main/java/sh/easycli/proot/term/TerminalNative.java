@@ -126,6 +126,13 @@ public final class TerminalNative {
     public static native void ptySetSize(int fd, int cols, int rows,
             int cellWidthPx, int cellHeightPx);
 
+    /**
+     * Sends terminal hangup semantics to the PTY foreground process group:
+     * SIGHUP, then SIGCONT so stopped jobs can observe the hangup. Falls back
+     * to {@code fallbackPid} when the PTY has no usable foreground group.
+     */
+    public static native void ptyHangupForeground(int fd, int fallbackPid);
+
     /** Blocks until pid exits; returns exit code or -signal. */
     public static native int processWaitFor(int pid);
 

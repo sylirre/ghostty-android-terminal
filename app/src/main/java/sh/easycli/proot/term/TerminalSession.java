@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * can't queue unbounded UI work.
  */
 public final class TerminalSession {
-    private static final int SIGHUP = 1;
     private static final int SIGQUIT = 3;
     private static final int SIGKILL = 9;
     private static final long PROOT_CLOSE_KILL_FALLBACK_MS = 1500;
@@ -253,7 +252,7 @@ public final class TerminalSession {
                 cellHeightPx);
     }
 
-    /** Kills the shell and releases the PTY. Idempotent. */
+    /** Hangs up or terminates the session and releases the PTY. Idempotent. */
     public void close() {
         if (closed) return;
         closed = true;
@@ -272,7 +271,7 @@ public final class TerminalSession {
             fallback.setDaemon(true);
             fallback.start();
         } else {
-            TerminalNative.processKill(pid, SIGHUP);
+            TerminalNative.ptyHangupForeground(masterFd.getFd(), pid);
         }
         try {
             masterFd.close(); // unblocks the reader thread

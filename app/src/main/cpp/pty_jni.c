@@ -155,6 +155,30 @@ Java_sh_easycli_proot_term_TerminalNative_ptySetSize(
     ioctl(fd, TIOCSWINSZ, &ws);
 }
 
+JNIEXPORT void JNICALL
+Java_sh_easycli_proot_term_TerminalNative_ptyHangupForeground(
+    JNIEnv *env, jclass clazz, jint fd, jint fallback_pid) {
+    (void)env; (void)clazz;
+
+    pid_t pgrp = 0;
+    if (ioctl(fd, TIOCGPGRP, &pgrp) == 0 && pgrp > 0 && pgrp != getpgrp()) {
+        if (kill(-pgrp, SIGHUP) == 0) {
+            kill(-pgrp, SIGCONT);
+            return;
+        }
+    }
+
+    if (fallback_pid > 0) {
+        pgrp = getpgid((pid_t)fallback_pid);
+        if (pgrp > 0 && pgrp != getpgrp() && kill(-pgrp, SIGHUP) == 0) {
+            kill(-pgrp, SIGCONT);
+        } else {
+            kill((pid_t)fallback_pid, SIGHUP);
+            kill((pid_t)fallback_pid, SIGCONT);
+        }
+    }
+}
+
 /* Blocks until the child exits. Returns exit code, or -signal if killed. */
 JNIEXPORT jint JNICALL
 Java_sh_easycli_proot_term_TerminalNative_processWaitFor(

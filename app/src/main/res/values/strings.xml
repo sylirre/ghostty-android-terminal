@@ -58,7 +58,7 @@
 
     <!-- Settings: Session close behavior -->
     <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
-    <string name="setting_terminate_processes_summary">When closing a Debian tab, ask PRoot to kill all guest processes. Turn off to only send SIGHUP to the session.</string>
+    <string name="setting_terminate_processes_summary">When closing a Debian tab, ask PRoot to kill all guest processes. Turn off before opening a tab to let detached daemons survive session hangup.</string>
 
     <!-- Settings: Terminal bell -->
     <string name="setting_terminal_bell_title">Terminal bell</string>

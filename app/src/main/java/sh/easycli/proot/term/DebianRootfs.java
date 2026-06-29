@@ -211,13 +211,20 @@ public final class DebianRootfs {
         return command(ctx, shell, false);
     }
 
+    public static SessionCommand command(Context ctx, String shell,
+            boolean bindExternalStorage) throws IOException {
+        return command(ctx, shell, bindExternalStorage, true);
+    }
+
     /**
      * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
      * @param bindExternalStorage when true, Android shared storage is bound
      *                            under /mnt for this new PRoot session.
+     * @param killOnExit when true, PRoot kills every traced process after the
+     *                   login shell exits.
      */
     public static SessionCommand command(Context ctx, String shell,
-            boolean bindExternalStorage) throws IOException {
+            boolean bindExternalStorage, boolean killOnExit) throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Debian rootfs not installed");
         if (!hasShell(dir(ctx))) {
             throw new IOException("Debian rootfs is incomplete: /bin/bash is "
@@ -238,7 +245,9 @@ public final class DebianRootfs {
 
         List<String> argv = new ArrayList<>();
         argv.add("proot");
-        argv.add("--kill-on-exit");  // no orphaned tracees after bash exits
+        if (killOnExit) {
+            argv.add("--kill-on-exit");  // no orphaned tracees after bash exits
+        }
         argv.add("--link2symlink");  // apps can't hard-link; dpkg needs ln to work
         argv.add("-0");              // fake uid/gid 0: apt/dpkg insist on root
         argv.add("-r");

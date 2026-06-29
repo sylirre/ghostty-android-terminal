@@ -48,7 +48,8 @@ public final class SessionManager {
             boolean terminateProcessesOnExit,
             TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
-                ? DebianRootfs.command(context, loginShell, bindExternalStorage)
+                ? DebianRootfs.command(context, loginShell, bindExternalStorage,
+                        terminateProcessesOnExit)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());
