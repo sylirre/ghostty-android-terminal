@@ -76,6 +76,10 @@ public class TerminalUiTest {
 
     @Before
     public void launch() {
+        // SessionManager is process-wide, and Android may run this class after
+        // another instrumented test in the same app process. Start each UI test
+        // from a single-session baseline instead of inheriting stale tabs.
+        SessionManager.get().closeAll();
         // Preferences are process/app scoped and instrumentation does not
         // guarantee this class runs first. Start from the stock toolbar so
         // matchers below are not affected by another test's saved layout.
@@ -143,8 +147,31 @@ public class TerminalUiTest {
                 sb.append(" dims=").append(snap.cols).append('x').append(snap.rows);
                 sb.append("\nscreen:[").append(snap.text().trim()).append(']');
             }
+            sb.append(" newTabShown=").append(
+                    viewShown(a.findViewById(R.id.tabs), R.string.tab_new_description));
+            sb.append(" closeTabShown=").append(
+                    viewShown(a.findViewById(R.id.tabs), R.string.tab_close_description));
         });
         return sb.toString();
+    }
+
+    private boolean viewShown(View root, int contentDescriptionRes) {
+        CharSequence needle = ApplicationProvider.getApplicationContext()
+                .getString(contentDescriptionRes);
+        return viewShown(root, needle);
+    }
+
+    private boolean viewShown(View view, CharSequence contentDescription) {
+        if (view == null) return false;
+        CharSequence own = view.getContentDescription();
+        if (contentDescription.equals(own) && view.isShown()) return true;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (viewShown(group.getChildAt(i), contentDescription)) return true;
+            }
+        }
+        return false;
     }
 
     @Test
@@ -244,7 +271,8 @@ public class TerminalUiTest {
     public void newTabCreatesAndSwitchesSessions() {
         onView(withContentDescription(R.string.tab_new_description)).perform(click());
         waitFor("two sessions", TIMEOUT_MS,
-                () -> SessionManager.get().sessions().size() == 2);
+                () -> SessionManager.get().sessions().size() == 2,
+                this::diagnose);
         onView(withText("sh:2")).check(matches(isDisplayed()));
 
         // Leave a marker in tab 2, switch to tab 1, verify the view rebinds.
@@ -520,7 +548,8 @@ public class TerminalUiTest {
     public void closingActiveTabSwitchesToRemaining() {
         onView(withContentDescription(R.string.tab_new_description)).perform(click());
         waitFor("two sessions", TIMEOUT_MS,
-                () -> SessionManager.get().sessions().size() == 2);
+                () -> SessionManager.get().sessions().size() == 2,
+                this::diagnose);
         onView(withContentDescription(R.string.tab_close_description)).perform(click());
         waitFor("one session", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 1);
