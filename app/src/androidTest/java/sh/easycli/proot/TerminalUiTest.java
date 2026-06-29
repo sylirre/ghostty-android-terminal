@@ -174,6 +174,38 @@ public class TerminalUiTest {
         return false;
     }
 
+    private void clickTabControl(int contentDescriptionRes) {
+        waitFor("tab control " + ApplicationProvider.getApplicationContext()
+                        .getString(contentDescriptionRes), TIMEOUT_MS,
+                () -> {
+                    AtomicBoolean shown = new AtomicBoolean();
+                    scenario.onActivity(a -> shown.set(viewShown(
+                            a.findViewById(R.id.tabs), contentDescriptionRes)));
+                    return shown.get();
+                }, this::diagnose);
+        scenario.onActivity(a -> {
+            View button = findViewWithContentDescription(
+                    a.findViewById(R.id.tabs),
+                    ApplicationProvider.getApplicationContext()
+                            .getString(contentDescriptionRes));
+            assertTrue("tab control click handled", button != null && button.performClick());
+        });
+    }
+
+    private View findViewWithContentDescription(View view, CharSequence contentDescription) {
+        if (view == null) return null;
+        if (contentDescription.equals(view.getContentDescription())) return view;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findViewWithContentDescription(
+                        group.getChildAt(i), contentDescription);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     @Test
     public void launchShowsShellTabAndToolbar() {
         onView(withText("sh:1")).check(matches(isDisplayed()));
@@ -269,7 +301,7 @@ public class TerminalUiTest {
 
     @Test
     public void newTabCreatesAndSwitchesSessions() {
-        onView(withContentDescription(R.string.tab_new_description)).perform(click());
+        clickTabControl(R.string.tab_new_description);
         waitFor("two sessions", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 2,
                 this::diagnose);
@@ -546,13 +578,14 @@ public class TerminalUiTest {
 
     @Test
     public void closingActiveTabSwitchesToRemaining() {
-        onView(withContentDescription(R.string.tab_new_description)).perform(click());
+        clickTabControl(R.string.tab_new_description);
         waitFor("two sessions", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 2,
                 this::diagnose);
-        onView(withContentDescription(R.string.tab_close_description)).perform(click());
+        clickTabControl(R.string.tab_close_description);
         waitFor("one session", TIMEOUT_MS,
-                () -> SessionManager.get().sessions().size() == 1);
+                () -> SessionManager.get().sessions().size() == 1,
+                this::diagnose);
         onView(withText("sh:1")).check(matches(isDisplayed()));
     }
 }
