@@ -301,11 +301,21 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         Typeface regular = TerminalFontStore.load(regularPath);
         if (regularPath != null && regular == null) settings.setTerminalFontPath(null);
 
+        String boldPath = settings.terminalBoldFontPath();
+        Typeface bold = TerminalFontStore.load(boldPath);
+        if (boldPath != null && bold == null) settings.setTerminalBoldFontPath(null);
+
         String italicPath = settings.terminalItalicFontPath();
         Typeface italic = TerminalFontStore.load(italicPath);
         if (italicPath != null && italic == null) settings.setTerminalItalicFontPath(null);
 
-        terminal.setTerminalFonts(regular, italic);
+        String boldItalicPath = settings.terminalBoldItalicFontPath();
+        Typeface boldItalic = TerminalFontStore.load(boldItalicPath);
+        if (boldItalicPath != null && boldItalic == null) {
+            settings.setTerminalBoldItalicFontPath(null);
+        }
+
+        terminal.setTerminalFonts(regular, bold, italic, boldItalic);
     }
 
     private boolean debianByDefault() {

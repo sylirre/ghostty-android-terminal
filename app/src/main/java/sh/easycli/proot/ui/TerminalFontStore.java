@@ -18,14 +18,33 @@ final class TerminalFontStore {
 
     static final int DEFAULT = 0;
     static final int ITALIC = 1;
+    static final int BOLD = 2;
+    static final int BOLD_ITALIC = 3;
 
     private static final String DEFAULT_FILE = "terminal_font_default";
     private static final String ITALIC_FILE = "terminal_font_italic";
+    private static final String BOLD_FILE = "terminal_font_bold";
+    private static final String BOLD_ITALIC_FILE = "terminal_font_bold_italic";
 
     private TerminalFontStore() {}
 
     static File file(Context context, int kind) {
-        return new File(context.getFilesDir(), kind == ITALIC ? ITALIC_FILE : DEFAULT_FILE);
+        String name;
+        switch (kind) {
+            case ITALIC:
+                name = ITALIC_FILE;
+                break;
+            case BOLD:
+                name = BOLD_FILE;
+                break;
+            case BOLD_ITALIC:
+                name = BOLD_ITALIC_FILE;
+                break;
+            default:
+                name = DEFAULT_FILE;
+                break;
+        }
+        return new File(context.getFilesDir(), name);
     }
 
     /**

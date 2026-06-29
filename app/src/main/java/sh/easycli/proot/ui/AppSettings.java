@@ -36,6 +36,9 @@ public final class AppSettings {
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
+    private static final String KEY_TERMINAL_BOLD_FONT_PATH = "terminal_bold_font_path";
+    private static final String KEY_TERMINAL_BOLD_ITALIC_FONT_PATH =
+            "terminal_bold_italic_font_path";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -306,6 +309,24 @@ public final class AppSettings {
 
     public void setTerminalItalicFontPath(String path) {
         setNullableString(KEY_TERMINAL_ITALIC_FONT_PATH, path);
+    }
+
+    /** Absolute path to the custom bold terminal font, or null to synthesize bold. */
+    public String terminalBoldFontPath() {
+        return prefs.getString(KEY_TERMINAL_BOLD_FONT_PATH, null);
+    }
+
+    public void setTerminalBoldFontPath(String path) {
+        setNullableString(KEY_TERMINAL_BOLD_FONT_PATH, path);
+    }
+
+    /** Absolute path to the custom bold italic terminal font, or null for fallback styling. */
+    public String terminalBoldItalicFontPath() {
+        return prefs.getString(KEY_TERMINAL_BOLD_ITALIC_FONT_PATH, null);
+    }
+
+    public void setTerminalBoldItalicFontPath(String path) {
+        setNullableString(KEY_TERMINAL_BOLD_ITALIC_FONT_PATH, path);
     }
 
     private void setNullableString(String key, String value) {

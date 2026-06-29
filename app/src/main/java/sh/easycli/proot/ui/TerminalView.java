@@ -196,7 +196,9 @@ public class TerminalView extends View {
     private float scrollRemainder;
     private float fontSizeSp;
     private Typeface regularTypeface = Typeface.MONOSPACE;
+    private Typeface boldTypeface;
     private Typeface italicTypeface;
+    private Typeface boldItalicTypeface;
 
     // --- Smooth (sub-row) scrolling. When enabled, scroll/fling motion is
     // tracked in pixels: whole rows still go through emulator.scrollBy(), and
@@ -682,12 +684,15 @@ public class TerminalView extends View {
     }
 
     /**
-     * Sets terminal font faces. A null regular font falls back to Android's
-     * monospace; a null italic font keeps the historical skewed italic.
+     * Sets terminal font faces. Missing style-specific faces are synthesized
+     * from the closest configured face.
      */
-    public void setTerminalFonts(Typeface regular, Typeface italic) {
+    public void setTerminalFonts(Typeface regular, Typeface bold, Typeface italic,
+            Typeface boldItalic) {
         regularTypeface = regular != null ? regular : Typeface.MONOSPACE;
+        boldTypeface = bold;
         italicTypeface = italic;
+        boldItalicTypeface = boldItalic;
         textPaint.setTypeface(regularTypeface);
         setTextSizePx(spToPx(fontSizeSp));
         if (getWidth() > 0) {
@@ -1554,10 +1559,40 @@ public class TerminalView extends View {
 
     private void applyStyle(int fg, int attr) {
         boolean italic = (attr & TerminalNative.ATTR_ITALIC) != 0;
+        boolean bold = (attr & TerminalNative.ATTR_BOLD) != 0;
+        Typeface face = regularTypeface;
+        boolean fakeBold = false;
+        boolean fakeItalic = false;
+        if (bold && italic) {
+            if (boldItalicTypeface != null) {
+                face = boldItalicTypeface;
+            } else if (italicTypeface != null) {
+                face = italicTypeface;
+                fakeBold = true;
+            } else if (boldTypeface != null) {
+                face = boldTypeface;
+                fakeItalic = true;
+            } else {
+                fakeBold = true;
+                fakeItalic = true;
+            }
+        } else if (bold) {
+            if (boldTypeface != null) {
+                face = boldTypeface;
+            } else {
+                fakeBold = true;
+            }
+        } else if (italic) {
+            if (italicTypeface != null) {
+                face = italicTypeface;
+            } else {
+                fakeItalic = true;
+            }
+        }
         textPaint.setColor(fg);
-        textPaint.setTypeface(italic && italicTypeface != null ? italicTypeface : regularTypeface);
-        textPaint.setFakeBoldText((attr & TerminalNative.ATTR_BOLD) != 0);
-        textPaint.setTextSkewX(italic && italicTypeface == null ? -0.25f : 0);
+        textPaint.setTypeface(face);
+        textPaint.setFakeBoldText(fakeBold);
+        textPaint.setTextSkewX(fakeItalic ? -0.25f : 0);
         // Underlines are stroked separately by drawUnderline so the engine's
         // 4:2..4:5 styles render; Paint's underline only does a solid line.
         textPaint.setStrikeThruText((attr & TerminalNative.ATTR_STRIKE) != 0);
