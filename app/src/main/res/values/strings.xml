@@ -52,11 +52,13 @@
         <item>Off</item>
         <item>Haptic feedback</item>
         <item>Screen flash</item>
+        <item>Sound</item>
     </string-array>
     <integer-array name="terminal_bell_mode_values">
         <item>0</item>
         <item>1</item>
         <item>2</item>
+        <item>3</item>
     </integer-array>
 
     <!-- Settings: Touch keyboard -->

@@ -51,6 +51,7 @@ public final class AppSettings {
     public static final int BELL_OFF = 0;
     public static final int BELL_HAPTIC = 1;
     public static final int BELL_SCREEN_FLASH = 2;
+    public static final int BELL_SOUND = 3;
 
     private final SharedPreferences prefs;
 
@@ -296,7 +297,8 @@ public final class AppSettings {
     }
 
     public void setTerminalBellMode(int mode) {
-        if (mode != BELL_OFF && mode != BELL_HAPTIC && mode != BELL_SCREEN_FLASH) {
+        if (mode != BELL_OFF && mode != BELL_HAPTIC
+                && mode != BELL_SCREEN_FLASH && mode != BELL_SOUND) {
             mode = BELL_HAPTIC;
         }
         prefs.edit().putInt(KEY_TERMINAL_BELL_MODE, mode).apply();

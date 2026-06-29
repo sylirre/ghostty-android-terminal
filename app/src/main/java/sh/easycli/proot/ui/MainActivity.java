@@ -13,6 +13,8 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Typeface;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -924,6 +926,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             vibrateBell();
         } else if (mode == AppSettings.BELL_SCREEN_FLASH) {
             terminal.flashBell();
+        } else if (mode == AppSettings.BELL_SOUND) {
+            playBellSound();
         }
     }
 
@@ -932,6 +936,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         if (vibrator == null || !vibrator.hasVibrator()) return;
         vibrator.vibrate(VibrationEffect.createOneShot(
                 BELL_VIBRATION_MS, VibrationEffect.DEFAULT_AMPLITUDE));
+    }
+
+    private void playBellSound() {
+        try {
+            ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 150);
+            terminal.postDelayed(tone::release, 250);
+        } catch (RuntimeException ignored) {
+            // Audio service unavailable; drop the bell rather than surfacing a UI error.
+        }
     }
 
     @Override
