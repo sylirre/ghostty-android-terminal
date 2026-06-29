@@ -530,11 +530,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setMouseTracking(enabled);
                     terminal.setMouseTracking(enabled);
                 }));
-        items.add(new Setting.Toggle(
+        items.add(new Setting.Choice(
                 getString(R.string.setting_terminal_bell_title),
                 getString(R.string.setting_terminal_bell_summary),
-                settings::terminalBell,
-                settings::setTerminalBell));
+                getResources().getIntArray(R.array.terminal_bell_mode_values),
+                getResources().getStringArray(R.array.terminal_bell_mode_labels),
+                settings::terminalBellMode,
+                settings::setTerminalBellMode));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),
                 getString(R.string.setting_extra_keys_enabled_summary),
@@ -911,12 +913,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     @Override
     public void onBell(TerminalSession session) {
-        if (!settings.terminalBell()) return;
         if (session != current) return;
         long now = SystemClock.uptimeMillis();
         if (now - lastBellUptime < BELL_THROTTLE_MS) return;
         lastBellUptime = now;
-        terminal.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        int mode = settings.terminalBellMode();
+        if (mode == AppSettings.BELL_HAPTIC) {
+            terminal.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        } else if (mode == AppSettings.BELL_SCREEN_FLASH) {
+            terminal.flashBell();
+        }
     }
 
     @Override

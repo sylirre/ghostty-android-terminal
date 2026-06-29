@@ -118,6 +118,11 @@ public class TerminalView extends View {
         }
     };
 
+    // Visual bell: a short white overlay over the already-rendered terminal.
+    private static final long BELL_FLASH_MS = 120;
+    private final Paint bellFlashPaint = new Paint();
+    private long bellFlashUntil;
+
     // --- Rich keyboard input (opt-in; AppSettings.richKeyboard). When on AND
     // the terminal is in a plain line-editing state, the soft keyboard runs in
     // composing mode (TYPE_CLASS_TEXT) so suggestions/autocorrect/swipe work.
@@ -429,6 +434,12 @@ public class TerminalView extends View {
                 return true;
             }
         });
+    }
+
+    /** Flashes the terminal surface once for BEL when visual bell mode is enabled. */
+    public void flashBell() {
+        bellFlashUntil = SystemClock.uptimeMillis() + BELL_FLASH_MS;
+        invalidate();
     }
 
     /**
@@ -1285,6 +1296,7 @@ public class TerminalView extends View {
 
         drawSizeOverlay(canvas); // grid-size HUD sits above all cell content
         drawSelectionHandles(canvas);
+        drawBellFlash(canvas);
         if (selecting && !snapshot.hasSelection()) {
             // The selected text scrolled out of existence (scrollback
             // pruning, screen switch); retire the UI outside of draw.
@@ -1303,6 +1315,16 @@ public class TerminalView extends View {
                 });
             }
         }
+    }
+
+    private void drawBellFlash(Canvas canvas) {
+        long remaining = bellFlashUntil - SystemClock.uptimeMillis();
+        if (remaining <= 0) return;
+        float phase = Math.min(1f, remaining / (float) BELL_FLASH_MS);
+        bellFlashPaint.setColor(0xFFFFFF);
+        bellFlashPaint.setAlpha(Math.round(96 * phase));
+        canvas.drawRect(0, 0, getWidth(), getHeight(), bellFlashPaint);
+        postInvalidateDelayed(16);
     }
 
     /**

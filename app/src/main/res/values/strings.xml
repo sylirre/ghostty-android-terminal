@@ -47,7 +47,17 @@
 
     <!-- Settings: Terminal bell -->
     <string name="setting_terminal_bell_title">Terminal bell</string>
-    <string name="setting_terminal_bell_summary">Vibrate when the active terminal session sends BEL.</string>
+    <string name="setting_terminal_bell_summary">Feedback when the active terminal session sends BEL.</string>
+    <string-array name="terminal_bell_mode_labels">
+        <item>Off</item>
+        <item>Haptic feedback</item>
+        <item>Screen flash</item>
+    </string-array>
+    <integer-array name="terminal_bell_mode_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </integer-array>
 
     <!-- Settings: Touch keyboard -->
     <string name="setting_touch_keyboard_title">Show touch keyboard</string>
