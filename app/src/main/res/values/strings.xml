@@ -56,6 +56,10 @@
     <string name="storage_permission_denied">Storage permission is required to bind shared storage.</string>
     <string name="storage_permission_settings_unavailable">Storage permission settings are not available on this device.</string>
 
+    <!-- Settings: Session close behavior -->
+    <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
+    <string name="setting_terminate_processes_summary">When closing a Debian tab, ask PRoot to kill all guest processes. Turn off to only send SIGHUP to the session.</string>
+
     <!-- Settings: Terminal bell -->
     <string name="setting_terminal_bell_title">Terminal bell</string>
     <string name="setting_terminal_bell_summary">Feedback when the active terminal session sends BEL.</string>

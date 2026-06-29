@@ -207,6 +207,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         for (TerminalSession s : sessions.sessions()) {
             s.setListener(this);
         }
+        applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
         if (sessions.isEmpty()) {
             // Spawn the first shell only once the view is laid out so the
             // PTY starts at its real size (see SessionManager.create).
@@ -360,7 +361,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
                     settings.scrollbackLines(), debian, settings.prootLoginShell(),
-                    bindExternalStorage, this);
+                    bindExternalStorage, settings.terminateProcessesOnExit(), this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
             if (settings.touchKeyboard()) showKeyboard();
@@ -567,6 +568,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 getString(R.string.setting_bind_storage_summary),
                 settings::bindExternalStorage,
                 this::setBindExternalStorageRequested));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_terminate_processes_title),
+                getString(R.string.setting_terminate_processes_summary),
+                settings::terminateProcessesOnExit,
+                enabled -> {
+                    settings.setTerminateProcessesOnExit(enabled);
+                    applyTerminateProcessesOnExit(enabled);
+                }));
         items.add(new Setting.Choice(
                 getString(R.string.setting_terminal_bell_title),
                 getString(R.string.setting_terminal_bell_summary),
@@ -647,6 +656,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     this::confirmRestore));
         }
         SettingsDialog.show(this, items);
+    }
+
+    private void applyTerminateProcessesOnExit(boolean enabled) {
+        for (TerminalSession s : sessions.sessions()) {
+            s.setTerminateProcessesOnExit(enabled);
+        }
     }
 
     private boolean setBindExternalStorageRequested(boolean enabled) {

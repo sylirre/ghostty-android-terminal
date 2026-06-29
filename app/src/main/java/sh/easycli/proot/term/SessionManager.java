@@ -39,12 +39,13 @@ public final class SessionManager {
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
             String loginShell, TerminalSession.Listener listener) throws IOException {
         return create(context, cols, rows, cellWidthPx, cellHeightPx, scrollbackLines,
-                debian, loginShell, false, listener);
+                debian, loginShell, false, false, listener);
     }
 
     public TerminalSession create(Context context, int cols, int rows,
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
             String loginShell, boolean bindExternalStorage,
+            boolean terminateProcessesOnExit,
             TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
                 ? DebianRootfs.command(context, loginShell, bindExternalStorage)
@@ -52,7 +53,8 @@ public final class SessionManager {
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());
         TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
-                cellHeightPx, scrollbackLines, command, listener);
+                cellHeightPx, scrollbackLines, command, terminateProcessesOnExit,
+                listener);
         synchronized (this) {
             sessions.add(s);
         }

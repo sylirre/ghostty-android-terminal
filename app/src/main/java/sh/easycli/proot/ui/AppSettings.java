@@ -35,6 +35,8 @@ public final class AppSettings {
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
     private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
+    private static final String KEY_TERMINATE_PROCESSES_ON_EXIT =
+            "terminate_processes_on_exit";
     private static final String KEY_TERMINAL_BELL_LEGACY = "terminal_bell";
     private static final String KEY_TERMINAL_BELL_MODE = "terminal_bell_mode";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
@@ -309,6 +311,18 @@ public final class AppSettings {
 
     public void setBindExternalStorage(boolean enabled) {
         prefs.edit().putBoolean(KEY_BIND_EXTERNAL_STORAGE, enabled).apply();
+    }
+
+    /**
+     * When true, closing a Debian-under-PRoot session asks PRoot to kill every
+     * traced process instead of only hanging up the top-level session.
+     */
+    public boolean terminateProcessesOnExit() {
+        return prefs.getBoolean(KEY_TERMINATE_PROCESSES_ON_EXIT, true);
+    }
+
+    public void setTerminateProcessesOnExit(boolean enabled) {
+        prefs.edit().putBoolean(KEY_TERMINATE_PROCESSES_ON_EXIT, enabled).apply();
     }
 
     /** BEL feedback mode for the active terminal session. Defaults to haptic feedback. */
