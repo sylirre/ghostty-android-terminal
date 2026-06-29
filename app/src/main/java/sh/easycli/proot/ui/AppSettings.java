@@ -34,6 +34,8 @@ public final class AppSettings {
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
+    private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
+    private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -286,5 +288,31 @@ public final class AppSettings {
 
     public void setProotLoginShell(String shell) {
         prefs.edit().putString(KEY_PROOT_LOGIN_SHELL, shell.trim()).apply();
+    }
+
+    /** Absolute path to the custom regular terminal font, or null for default monospace. */
+    public String terminalFontPath() {
+        return prefs.getString(KEY_TERMINAL_FONT_PATH, null);
+    }
+
+    public void setTerminalFontPath(String path) {
+        setNullableString(KEY_TERMINAL_FONT_PATH, path);
+    }
+
+    /** Absolute path to the custom italic terminal font, or null to synthesize italics. */
+    public String terminalItalicFontPath() {
+        return prefs.getString(KEY_TERMINAL_ITALIC_FONT_PATH, null);
+    }
+
+    public void setTerminalItalicFontPath(String path) {
+        setNullableString(KEY_TERMINAL_ITALIC_FONT_PATH, path);
+    }
+
+    private void setNullableString(String key, String value) {
+        if (value == null) {
+            prefs.edit().remove(key).apply();
+        } else {
+            prefs.edit().putString(key, value).apply();
+        }
     }
 }

@@ -195,6 +195,8 @@ public class TerminalView extends View {
     private final ScaleGestureDetector scaleGestures;
     private float scrollRemainder;
     private float fontSizeSp;
+    private Typeface regularTypeface = Typeface.MONOSPACE;
+    private Typeface italicTypeface;
 
     // --- Smooth (sub-row) scrolling. When enabled, scroll/fling motion is
     // tracked in pixels: whole rows still go through emulator.scrollBy(), and
@@ -280,7 +282,7 @@ public class TerminalView extends View {
         setFocusable(true);
         setFocusableInTouchMode(true);
 
-        textPaint.setTypeface(Typeface.MONOSPACE);
+        textPaint.setTypeface(regularTypeface);
         fontSizeSp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getFloat(PREF_FONT_SP, DEFAULT_FONT_SP);
         setTextSizePx(spToPx(fontSizeSp));
@@ -662,6 +664,7 @@ public class TerminalView extends View {
     }
 
     private void setTextSizePx(float px) {
+        textPaint.setTypeface(regularTypeface);
         textPaint.setTextSize(px);
         Paint.FontMetricsInt fm = textPaint.getFontMetricsInt();
         cellWidth = textPaint.measureText("M");
@@ -676,6 +679,21 @@ public class TerminalView extends View {
                 new float[] {underlineThickness, underlineThickness * 2f}, 0f);
         float dash = Math.max(3f, cellWidth * 0.5f);
         dashedEffect = new DashPathEffect(new float[] {dash, dash * 0.5f}, 0f);
+    }
+
+    /**
+     * Sets terminal font faces. A null regular font falls back to Android's
+     * monospace; a null italic font keeps the historical skewed italic.
+     */
+    public void setTerminalFonts(Typeface regular, Typeface italic) {
+        regularTypeface = regular != null ? regular : Typeface.MONOSPACE;
+        italicTypeface = italic;
+        textPaint.setTypeface(regularTypeface);
+        setTextSizePx(spToPx(fontSizeSp));
+        if (getWidth() > 0) {
+            updateGridSize(getWidth(), getHeight());
+        }
+        invalidate();
     }
 
     private float spToPx(float sp) {
@@ -1535,9 +1553,11 @@ public class TerminalView extends View {
     }
 
     private void applyStyle(int fg, int attr) {
+        boolean italic = (attr & TerminalNative.ATTR_ITALIC) != 0;
         textPaint.setColor(fg);
+        textPaint.setTypeface(italic && italicTypeface != null ? italicTypeface : regularTypeface);
         textPaint.setFakeBoldText((attr & TerminalNative.ATTR_BOLD) != 0);
-        textPaint.setTextSkewX((attr & TerminalNative.ATTR_ITALIC) != 0 ? -0.25f : 0);
+        textPaint.setTextSkewX(italic && italicTypeface == null ? -0.25f : 0);
         // Underlines are stroked separately by drawUnderline so the engine's
         // 4:2..4:5 styles render; Paint's underline only does a solid line.
         textPaint.setStrikeThruText((attr & TerminalNative.ATTR_STRIKE) != 0);

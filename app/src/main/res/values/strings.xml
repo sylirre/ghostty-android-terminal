@@ -91,7 +91,7 @@
 
     <!-- Settings: Terminal theme -->
     <string name="setting_theme_title">Terminal theme</string>
-    <string name="setting_theme_summary">Colors for the terminal: pick a preset or build your own palette.</string>
+    <string name="setting_theme_summary">Colors, wallpaper, cursor, and font files for the terminal.</string>
 
     <!-- Theme editor -->
     <string name="theme_activity_title">Terminal theme</string>
@@ -130,6 +130,13 @@
     <string name="theme_cursor_block">Block</string>
     <string name="theme_cursor_underline">Underline</string>
     <string name="theme_cursor_bar">Bar</string>
+    <string name="theme_font_default">Default font</string>
+    <string name="theme_font_italic">Italic font</string>
+    <string name="theme_font_choose">Choose font…</string>
+    <string name="theme_font_change">Change font…</string>
+    <string name="theme_font_remove">Remove</string>
+    <string name="theme_font_failed">Couldn\'t load that font.</string>
+    <string name="theme_font_removed">Font removed</string>
     <string-array name="theme_ansi_names">
         <item>Black</item>
         <item>Red</item>

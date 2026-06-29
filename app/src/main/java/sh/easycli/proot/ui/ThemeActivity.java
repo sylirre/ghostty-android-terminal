@@ -53,6 +53,8 @@ public final class ThemeActivity extends Activity {
     private static final int CODE_CURSOR = 102;
 
     private static final int REQ_PICK_BG_IMAGE = 1;
+    private static final int REQ_PICK_DEFAULT_FONT = 2;
+    private static final int REQ_PICK_ITALIC_FONT = 3;
 
     private ThemeStore store;
     private AppSettings settings;
@@ -86,6 +88,11 @@ public final class ThemeActivity extends Activity {
     };
     private Button btnCursorStyle;
     private Switch cursorBlink;
+
+    // Terminal font files: global appearance settings. A missing italic file
+    // falls back to synthesized skew italics in TerminalView.
+    private Button btnFontDefaultChoose, btnFontDefaultRemove;
+    private Button btnFontItalicChoose, btnFontItalicRemove;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,6 +134,7 @@ public final class ThemeActivity extends Activity {
 
         setupBackgroundControls();
         setupCursorControls();
+        setupFontControls();
         buildSwatchGrid();
         loadInto(store.current());
     }
@@ -252,11 +260,20 @@ public final class ThemeActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK_BG_IMAGE || resultCode != RESULT_OK || data == null) {
+        if (resultCode != RESULT_OK || data == null) {
             return;
         }
         Uri uri = data.getData();
         if (uri == null) return;
+        if (requestCode == REQ_PICK_DEFAULT_FONT) {
+            importFont(uri, TerminalFontStore.DEFAULT);
+            return;
+        }
+        if (requestCode == REQ_PICK_ITALIC_FONT) {
+            importFont(uri, TerminalFontStore.ITALIC);
+            return;
+        }
+        if (requestCode != REQ_PICK_BG_IMAGE) return;
         try {
             String path = BackgroundImageStore.importFrom(this, uri);
             if (path == null) {
@@ -365,6 +382,81 @@ public final class ThemeActivity extends Activity {
 
     private void applyCursorToPreview() {
         preview.setCursor(settings.cursorStyle(), settings.cursorBlink());
+    }
+
+    // --- Terminal fonts ---
+
+    private void setupFontControls() {
+        btnFontDefaultChoose = findViewById(R.id.theme_font_default_choose);
+        btnFontDefaultRemove = findViewById(R.id.theme_font_default_remove);
+        btnFontItalicChoose = findViewById(R.id.theme_font_italic_choose);
+        btnFontItalicRemove = findViewById(R.id.theme_font_italic_remove);
+
+        btnFontDefaultChoose.setOnClickListener(v -> pickFont(REQ_PICK_DEFAULT_FONT));
+        btnFontItalicChoose.setOnClickListener(v -> pickFont(REQ_PICK_ITALIC_FONT));
+        btnFontDefaultRemove.setOnClickListener(v -> removeFont(TerminalFontStore.DEFAULT));
+        btnFontItalicRemove.setOnClickListener(v -> removeFont(TerminalFontStore.ITALIC));
+        updateFontButtons();
+    }
+
+    private void pickFont(int requestCode) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
+                "font/*",
+                "application/font-sfnt",
+                "application/font-woff",
+                "application/vnd.ms-fontobject",
+                "application/x-font-ttf",
+                "application/x-font-otf",
+                "application/octet-stream",
+        });
+        try {
+            startActivityForResult(intent, requestCode);
+        } catch (ActivityNotFoundException e) {
+            toast(R.string.theme_font_failed);
+        }
+    }
+
+    private void importFont(Uri uri, int kind) {
+        try {
+            String path = TerminalFontStore.importFrom(this, uri, kind);
+            if (path == null) {
+                toast(R.string.theme_font_failed);
+                return;
+            }
+            if (kind == TerminalFontStore.ITALIC) {
+                settings.setTerminalItalicFontPath(path);
+            } else {
+                settings.setTerminalFontPath(path);
+            }
+            updateFontButtons();
+        } catch (IOException e) {
+            toast(R.string.theme_font_failed);
+        }
+    }
+
+    private void removeFont(int kind) {
+        TerminalFontStore.clear(this, kind);
+        if (kind == TerminalFontStore.ITALIC) {
+            settings.setTerminalItalicFontPath(null);
+        } else {
+            settings.setTerminalFontPath(null);
+        }
+        updateFontButtons();
+        toast(R.string.theme_font_removed);
+    }
+
+    private void updateFontButtons() {
+        boolean hasDefault = settings.terminalFontPath() != null;
+        boolean hasItalic = settings.terminalItalicFontPath() != null;
+        btnFontDefaultChoose.setText(hasDefault
+                ? R.string.theme_font_change : R.string.theme_font_choose);
+        btnFontItalicChoose.setText(hasItalic
+                ? R.string.theme_font_change : R.string.theme_font_choose);
+        btnFontDefaultRemove.setVisibility(hasDefault ? View.VISIBLE : View.GONE);
+        btnFontItalicRemove.setVisibility(hasItalic ? View.VISIBLE : View.GONE);
     }
 
     // --- Swatch grid ---

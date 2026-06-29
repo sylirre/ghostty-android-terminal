@@ -12,6 +12,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -238,6 +239,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         applyTheme();
         // Pick up a wallpaper chosen/removed in ThemeActivity.
         applyBackgroundImage();
+        // Pick up font choices made in ThemeActivity.
+        applyTerminalFonts();
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
@@ -290,6 +293,19 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
         int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);
         terminal.setBackgroundImage(bmp, alpha);
+    }
+
+    /** Loads custom terminal font files, forgetting paths that no longer decode. */
+    private void applyTerminalFonts() {
+        String regularPath = settings.terminalFontPath();
+        Typeface regular = TerminalFontStore.load(regularPath);
+        if (regularPath != null && regular == null) settings.setTerminalFontPath(null);
+
+        String italicPath = settings.terminalItalicFontPath();
+        Typeface italic = TerminalFontStore.load(italicPath);
+        if (italicPath != null && italic == null) settings.setTerminalItalicFontPath(null);
+
+        terminal.setTerminalFonts(regular, italic);
     }
 
     private boolean debianByDefault() {
