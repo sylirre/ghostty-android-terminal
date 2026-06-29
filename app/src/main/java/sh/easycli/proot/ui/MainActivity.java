@@ -18,10 +18,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
-import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
@@ -76,7 +77,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
-    private static final long BELL_THROTTLE_MS = 200;
+    private static final long BELL_VIBRATION_MS = 300;
+    private static final long BELL_THROTTLE_MS = BELL_VIBRATION_MS;
 
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
@@ -919,10 +921,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         lastBellUptime = now;
         int mode = settings.terminalBellMode();
         if (mode == AppSettings.BELL_HAPTIC) {
-            terminal.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            vibrateBell();
         } else if (mode == AppSettings.BELL_SCREEN_FLASH) {
             terminal.flashBell();
         }
+    }
+
+    private void vibrateBell() {
+        Vibrator vibrator = getSystemService(Vibrator.class);
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+        vibrator.vibrate(VibrationEffect.createOneShot(
+                BELL_VIBRATION_MS, VibrationEffect.DEFAULT_AMPLITUDE));
     }
 
     @Override
