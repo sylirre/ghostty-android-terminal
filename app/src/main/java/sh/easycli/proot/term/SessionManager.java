@@ -53,21 +53,31 @@ public final class SessionManager {
                         context.getCacheDir().getAbsolutePath());
         TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
                 cellHeightPx, scrollbackLines, command, listener);
-        sessions.add(s);
+        synchronized (this) {
+            sessions.add(s);
+        }
         return s;
     }
 
     public List<TerminalSession> sessions() {
-        return sessions;
+        synchronized (this) {
+            return new ArrayList<>(sessions);
+        }
     }
 
     public int indexOf(TerminalSession s) {
-        return sessions.indexOf(s);
+        synchronized (this) {
+            return sessions.indexOf(s);
+        }
     }
 
-    public void close(TerminalSession s) {
-        s.close();
-        sessions.remove(s);
+    public boolean close(TerminalSession s) {
+        boolean removed;
+        synchronized (this) {
+            removed = sessions.remove(s);
+        }
+        if (removed) s.close();
+        return removed;
     }
 
     /**
@@ -77,13 +87,19 @@ public final class SessionManager {
      * relaunch to re-attach to.
      */
     public void closeAll() {
-        for (TerminalSession s : sessions) {
+        List<TerminalSession> copy;
+        synchronized (this) {
+            copy = new ArrayList<>(sessions);
+            sessions.clear();
+        }
+        for (TerminalSession s : copy) {
             s.close();
         }
-        sessions.clear();
     }
 
     public boolean isEmpty() {
-        return sessions.isEmpty();
+        synchronized (this) {
+            return sessions.isEmpty();
+        }
     }
 }

@@ -451,15 +451,25 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     private void closeTab(TerminalSession s) {
+        int closedIndex = sessions.indexOf(s);
+        if (closedIndex < 0) {
+            if (sessions.isEmpty()) {
+                terminal.attachSession(null);
+                current = null;
+            }
+            updateTabs();
+            return;
+        }
         sessions.close(s);
-        if (sessions.isEmpty()) {
+        List<TerminalSession> remaining = sessions.sessions();
+        if (remaining.isEmpty()) {
             SessionService.stop(this);
             finishAndRemoveTask();
             return;
         }
         SessionService.refresh(this); // reflect the new count in the notification
         if (s == current) {
-            switchTo(sessions.sessions().get(sessions.sessions().size() - 1));
+            switchTo(remaining.get(Math.min(closedIndex, remaining.size() - 1)));
         } else {
             updateTabs();
         }
