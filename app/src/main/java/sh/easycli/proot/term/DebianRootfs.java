@@ -208,6 +208,16 @@ public final class DebianRootfs {
      * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
      */
     public static SessionCommand command(Context ctx, String shell) throws IOException {
+        return command(ctx, shell, false);
+    }
+
+    /**
+     * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
+     * @param bindExternalStorage when true, Android shared storage is bound
+     *                            under /mnt for this new PRoot session.
+     */
+    public static SessionCommand command(Context ctx, String shell,
+            boolean bindExternalStorage) throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Debian rootfs not installed");
         if (!hasShell(dir(ctx))) {
             throw new IOException("Debian rootfs is incomplete: /bin/bash is "
@@ -226,33 +236,40 @@ public final class DebianRootfs {
         File tmp = new File(ctx.getFilesDir(), "proot-tmp");
         tmp.mkdirs();
 
-        String[] argv = {
-                "proot",
-                "--kill-on-exit",  // no orphaned tracees after bash exits
-                "--link2symlink",  // apps can't hard-link; dpkg needs ln to work
-                "-0",              // fake uid/gid 0: apt/dpkg insist on root
-                "-r", dir(ctx).getAbsolutePath(),
-                "-w", "/root",
-                "-b", "/dev",
-                "-b", "/proc",
-                "-b", "/sys",
-                // env -i: the host environment (incl. PROOT_*) stops here;
-                // the guest gets a clean Debian login environment.
-                "/usr/bin/env", "-i",
-                "HOME=/root",
-                "USER=root",
-                "TERM=xterm-256color",
-                "LANG=C.UTF-8",
-                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                shell, "--login",
-        };
+        List<String> argv = new ArrayList<>();
+        argv.add("proot");
+        argv.add("--kill-on-exit");  // no orphaned tracees after bash exits
+        argv.add("--link2symlink");  // apps can't hard-link; dpkg needs ln to work
+        argv.add("-0");              // fake uid/gid 0: apt/dpkg insist on root
+        argv.add("-r");
+        argv.add(dir(ctx).getAbsolutePath());
+        argv.add("-w");
+        argv.add("/root");
+        argv.add("-b");
+        argv.add("/dev");
+        argv.add("-b");
+        argv.add("/proc");
+        argv.add("-b");
+        argv.add("/sys");
+        if (bindExternalStorage) argv.addAll(StorageBindings.prootArgs(ctx));
+        // env -i: the host environment (incl. PROOT_*) stops here;
+        // the guest gets a clean Debian login environment.
+        argv.add("/usr/bin/env");
+        argv.add("-i");
+        argv.add("HOME=/root");
+        argv.add("USER=root");
+        argv.add("TERM=xterm-256color");
+        argv.add("LANG=C.UTF-8");
+        argv.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        argv.add(shell);
+        argv.add("--login");
         String[] env = {
                 "PROOT_LOADER=" + loader.getAbsolutePath(),
                 "PROOT_TMP_DIR=" + tmp.getAbsolutePath(),
                 "PATH=/system/bin",
                 "HOME=" + ctx.getFilesDir().getAbsolutePath(),
         };
-        return new SessionCommand(null, argv, env,
+        return new SessionCommand(null, argv.toArray(new String[0]), env,
                 ctx.getFilesDir().getAbsolutePath(), "deb", true);
     }
 

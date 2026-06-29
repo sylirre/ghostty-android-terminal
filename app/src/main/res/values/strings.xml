@@ -45,6 +45,13 @@
     <string name="setting_mouse_tracking_title">Mouse reporting</string>
     <string name="setting_mouse_tracking_summary">Send taps and swipes to programs that support the mouse: a tap is a left click, a swipe is wheel scroll (vertical and horizontal). Only active while a program enables mouse tracking.</string>
 
+    <!-- Settings: Storage binding -->
+    <string name="setting_bind_storage_title">Bind external storage</string>
+    <string name="setting_bind_storage_summary">Bind Android shared storage into newly opened Debian sessions as /mnt/shared, with standard folders under /mnt.</string>
+    <string name="storage_binding_enabled">Storage binding enabled for new Debian sessions</string>
+    <string name="storage_permission_denied">Storage permission is required to bind shared storage.</string>
+    <string name="storage_permission_settings_unavailable">Storage permission settings are not available on this device.</string>
+
     <!-- Settings: Terminal bell -->
     <string name="setting_terminal_bell_title">Terminal bell</string>
     <string name="setting_terminal_bell_summary">Feedback when the active terminal session sends BEL.</string>

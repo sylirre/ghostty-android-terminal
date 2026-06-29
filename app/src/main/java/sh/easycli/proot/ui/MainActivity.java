@@ -18,6 +18,7 @@ import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
@@ -76,6 +77,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     public static final String EXTRA_FORCE_SHELL = "sh.easycli.proot.FORCE_SHELL";
 
     private static final int REQ_POST_NOTIFICATIONS = 1;
+    private static final int REQ_STORAGE_PERMISSION = 2;
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
@@ -93,6 +95,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private ThemeStore themeStore;
     private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
+    private boolean pendingEnableStorageBinding;
     private long lastBellUptime;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
@@ -254,6 +257,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        disableStorageBindingIfPermissionRevoked();
+        completePendingStorageBindingIfGranted();
         if (current != null && settings.touchKeyboard()) showKeyboard();
     }
 
@@ -347,10 +352,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     private void createSession(boolean debian) {
         try {
+            boolean bindExternalStorage = storageBindingEnabledForNewSession();
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
-                    settings.scrollbackLines(), debian, settings.prootLoginShell(), this);
+                    settings.scrollbackLines(), debian, settings.prootLoginShell(),
+                    bindExternalStorage, this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
             if (settings.touchKeyboard()) showKeyboard();
@@ -534,6 +541,11 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setMouseTracking(enabled);
                     terminal.setMouseTracking(enabled);
                 }));
+        items.add(new Setting.RequestToggle(
+                getString(R.string.setting_bind_storage_title),
+                getString(R.string.setting_bind_storage_summary),
+                settings::bindExternalStorage,
+                this::setBindExternalStorageRequested));
         items.add(new Setting.Choice(
                 getString(R.string.setting_terminal_bell_title),
                 getString(R.string.setting_terminal_bell_summary),
@@ -614,6 +626,90 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     this::confirmRestore));
         }
         SettingsDialog.show(this, items);
+    }
+
+    private boolean setBindExternalStorageRequested(boolean enabled) {
+        if (!enabled) {
+            pendingEnableStorageBinding = false;
+            settings.setBindExternalStorage(false);
+            return true;
+        }
+        if (hasStorageBindingPermission()) {
+            settings.setBindExternalStorage(true);
+            return true;
+        }
+        pendingEnableStorageBinding = true;
+        requestStorageBindingPermission();
+        return false;
+    }
+
+    private boolean storageBindingEnabledForNewSession() {
+        if (!settings.bindExternalStorage()) return false;
+        if (hasStorageBindingPermission()) return true;
+        settings.setBindExternalStorage(false);
+        return false;
+    }
+
+    private void disableStorageBindingIfPermissionRevoked() {
+        if (settings.bindExternalStorage() && !hasStorageBindingPermission()) {
+            settings.setBindExternalStorage(false);
+        }
+    }
+
+    private boolean hasStorageBindingPermission() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            return Environment.isExternalStorageManager();
+        }
+        return checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestStorageBindingPermission() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            Intent appSettings = new Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            try {
+                startActivity(appSettings);
+            } catch (ActivityNotFoundException e) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (ActivityNotFoundException ignored) {
+                    pendingEnableStorageBinding = false;
+                    Toast.makeText(this, R.string.storage_permission_settings_unavailable,
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+        } else {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    REQ_STORAGE_PERMISSION);
+        }
+    }
+
+    private void completePendingStorageBindingIfGranted() {
+        if (!pendingEnableStorageBinding || Build.VERSION.SDK_INT < 30) return;
+        pendingEnableStorageBinding = false;
+        if (hasStorageBindingPermission()) {
+            settings.setBindExternalStorage(true);
+            Toast.makeText(this, R.string.storage_binding_enabled, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, R.string.storage_permission_denied, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_STORAGE_PERMISSION) return;
+        pendingEnableStorageBinding = false;
+        if (grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            settings.setBindExternalStorage(true);
+            Toast.makeText(this, R.string.storage_binding_enabled, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, R.string.storage_permission_denied, Toast.LENGTH_LONG).show();
+        }
     }
 
     // --- Debian rootfs settings ---

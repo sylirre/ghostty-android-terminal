@@ -38,8 +38,16 @@ public final class SessionManager {
     public TerminalSession create(Context context, int cols, int rows,
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
             String loginShell, TerminalSession.Listener listener) throws IOException {
+        return create(context, cols, rows, cellWidthPx, cellHeightPx, scrollbackLines,
+                debian, loginShell, false, listener);
+    }
+
+    public TerminalSession create(Context context, int cols, int rows,
+            int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
+            String loginShell, boolean bindExternalStorage,
+            TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
-                ? DebianRootfs.command(context, loginShell)
+                ? DebianRootfs.command(context, loginShell, bindExternalStorage)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());

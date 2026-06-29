@@ -33,6 +33,7 @@ public final class AppSettings {
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
+    private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
     private static final String KEY_TERMINAL_BELL_LEGACY = "terminal_bell";
     private static final String KEY_TERMINAL_BELL_MODE = "terminal_bell_mode";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
@@ -285,6 +286,19 @@ public final class AppSettings {
 
     public void setMouseTracking(boolean enabled) {
         prefs.edit().putBoolean(KEY_MOUSE_TRACKING, enabled).apply();
+    }
+
+    /**
+     * When true, newly opened Debian-under-PRoot sessions bind Android shared
+     * storage into the guest under /mnt. Existing sessions keep the mount table
+     * they were spawned with.
+     */
+    public boolean bindExternalStorage() {
+        return prefs.getBoolean(KEY_BIND_EXTERNAL_STORAGE, false);
+    }
+
+    public void setBindExternalStorage(boolean enabled) {
+        prefs.edit().putBoolean(KEY_BIND_EXTERNAL_STORAGE, enabled).apply();
     }
 
     /** BEL feedback mode for the active terminal session. Defaults to haptic feedback. */
