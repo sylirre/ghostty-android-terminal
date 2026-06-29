@@ -18,6 +18,7 @@ public final class AppSettings {
 
     private static final String FILE = "settings";
     private static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
+    private static final String KEY_IMMERSIVE_MODE = "immersive_mode";
     private static final String KEY_RICH_KEYBOARD = "rich_keyboard";
     private static final String KEY_EXTRA_KEYS_ENABLED = "extra_keys_enabled";
     private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
@@ -68,6 +69,15 @@ public final class AppSettings {
 
     public void setKeepScreenOn(boolean enabled) {
         prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply();
+    }
+
+    /** When true, hide the status and navigation bars while the terminal is foreground. */
+    public boolean immersiveMode() {
+        return prefs.getBoolean(KEY_IMMERSIVE_MODE, false);
+    }
+
+    public void setImmersiveMode(boolean enabled) {
+        prefs.edit().putBoolean(KEY_IMMERSIVE_MODE, enabled).apply();
     }
 
     /**

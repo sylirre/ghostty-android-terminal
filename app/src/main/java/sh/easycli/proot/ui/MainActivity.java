@@ -28,6 +28,7 @@ import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.text.InputType;
@@ -126,6 +127,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         applyKeepScreenOn(settings.keepScreenOn());
+        applyImmersiveMode(settings.immersiveMode());
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         terminal.setSmoothScroll(settings.smoothScroll());
@@ -257,6 +259,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        applyImmersiveMode(settings.immersiveMode());
         disableStorageBindingIfPermissionRevoked();
         completePendingStorageBindingIfGranted();
         if (current != null && settings.touchKeyboard()) showKeyboard();
@@ -499,6 +502,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 enabled -> {
                     settings.setKeepScreenOn(enabled);
                     applyKeepScreenOn(enabled);
+                }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_immersive_mode_title),
+                getString(R.string.setting_immersive_mode_summary),
+                settings::immersiveMode,
+                enabled -> {
+                    settings.setImmersiveMode(enabled);
+                    applyImmersiveMode(enabled);
                 }));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_touch_keyboard_title),
@@ -985,6 +996,35 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+    }
+
+    /** Hides or restores the status/navigation bars for a fullscreen terminal surface. */
+    private void applyImmersiveMode(boolean enabled) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) return;
+            if (enabled) {
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsets.Type.systemBars());
+            } else {
+                controller.show(WindowInsets.Type.systemBars());
+            }
+            return;
+        }
+
+        View decor = getWindow().getDecorView();
+        if (enabled) {
+            decor.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        } else {
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         }
     }
 
