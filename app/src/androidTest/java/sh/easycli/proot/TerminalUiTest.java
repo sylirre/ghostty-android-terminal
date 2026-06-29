@@ -76,6 +76,12 @@ public class TerminalUiTest {
 
     @Before
     public void launch() {
+        // Preferences are process/app scoped and instrumentation does not
+        // guarantee this class runs first. Start from the stock toolbar so
+        // matchers below are not affected by another test's saved layout.
+        new ExtraKeysConfig(ApplicationProvider.getApplicationContext()).reset();
+        new AppSettings(ApplicationProvider.getApplicationContext())
+                .setExtraKeysEnabled(true);
         // Force the plain Android shell: these tests assert sh-specific
         // behavior and tab titles, and must not depend on whether a Debian
         // rootfs is bundled/installed (DebianSessionTest covers PRoot).
@@ -236,7 +242,7 @@ public class TerminalUiTest {
 
     @Test
     public void newTabCreatesAndSwitchesSessions() {
-        onView(withText("+")).perform(click());
+        onView(withContentDescription(R.string.tab_new_description)).perform(click());
         waitFor("two sessions", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 2);
         onView(withText("sh:2")).check(matches(isDisplayed()));
@@ -512,10 +518,10 @@ public class TerminalUiTest {
 
     @Test
     public void closingActiveTabSwitchesToRemaining() {
-        onView(withText("+")).perform(click());
+        onView(withContentDescription(R.string.tab_new_description)).perform(click());
         waitFor("two sessions", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 2);
-        onView(withText("×")).perform(click());
+        onView(withContentDescription(R.string.tab_close_description)).perform(click());
         waitFor("one session", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 1);
         onView(withText("sh:1")).check(matches(isDisplayed()));
