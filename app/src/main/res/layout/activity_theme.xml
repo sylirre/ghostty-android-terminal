@@ -133,6 +133,69 @@
 
             </LinearLayout>
 
+            <!-- Custom fonts (global, like the background image): default
+                 (regular) and italic. Bold always stays faux-bold on top of
+                 whichever font is chosen; italic falls back to a faux
+                 (skewed) style when no italic font is set. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/theme_font_default_label"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <Button
+                    android:id="@+id/theme_font_default_choose"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_font_choose" />
+
+                <Button
+                    android:id="@+id/theme_font_default_remove"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_font_remove" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/theme_font_italic_label"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <Button
+                    android:id="@+id/theme_font_italic_choose"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_font_choose" />
+
+                <Button
+                    android:id="@+id/theme_font_italic_remove"
+                    style="?android:attr/buttonStyleSmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/theme_font_remove" />
+
+            </LinearLayout>
+
             <!-- Cursor shape + blink. Global, like the background image, not
                  part of the theme color working copy; a running program can
                  still override the shape (e.g. a bar in vim insert mode). -->

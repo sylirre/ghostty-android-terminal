@@ -24,6 +24,8 @@ public final class AppSettings {
     private static final String KEY_BG_IMAGE_PATH = "bg_image_path";
     private static final String KEY_BG_IMAGE_OPACITY = "bg_image_opacity";
     private static final String KEY_BG_IMAGE_BLUR = "bg_image_blur";
+    private static final String KEY_FONT_DEFAULT_PATH = "font_default_path";
+    private static final String KEY_FONT_ITALIC_PATH = "font_italic_path";
     private static final String KEY_CURSOR_STYLE = "cursor_style";
     private static final String KEY_CURSOR_BLINK = "cursor_blink";
     private static final String KEY_TOUCH_KEYBOARD = "touch_keyboard";
@@ -146,6 +148,41 @@ public final class AppSettings {
     public void setBackgroundImageBlur(int percent) {
         int clamped = Math.max(0, Math.min(100, percent));
         prefs.edit().putInt(KEY_BG_IMAGE_BLUR, clamped).apply();
+    }
+
+    /**
+     * Absolute path to a custom regular/default-weight font file (a copy kept
+     * in app storage by {@link FontStore}), or null to use the built-in
+     * monospace typeface. A global choice, independent of the color theme.
+     */
+    public String customFontDefaultPath() {
+        return prefs.getString(KEY_FONT_DEFAULT_PATH, null);
+    }
+
+    /** Pass null to revert to the built-in monospace typeface. */
+    public void setCustomFontDefaultPath(String path) {
+        if (path == null) {
+            prefs.edit().remove(KEY_FONT_DEFAULT_PATH).apply();
+        } else {
+            prefs.edit().putString(KEY_FONT_DEFAULT_PATH, path).apply();
+        }
+    }
+
+    /**
+     * Absolute path to a custom italic font file, or null to fall back to
+     * faux italic (a skew applied to the default typeface) on italic glyphs.
+     */
+    public String customFontItalicPath() {
+        return prefs.getString(KEY_FONT_ITALIC_PATH, null);
+    }
+
+    /** Pass null to revert to faux (skewed) italic. */
+    public void setCustomFontItalicPath(String path) {
+        if (path == null) {
+            prefs.edit().remove(KEY_FONT_ITALIC_PATH).apply();
+        } else {
+            prefs.edit().putString(KEY_FONT_ITALIC_PATH, path).apply();
+        }
     }
 
     /**

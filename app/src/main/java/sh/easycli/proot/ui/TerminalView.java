@@ -34,6 +34,7 @@ import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.OverScroller;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -134,6 +135,12 @@ public class TerminalView extends View {
     private boolean restartInputPending; // a debounced restartInput is queued
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    // Custom default/italic fonts (AppSettings.customFontDefaultPath/
+    // customFontItalicPath, set via setFontFiles). italicTypeface null means
+    // no custom italic font is chosen: applyStyle falls back to a faux
+    // (skewed) italic on defaultTypeface, same as before this was added.
+    private Typeface defaultTypeface = Typeface.MONOSPACE;
+    private Typeface italicTypeface;
     private final Paint bgPaint = new Paint();
     // Stylized underlines (SGR 4:2..4:5) are stroked by hand — Paint only does a
     // single solid line. The dash effects depend only on the cell metrics, so
@@ -746,6 +753,36 @@ public class TerminalView extends View {
         backgroundImage = bmp;
         backgroundImageAlpha = alpha;
         invalidate();
+    }
+
+    /**
+     * Loads custom font files for the default and italic roles, falling back
+     * to the built-in monospace typeface when {@code defaultPath} is null,
+     * missing, or not a valid font, and to a faux (skewed) italic on the
+     * default typeface when {@code italicPath} is null/invalid (see
+     * {@link #applyStyle}). Cell metrics depend on the default typeface's own
+     * font metrics, so this recomputes them and reflows the grid exactly like
+     * a font-size change.
+     */
+    public void setFontFiles(String defaultPath, String italicPath) {
+        defaultTypeface = loadTypeface(defaultPath, Typeface.MONOSPACE);
+        italicTypeface = loadTypeface(italicPath, null);
+        textPaint.setTypeface(defaultTypeface);
+        setTextSizePx(spToPx(fontSizeSp));
+        if (getWidth() > 0) {
+            updateGridSize(getWidth(), getHeight());
+        }
+        invalidate();
+    }
+
+    private static Typeface loadTypeface(String path, Typeface fallback) {
+        if (path == null) return fallback;
+        try {
+            return Typeface.createFromFile(new File(path));
+        } catch (RuntimeException e) {
+            // Missing/corrupt file: never let a bad font path crash the terminal.
+            return fallback;
+        }
     }
 
     /** Binds a session; pass null to detach. Resizes it to fit this view. */
@@ -1537,7 +1574,14 @@ public class TerminalView extends View {
     private void applyStyle(int fg, int attr) {
         textPaint.setColor(fg);
         textPaint.setFakeBoldText((attr & TerminalNative.ATTR_BOLD) != 0);
-        textPaint.setTextSkewX((attr & TerminalNative.ATTR_ITALIC) != 0 ? -0.25f : 0);
+        boolean italic = (attr & TerminalNative.ATTR_ITALIC) != 0;
+        if (italic && italicTypeface != null) {
+            textPaint.setTypeface(italicTypeface);
+            textPaint.setTextSkewX(0);
+        } else {
+            textPaint.setTypeface(defaultTypeface);
+            textPaint.setTextSkewX(italic ? -0.25f : 0);
+        }
         // Underlines are stroked separately by drawUnderline so the engine's
         // 4:2..4:5 styles render; Paint's underline only does a solid line.
         textPaint.setStrikeThruText((attr & TerminalNative.ATTR_STRIKE) != 0);

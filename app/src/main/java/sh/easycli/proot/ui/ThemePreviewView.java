@@ -36,6 +36,11 @@ public final class ThemePreviewView extends View {
     private Bitmap backgroundImage;
     private int backgroundImageAlpha = 255;
 
+    // Custom default/italic fonts (mirrors TerminalView.setFontFiles). null
+    // italicTypeface means faux (skewed) italic on defaultTypeface.
+    private Typeface defaultTypeface = Typeface.MONOSPACE;
+    private Typeface italicTypeface;
+
     private int cursorStyle = TerminalNative.CURSOR_BLOCK;
     private boolean cursorBlink;
     // Current blink phase; always true (cursor shown) when blink is off.
@@ -62,6 +67,18 @@ public final class ThemePreviewView extends View {
 
     public void setTheme(TerminalTheme theme) {
         this.theme = theme;
+        invalidate();
+    }
+
+    /**
+     * Sets the fonts to preview, mirroring {@link TerminalView#setFontFiles}:
+     * {@code defaultTf} is used for all text; {@code italicTf} may be null,
+     * meaning "use faux (skewed) italic on defaultTf" for the italic sample
+     * line, matching the terminal's own fallback.
+     */
+    public void setFont(Typeface defaultTf, Typeface italicTf) {
+        this.defaultTypeface = defaultTf != null ? defaultTf : Typeface.MONOSPACE;
+        this.italicTypeface = italicTf;
         invalidate();
     }
 
@@ -111,15 +128,17 @@ public final class ThemePreviewView extends View {
         removeCallbacks(blinkTick);
     }
 
-    /** One colored, optionally-bold run of text on a preview line. */
+    /** One colored, optionally bold/italic run of text on a preview line. */
     private static final class Seg {
         final String text;
         final int color;
         final boolean bold;
-        Seg(String text, int color, boolean bold) {
+        final boolean italic;
+        Seg(String text, int color, boolean bold, boolean italic) {
             this.text = text;
             this.color = color;
             this.bold = bold;
+            this.italic = italic;
         }
     }
 
@@ -133,16 +152,18 @@ public final class ThemePreviewView extends View {
         int[] a = theme.ansi;
         // ANSI indices: 1 red, 2 green, 3 yellow, 4 blue, 5 magenta, 6 cyan.
         Seg[][] lines = {
-            { new Seg("user", a[2], true), new Seg("@", fg, false),
-              new Seg("debian", a[2], true), new Seg(":", fg, false),
-              new Seg("~/src", a[4], true), new Seg("$ ", fg, false),
-              new Seg("ls --color", fg, false) },
-            { new Seg("Desktop  ", a[4], true), new Seg("photo.jpg  ", a[5], false),
-              new Seg("build.sh  ", a[2], false), new Seg("README.md", fg, false) },
-            { new Seg("error: ", a[1], true), new Seg("file not found", fg, false) },
-            { new Seg("warning: ", a[3], false), new Seg("deprecated call", fg, false) },
+            { new Seg("user", a[2], true, false), new Seg("@", fg, false, false),
+              new Seg("debian", a[2], true, false), new Seg(":", fg, false, false),
+              new Seg("~/src", a[4], true, false), new Seg("$ ", fg, false, false),
+              new Seg("ls --color", fg, false, false) },
+            { new Seg("Desktop  ", a[4], true, false), new Seg("photo.jpg  ", a[5], false, false),
+              new Seg("build.sh  ", a[2], false, false), new Seg("README.md", fg, false, false) },
+            { new Seg("error: ", a[1], true, false), new Seg("file not found", fg, false, false) },
+            { new Seg("warning: ", a[3], false, true), new Seg("deprecated call", fg, false, true) },
         };
 
+        textPaint.setTypeface(defaultTypeface);
+        textPaint.setTextSkewX(0);
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float lineHeight = (fm.descent - fm.ascent) * 1.15f;
         float pad = dp(10);
@@ -154,6 +175,13 @@ public final class ThemePreviewView extends View {
             for (Seg s : line) {
                 textPaint.setColor(s.color);
                 textPaint.setFakeBoldText(s.bold);
+                if (s.italic && italicTypeface != null) {
+                    textPaint.setTypeface(italicTypeface);
+                    textPaint.setTextSkewX(0);
+                } else {
+                    textPaint.setTypeface(defaultTypeface);
+                    textPaint.setTextSkewX(s.italic ? -0.25f : 0);
+                }
                 canvas.drawText(s.text, x, y, textPaint);
                 x += textPaint.measureText(s.text);
             }
@@ -165,8 +193,11 @@ public final class ThemePreviewView extends View {
             y += lineHeight;
         }
 
-        // ANSI palette strip: 16 swatches across the width.
+        // ANSI palette strip: 16 swatches across the width. Reset the text
+        // state the loop above may have left on an italic run.
         textPaint.setFakeBoldText(false);
+        textPaint.setTypeface(defaultTypeface);
+        textPaint.setTextSkewX(0);
         y += dp(6);
         float stripH = dp(18);
         float available = getWidth() - 2 * pad;

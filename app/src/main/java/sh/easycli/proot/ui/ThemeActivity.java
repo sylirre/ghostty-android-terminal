@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,6 +24,7 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +55,8 @@ public final class ThemeActivity extends Activity {
     private static final int CODE_CURSOR = 102;
 
     private static final int REQ_PICK_BG_IMAGE = 1;
+    private static final int REQ_PICK_FONT_DEFAULT = 2;
+    private static final int REQ_PICK_FONT_ITALIC = 3;
 
     private ThemeStore store;
     private AppSettings settings;
@@ -74,6 +78,13 @@ public final class ThemeActivity extends Activity {
     private View bgOpacityRow, bgBlurRow;
     private SeekBar bgOpacity, bgBlur;
     private Bitmap bgPreviewBitmap;
+
+    // Custom default/italic fonts (also a global setting, not part of the
+    // theme's color working copy). The stored paths live in AppSettings;
+    // this activity only imports/removes files via FontStore and refreshes
+    // the button labels + preview.
+    private Button btnFontDefaultChoose, btnFontDefaultRemove;
+    private Button btnFontItalicChoose, btnFontItalicRemove;
 
     // Cursor shape + blink: global settings (like the background image), not
     // part of the color working copy, so editing them never marks the theme
@@ -126,6 +137,7 @@ public final class ThemeActivity extends Activity {
         btnDelete.setOnClickListener(v -> deleteCurrent());
 
         setupBackgroundControls();
+        setupFontControls();
         setupCursorControls();
         buildSwatchGrid();
         loadInto(store.current());
@@ -252,11 +264,25 @@ public final class ThemeActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK_BG_IMAGE || resultCode != RESULT_OK || data == null) {
-            return;
-        }
+        if (resultCode != RESULT_OK || data == null) return;
         Uri uri = data.getData();
         if (uri == null) return;
+        switch (requestCode) {
+            case REQ_PICK_BG_IMAGE:
+                importBackgroundImage(uri);
+                break;
+            case REQ_PICK_FONT_DEFAULT:
+                importFont(uri, FontStore.SLOT_DEFAULT);
+                break;
+            case REQ_PICK_FONT_ITALIC:
+                importFont(uri, FontStore.SLOT_ITALIC);
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void importBackgroundImage(Uri uri) {
         try {
             String path = BackgroundImageStore.importFrom(this, uri);
             if (path == null) {
@@ -267,6 +293,25 @@ public final class ThemeActivity extends Activity {
             reloadBackgroundBitmap();
         } catch (IOException e) {
             toast(R.string.theme_bg_image_failed);
+        }
+    }
+
+    private void importFont(Uri uri, String slot) {
+        try {
+            String path = FontStore.importFrom(this, uri, slot);
+            if (path == null) {
+                toast(R.string.theme_font_failed);
+                return;
+            }
+            if (slot.equals(FontStore.SLOT_DEFAULT)) {
+                settings.setCustomFontDefaultPath(path);
+            } else {
+                settings.setCustomFontItalicPath(path);
+            }
+            refreshFontLabels();
+            reloadPreviewFonts();
+        } catch (IOException e) {
+            toast(R.string.theme_font_failed);
         }
     }
 
@@ -306,6 +351,77 @@ public final class ThemeActivity extends Activity {
         btnBgRemove.setVisibility(hasImage ? View.VISIBLE : View.GONE);
         bgOpacityRow.setVisibility(hasImage ? View.VISIBLE : View.GONE);
         bgBlurRow.setVisibility(hasImage ? View.VISIBLE : View.GONE);
+    }
+
+    // --- Custom fonts (global, like the wallpaper and cursor) ---
+
+    private void setupFontControls() {
+        btnFontDefaultChoose = findViewById(R.id.theme_font_default_choose);
+        btnFontDefaultRemove = findViewById(R.id.theme_font_default_remove);
+        btnFontItalicChoose = findViewById(R.id.theme_font_italic_choose);
+        btnFontItalicRemove = findViewById(R.id.theme_font_italic_remove);
+
+        btnFontDefaultChoose.setOnClickListener(v -> pickFont(REQ_PICK_FONT_DEFAULT));
+        btnFontDefaultRemove.setOnClickListener(v -> removeFont(FontStore.SLOT_DEFAULT));
+        btnFontItalicChoose.setOnClickListener(v -> pickFont(REQ_PICK_FONT_ITALIC));
+        btnFontItalicRemove.setOnClickListener(v -> removeFont(FontStore.SLOT_ITALIC));
+
+        refreshFontLabels();
+        reloadPreviewFonts();
+    }
+
+    private void pickFont(int requestCode) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        // Font MIME types are registered inconsistently across file managers
+        // (often reported as application/octet-stream, unlike image/*), so
+        // this deliberately doesn't filter by type; FontStore validates the
+        // pick afterward.
+        intent.setType("*/*");
+        try {
+            startActivityForResult(intent, requestCode);
+        } catch (ActivityNotFoundException e) {
+            toast(R.string.theme_font_failed);
+        }
+    }
+
+    private void removeFont(String slot) {
+        FontStore.clear(this, slot);
+        if (slot.equals(FontStore.SLOT_DEFAULT)) {
+            settings.setCustomFontDefaultPath(null);
+        } else {
+            settings.setCustomFontItalicPath(null);
+        }
+        refreshFontLabels();
+        reloadPreviewFonts();
+        toast(R.string.theme_font_removed);
+    }
+
+    private void refreshFontLabels() {
+        boolean hasDefault = settings.customFontDefaultPath() != null;
+        boolean hasItalic = settings.customFontItalicPath() != null;
+        btnFontDefaultChoose.setText(hasDefault
+                ? R.string.theme_font_change : R.string.theme_font_choose);
+        btnFontDefaultRemove.setVisibility(hasDefault ? View.VISIBLE : View.GONE);
+        btnFontItalicChoose.setText(hasItalic
+                ? R.string.theme_font_change : R.string.theme_font_choose);
+        btnFontItalicRemove.setVisibility(hasItalic ? View.VISIBLE : View.GONE);
+    }
+
+    /** Re-decodes the stored fonts (if any) and pushes them to the preview. */
+    private void reloadPreviewFonts() {
+        Typeface def = loadTypefaceOrNull(settings.customFontDefaultPath());
+        Typeface ital = loadTypefaceOrNull(settings.customFontItalicPath());
+        preview.setFont(def != null ? def : Typeface.MONOSPACE, ital);
+    }
+
+    private Typeface loadTypefaceOrNull(String path) {
+        if (path == null) return null;
+        try {
+            return Typeface.createFromFile(new File(path));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     // --- Cursor shape + blink (global, like the wallpaper) ---

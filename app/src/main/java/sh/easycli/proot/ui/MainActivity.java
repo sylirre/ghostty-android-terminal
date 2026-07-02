@@ -238,6 +238,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         applyTheme();
         // Pick up a wallpaper chosen/removed in ThemeActivity.
         applyBackgroundImage();
+        // Pick up default/italic fonts chosen/removed in ThemeActivity.
+        applyFonts();
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
@@ -290,6 +292,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
         int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);
         terminal.setBackgroundImage(bmp, alpha);
+    }
+
+    /**
+     * Loads the global default/italic font paths (if any) and hands them to
+     * the view. A missing or invalid path falls back silently inside
+     * {@link TerminalView#setFontFiles}, so unlike the wallpaper there is no
+     * "forget a stale path" step here — it's cheap to keep retrying, and the
+     * user's choice may become loadable again later.
+     */
+    private void applyFonts() {
+        terminal.setFontFiles(settings.customFontDefaultPath(), settings.customFontItalicPath());
     }
 
     private boolean debianByDefault() {
