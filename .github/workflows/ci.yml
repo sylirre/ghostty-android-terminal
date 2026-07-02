@@ -77,7 +77,11 @@ jobs:
           # Espresso clicks need animations off (docs/testing.md).
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim
-          script: ./gradlew connectedDebugAndroidTest
+          # CI's software-rendered emulator occasionally drops/delays
+          # Espresso input-render round-trips under load, timing out an
+          # otherwise-passing UI test; retry the whole suite once before
+          # failing the job (docs/testing.md).
+          script: ./gradlew connectedDebugAndroidTest || ./gradlew connectedDebugAndroidTest
 
       - name: Upload test reports
         if: failure()
