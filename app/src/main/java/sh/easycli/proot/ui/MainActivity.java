@@ -928,7 +928,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         }
         if (vibrator == null || !vibrator.hasVibrator()) return;
-        vibrator.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
+        vibrator.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE));
     }
 
     /** Plays a short beep for the {@link AppSettings#BELL_SOUND} mode. */
