@@ -62,6 +62,7 @@ public class ExtraKeysView extends LinearLayout {
     private static final int BG = 0xFF21212A;
     private static final int BG_ACTIVE = 0xFF3D5AFE;
     private static final int BG_LOCKED = 0xFF1565C0;
+    private static final int BG_PRESSED = 0xFF50505C;
     private static final int REPEAT_INTERVAL_MS = 80;
     // Floor on a key's tap width so scroll-mode (content-width) keys stay usable.
     private static final int MIN_KEY_WIDTH_DP = 40;
@@ -174,6 +175,22 @@ public class ExtraKeysView extends LinearLayout {
                     updateToggles();
                     return true;
                 });
+                // Immediate press flash; ACTION_UP/CANCEL restore the real resting
+                // color via updateToggles() rather than a hardcoded BG, since a
+                // click may have just changed the active/locked state. Returning
+                // false leaves click/long-click detection untouched.
+                view.setOnTouchListener((v, event) -> {
+                    switch (event.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN:
+                            view.setBackground(buttonBg(BG_PRESSED));
+                            break;
+                        case MotionEvent.ACTION_UP:
+                        case MotionEvent.ACTION_CANCEL:
+                            updateToggles();
+                            break;
+                    }
+                    return false;
+                });
                 break;
             case KEY:
                 wireRepeat(view, () -> { if (terminal != null) terminal.dispatchKey(key.keyCode, key.mods); });
@@ -196,6 +213,7 @@ public class ExtraKeysView extends LinearLayout {
         view.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    view.setBackground(buttonBg(BG_PRESSED));
                     longPressed[0] = false;
                     longPressRun[0] = () -> {
                         longPressed[0] = true;
@@ -213,6 +231,7 @@ public class ExtraKeysView extends LinearLayout {
                     view.postDelayed(longPressRun[0], longPressMs);
                     break;
                 case MotionEvent.ACTION_UP:
+                    view.setBackground(buttonBg(BG));
                     view.removeCallbacks(longPressRun[0]);
                     if (repeatRun[0] != null) {
                         view.removeCallbacks(repeatRun[0]);
@@ -222,6 +241,7 @@ public class ExtraKeysView extends LinearLayout {
                     longPressed[0] = false;
                     break;
                 case MotionEvent.ACTION_CANCEL:
+                    view.setBackground(buttonBg(BG));
                     view.removeCallbacks(longPressRun[0]);
                     if (repeatRun[0] != null) {
                         view.removeCallbacks(repeatRun[0]);
