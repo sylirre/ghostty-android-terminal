@@ -252,6 +252,10 @@ public final class DebianRootfs {
                     Environment.DIRECTORY_DCIM), "mnt/dcim");
             bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
                     Environment.DIRECTORY_MUSIC), "mnt/music");
+            bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS), "mnt/downloads");
+            bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_MOVIES), "mnt/movies");
         }
         argv.addAll(Arrays.asList(
                 // env -i: the host environment (incl. PROOT_*) stops here;
