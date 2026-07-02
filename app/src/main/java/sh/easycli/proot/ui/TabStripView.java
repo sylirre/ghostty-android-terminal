@@ -57,6 +57,7 @@ public class TabStripView extends HorizontalScrollView {
         row.removeAllViews();
         View activeStart = null;
         View activeEnd = null;
+        boolean activeIsLast = activeIndex == titles.size() - 1;
         for (int i = 0; i < titles.size(); i++) {
             final int index = i;
             boolean active = i == activeIndex;
@@ -82,6 +83,10 @@ public class TabStripView extends HorizontalScrollView {
             return true;
         });
         row.addView(add);
+        // The active tab is the newest/last one (the common "just created a
+        // session" case): keep the + reachable too, since it's right next
+        // to its close button with no other tab in between.
+        if (activeIsLast) activeEnd = add;
 
         // Defer to onLayout: the new/moved children have no valid
         // getLeft()/getRight() until this pass' layout has run.
@@ -99,17 +104,21 @@ public class TabStripView extends HorizontalScrollView {
         }
     }
 
-    /** Scrolls just enough to bring [start, end] fully into view, if it isn't already. */
+    /**
+     * Scrolls just enough to bring [start, end] fully into view. When the
+     * range is wider than the viewport, the tail (close/+ controls) wins
+     * over the tab label — those are what the user needs to reach.
+     */
     private void scrollToShow(View start, View end) {
         int viewportWidth = getWidth() - getPaddingLeft() - getPaddingRight();
         if (viewportWidth <= 0) return;
         int left = start.getLeft();
         int right = end.getRight();
         int scrollX = getScrollX();
-        if (right - left > viewportWidth || left < scrollX) {
-            smoothScrollTo(left, 0);
-        } else if (right > scrollX + viewportWidth) {
+        if (right - left >= viewportWidth || right > scrollX + viewportWidth) {
             smoothScrollTo(right - viewportWidth, 0);
+        } else if (left < scrollX) {
+            smoothScrollTo(left, 0);
         }
     }
 
