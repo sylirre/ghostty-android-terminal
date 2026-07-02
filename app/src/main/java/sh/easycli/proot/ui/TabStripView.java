@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -34,6 +35,11 @@ public class TabStripView extends HorizontalScrollView {
     private final LinearLayout row;
     private Listener listener;
 
+    // Set by update() whenever the active tab changes; consumed (and
+    // cleared) in onLayout, once the row's children have real coordinates.
+    private View pendingScrollStart;
+    private View pendingScrollEnd;
+
     public TabStripView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setBackgroundColor(BG);
@@ -49,6 +55,8 @@ public class TabStripView extends HorizontalScrollView {
 
     public void update(List<String> titles, int activeIndex) {
         row.removeAllViews();
+        View activeStart = null;
+        View activeEnd = null;
         for (int i = 0; i < titles.size(); i++) {
             final int index = i;
             boolean active = i == activeIndex;
@@ -56,11 +64,14 @@ public class TabStripView extends HorizontalScrollView {
             tab.setOnClickListener(v -> listener.onTabSelected(index));
             row.addView(tab);
             if (active) {
+                activeStart = tab;
+                activeEnd = tab;
                 TextView close = makeButton("×", true);
                 Glyphs.applyTo(close);  // × → vector icon, not a font glyph
                 close.setContentDescription(getContext().getString(R.string.tab_close_description));
                 close.setOnClickListener(v -> listener.onTabClosed(index));
                 row.addView(close);
+                activeEnd = close;
             }
         }
         TextView add = makeButton("+", false);
@@ -71,6 +82,35 @@ public class TabStripView extends HorizontalScrollView {
             return true;
         });
         row.addView(add);
+
+        // Defer to onLayout: the new/moved children have no valid
+        // getLeft()/getRight() until this pass' layout has run.
+        pendingScrollStart = activeStart;
+        pendingScrollEnd = activeEnd;
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        super.onLayout(changed, l, t, r, b);
+        if (pendingScrollStart != null) {
+            scrollToShow(pendingScrollStart, pendingScrollEnd);
+            pendingScrollStart = null;
+            pendingScrollEnd = null;
+        }
+    }
+
+    /** Scrolls just enough to bring [start, end] fully into view, if it isn't already. */
+    private void scrollToShow(View start, View end) {
+        int viewportWidth = getWidth() - getPaddingLeft() - getPaddingRight();
+        if (viewportWidth <= 0) return;
+        int left = start.getLeft();
+        int right = end.getRight();
+        int scrollX = getScrollX();
+        if (right - left > viewportWidth || left < scrollX) {
+            smoothScrollTo(left, 0);
+        } else if (right > scrollX + viewportWidth) {
+            smoothScrollTo(right - viewportWidth, 0);
+        }
     }
 
     private TextView makeButton(String label, boolean active) {
