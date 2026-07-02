@@ -93,6 +93,22 @@
     <string name="setting_theme_title">Terminal theme</string>
     <string name="setting_theme_summary">Colors for the terminal: pick a preset or build your own palette.</string>
 
+    <!-- Settings: Terminal bell -->
+    <string name="setting_bell_title">Terminal bell</string>
+    <string name="setting_bell_summary">Feedback when a program rings the bell (BEL). Only fires for the active tab.</string>
+    <string-array name="bell_mode_option_labels">
+        <item>Off</item>
+        <item>Flash</item>
+        <item>Vibrate</item>
+        <item>Sound</item>
+    </string-array>
+    <integer-array name="bell_mode_option_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </integer-array>
+
     <!-- Theme editor -->
     <string name="theme_activity_title">Terminal theme</string>
     <string name="theme_done">Done</string>

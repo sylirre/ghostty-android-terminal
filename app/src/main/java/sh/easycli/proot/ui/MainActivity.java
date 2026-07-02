@@ -12,10 +12,17 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
@@ -548,6 +555,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 settings::scrollbackLines,
                 settings::setScrollbackLines));
         items.add(new Setting.Choice(
+                getString(R.string.setting_bell_title),
+                getString(R.string.setting_bell_summary),
+                getResources().getIntArray(R.array.bell_mode_option_values),
+                getResources().getStringArray(R.array.bell_mode_option_labels),
+                settings::bellMode,
+                settings::setBellMode));
+        items.add(new Setting.Choice(
                 getString(R.string.setting_text_margin_left_title),
                 getString(R.string.setting_text_margin_left_summary),
                 getResources().getIntArray(R.array.text_margin_option_values),
@@ -890,7 +904,38 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     @Override
     public void onBell(TerminalSession session) {
-        // Deliberate no-op; a vibrate/flash option can hook in here.
+        if (session != current) return; // only the foreground tab gets feedback
+        switch (settings.bellMode()) {
+            case AppSettings.BELL_FLASH:
+                terminal.flashBell();
+                break;
+            case AppSettings.BELL_VIBRATE:
+                vibrateBell();
+                break;
+            case AppSettings.BELL_SOUND:
+                playBellTone();
+                break;
+        }
+    }
+
+    /** Fires a short vibration for the {@link AppSettings#BELL_VIBRATE} mode. */
+    private void vibrateBell() {
+        Vibrator vibrator;
+        if (Build.VERSION.SDK_INT >= 31) {
+            VibratorManager manager = getSystemService(VibratorManager.class);
+            vibrator = manager == null ? null : manager.getDefaultVibrator();
+        } else {
+            vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        }
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+        vibrator.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE));
+    }
+
+    /** Plays a short beep for the {@link AppSettings#BELL_SOUND} mode. */
+    private void playBellTone() {
+        ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 80);
+        tone.startTone(ToneGenerator.TONE_PROP_BEEP, 150);
+        new Handler(Looper.getMainLooper()).postDelayed(tone::release, 200);
     }
 
     @Override

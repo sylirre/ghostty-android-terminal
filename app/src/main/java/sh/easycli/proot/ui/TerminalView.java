@@ -174,6 +174,14 @@ public class TerminalView extends View {
     private static final long SIZE_OVERLAY_HOLD_MS = 750;
     private static final long SIZE_OVERLAY_FADE_MS = 350;
 
+    // --- Bell flash. A brief full-view pulse drawn on top of everything when
+    // the "Flash" bell mode is active (see MainActivity#onBell). Same
+    // timestamp + fade + self-reinvalidate idiom as the grid-size HUD above,
+    // but with no hold: it should read as a quick pulse, not a slow fade. ---
+    private long bellFlashShownAt;
+    private static final long BELL_FLASH_FADE_MS = 150;
+    private static final int BELL_FLASH_PEAK_ALPHA = 0x40;
+
     // --- Kitty graphics. Placement geometry is re-read every frame into gfx
     // (GFX_STRIDE ints each); decoded bitmaps are cached by image id and
     // re-fetched only when an id is new or its dimensions changed. ---
@@ -910,6 +918,31 @@ public class TerminalView extends View {
         postInvalidateOnAnimation();
     }
 
+    /** (Re)arms the bell flash; onDraw renders and fades it. */
+    public void flashBell() {
+        bellFlashShownAt = SystemClock.uptimeMillis();
+        invalidate();
+    }
+
+    /**
+     * Draws a brief full-view pulse for the terminal bell. Uses the default
+     * foreground color (not a fixed tint) so it stays visible against any
+     * theme, mirroring how {@link #drawSizeOverlay} picks defaultFg/defaultBg
+     * for guaranteed contrast.
+     */
+    private void drawBellFlash(Canvas canvas) {
+        if (bellFlashShownAt == 0) return;
+        long elapsed = SystemClock.uptimeMillis() - bellFlashShownAt;
+        if (elapsed >= BELL_FLASH_FADE_MS) {
+            bellFlashShownAt = 0;
+            return;
+        }
+        float fade = 1f - elapsed / (float) BELL_FLASH_FADE_MS;
+        int alpha = (int) (BELL_FLASH_PEAK_ALPHA * fade);
+        canvas.drawColor((alpha << 24) | (snapshot.defaultFg() & 0x00FFFFFF));
+        postInvalidateOnAnimation();
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         // Handle drags own the whole gesture; everything else (scroll, tap,
@@ -1305,6 +1338,7 @@ public class TerminalView extends View {
         canvas.restore();
 
         drawSizeOverlay(canvas); // grid-size HUD sits above all cell content
+        drawBellFlash(canvas);
         drawSelectionHandles(canvas);
         if (selecting && !snapshot.hasSelection()) {
             // The selected text scrolled out of existence (scrollback

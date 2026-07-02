@@ -38,6 +38,13 @@ public final class AppSettings {
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
+    private static final String KEY_BELL_MODE = "bell_mode";
+
+    /** {@link #bellMode()} values. */
+    public static final int BELL_OFF = 0;
+    public static final int BELL_FLASH = 1;
+    public static final int BELL_VIBRATE = 2;
+    public static final int BELL_SOUND = 3;
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
@@ -361,5 +368,19 @@ public final class AppSettings {
 
     public void setProotLoginShell(String shell) {
         prefs.edit().putString(KEY_PROOT_LOGIN_SHELL, shell.trim()).apply();
+    }
+
+    /**
+     * How the terminal bell (BEL / {@code \a}) is presented: one of
+     * {@link #BELL_OFF} (default), {@link #BELL_FLASH}, {@link #BELL_VIBRATE}
+     * or {@link #BELL_SOUND}. Applied by {@code MainActivity#onBell}, and only
+     * for the foreground session.
+     */
+    public int bellMode() {
+        return prefs.getInt(KEY_BELL_MODE, BELL_OFF);
+    }
+
+    public void setBellMode(int mode) {
+        prefs.edit().putInt(KEY_BELL_MODE, mode).apply();
     }
 }
