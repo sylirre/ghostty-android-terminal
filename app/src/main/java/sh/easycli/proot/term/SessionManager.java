@@ -62,7 +62,11 @@ public final class SessionManager {
     }
 
     public void close(TerminalSession s) {
-        s.close();
+        close(s, false);
+    }
+
+    public void close(TerminalSession s, boolean terminateChildProcesses) {
+        s.close(terminateChildProcesses);
         sessions.remove(s);
     }
 

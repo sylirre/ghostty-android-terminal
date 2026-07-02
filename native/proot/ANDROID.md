@@ -13,6 +13,17 @@ Local modifications, all under `#ifdef PROOT_JNI`:
   (`pty_jni.c`); the final `exit()` calls become `kill_all_tracees()` +
   `_exit()` so the never-exec'd child does not run atexit handlers and DSO
   destructors inherited from the Android runtime.
+- `src/tracee/tracee.c` + `src/tracee/event.c` — a new `kill_session_tracees()`
+  (mirrors `kill_all_tracees()`, but only signals tracees whose session id
+  matches this process's own — daemons that called `setsid()`, e.g. `nginx`,
+  are spared) is wired up as the `SIGHUP` handler. `TerminalSession.close()`
+  sends `SIGQUIT` (kill everything, PRoot's existing handler, no patch
+  needed) or `SIGHUP` (spare daemons, this patch) to the top-level PRoot pid
+  depending on the "Terminate all sessions on exit" setting, giving the tab
+  close either full cleanup or real terminal-hangup semantics. Plain SIGKILL
+  of the tracer can't trigger either, since it's uncatchable and bypasses
+  PRoot's own cleanup entirely — that's how a daemon can outlive its tab in
+  the first place if this patch isn't used.
 
 Plain portability fixes (unconditional):
 

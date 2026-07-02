@@ -32,6 +32,7 @@
 #include <sys/ptrace.h> /* ptrace(2), PTRACE_*, */
 #include <errno.h>      /* E*, */
 #include <inttypes.h>   /* PRI*, */
+#include <unistd.h>     /* getsid(2), */
 
 #include "tracee/tracee.h"
 #include "tracee/reg.h"
@@ -677,6 +678,30 @@ void kill_all_tracees()
 	LIST_FOREACH(tracee, &tracees, link)
 		kill(tracee->pid, SIGKILL);
 }
+
+#ifdef PROOT_JNI
+/* Android: send the KILL signal only to tracees still in this process's own
+ * session, sparing any tracee that has called setsid() to detach into its
+ * own -- e.g. a daemon such as nginx started inside the guest. This process
+ * is the session leader (pty_jni.c calls setsid() before entering
+ * proot_main()), so its own session id is the reference point. Mirrors what
+ * closing a real terminal does: SIGHUP kills the foreground job, background
+ * daemons survive. Spared tracees stay alive, still ptrace-attached to this
+ * process; the caller must exit this process afterwards (not just return to
+ * the event loop) so the kernel detaches them, since there's no
+ * PTRACE_O_EXITKILL to do it automatically and they'd otherwise keep this
+ * process alive servicing their ptrace events forever.  */
+void kill_session_tracees()
+{
+	Tracee *tracee;
+	pid_t session = getsid(0);
+
+	LIST_FOREACH(tracee, &tracees, link) {
+		if (getsid(tracee->pid) == session)
+			kill(tracee->pid, SIGKILL);
+	}
+}
+#endif
 
 Tracees *get_tracees_list_head() {
 	return &tracees;

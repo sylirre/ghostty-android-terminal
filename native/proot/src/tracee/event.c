@@ -148,6 +148,21 @@ static void kill_all_tracees2(int signum, siginfo_t *siginfo UNUSED, void *ucont
 		_exit(EXIT_FAILURE);
 }
 
+#ifdef PROOT_JNI
+/* Android: like kill_all_tracees2(), but only kills tracees still in this
+ * process's own session (see kill_session_tracees()) and spares the rest,
+ * so this process must exit itself explicitly -- unlike kill_all_tracees2(),
+ * it can't rely on waitpid(-1) in the event loop eventually returning ECHILD,
+ * since the spared tracees are still alive and generating ptrace events.  */
+static void kill_session_tracees2(int signum, siginfo_t *siginfo UNUSED, void *ucontext UNUSED)
+{
+	note(NULL, WARNING, INTERNAL, "signal %d received from process %d",
+		signum, siginfo->si_pid);
+	kill_session_tracees();
+	_exit(EXIT_SUCCESS);
+}
+#endif
+
 /**
  * Helper for print_talloc_hierarchy().
  */
@@ -309,6 +324,19 @@ int event_loop()
 			 * untraced.  */
 			signal_action.sa_sigaction = kill_all_tracees2;
 			break;
+
+#ifdef PROOT_JNI
+		case SIGHUP:
+			/* Android: TerminalSession.close() sends SIGHUP when a
+			 * tab is closed with "Terminate all sessions on exit"
+			 * off, for real terminal-hangup semantics -- kill only
+			 * the traced session (the login shell and anything that
+			 * hasn't detached), and spare a daemon inside it that
+			 * called setsid() (e.g. nginx), same as closing a real
+			 * terminal would.  See kill_session_tracees().  */
+			signal_action.sa_sigaction = kill_session_tracees2;
+			break;
+#endif
 
 		case SIGUSR1:
 		case SIGUSR2:

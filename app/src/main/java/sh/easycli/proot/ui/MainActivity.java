@@ -446,7 +446,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     private void closeTab(TerminalSession s) {
-        sessions.close(s);
+        sessions.close(s, settings.terminateSessionProcesses());
         if (sessions.isEmpty()) {
             SessionService.stop(this);
             finishAndRemoveTask();
@@ -541,6 +541,11 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setImmersiveMode(enabled);
                     applyImmersiveMode(enabled);
                 }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_terminate_session_processes_title),
+                getString(R.string.setting_terminate_session_processes_summary),
+                settings::terminateSessionProcesses,
+                settings::setTerminateSessionProcesses));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_touch_keyboard_title),
                 getString(R.string.setting_touch_keyboard_summary),

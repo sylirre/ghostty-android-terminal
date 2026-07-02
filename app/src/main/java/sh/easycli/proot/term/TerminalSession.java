@@ -231,11 +231,38 @@ public final class TerminalSession {
                 cellHeightPx);
     }
 
-    /** Kills the shell and releases the PTY. Idempotent. */
+    /** Kills the shell and releases the PTY with SIGKILL. Idempotent. */
     public void close() {
+        closeWithSignal(9 /* SIGKILL */);
+    }
+
+    /**
+     * Kills the shell and releases the PTY. Idempotent.
+     *
+     * @param terminateChildProcesses for a Debian session: true sends SIGQUIT
+     *                                 (PRoot's existing handler kills every
+     *                                 traced process, guest daemons included);
+     *                                 false sends SIGHUP, patched into PRoot
+     *                                 (see native/proot/ANDROID.md) to kill
+     *                                 only the traced login shell and spare a
+     *                                 daemon inside it that called setsid()
+     *                                 (e.g. nginx) — the same real-terminal
+     *                                 semantics as closing an actual terminal.
+     *                                 Either way, plain SIGKILL (used by the
+     *                                 no-arg {@link #close()}) is uncatchable
+     *                                 and bypasses both of PRoot's handlers,
+     *                                 which is why it isn't used here. No
+     *                                 effect on a plain Android shell, which
+     *                                 has no such process tree.
+     */
+    public void close(boolean terminateChildProcesses) {
+        closeWithSignal(terminateChildProcesses ? 3 /* SIGQUIT */ : 1 /* SIGHUP */);
+    }
+
+    private void closeWithSignal(int signal) {
         if (closed) return;
         closed = true;
-        TerminalNative.processKill(pid, 9);
+        TerminalNative.processKill(pid, signal);
         try {
             masterFd.close(); // unblocks the reader thread
         } catch (IOException ignored) {

@@ -41,6 +41,7 @@ public final class AppSettings {
     private static final String KEY_BELL_MODE = "bell_mode";
     private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
     private static final String KEY_IMMERSIVE_MODE = "immersive_mode";
+    private static final String KEY_TERMINATE_SESSION_PROCESSES = "terminate_session_processes";
 
     /** {@link #bellMode()} values. */
     public static final int BELL_OFF = 0;
@@ -416,5 +417,27 @@ public final class AppSettings {
 
     public void setImmersiveMode(boolean enabled) {
         prefs.edit().putBoolean(KEY_IMMERSIVE_MODE, enabled).apply();
+    }
+
+    /**
+     * When true (default), closing a Debian session's tab sends SIGQUIT to
+     * its PRoot pid, which PRoot already handles by killing every traced
+     * process — the login shell and any daemon it started (e.g. nginx)
+     * alike. When false, the tab close sends SIGHUP instead, patched into
+     * PRoot (see native/proot/ANDROID.md) to kill only the traced login
+     * shell and spare a daemon inside it that called setsid() to detach —
+     * the same real-terminal semantics as closing an actual terminal
+     * window, where a background daemon survives but the foreground job
+     * does not. Neither signal is SIGKILL: that's uncatchable and would
+     * bypass both of PRoot's handlers, which is exactly how a daemon can
+     * outlive its tab if this setting's signals aren't used. No effect on
+     * the plain Android shell, which has no such process tree.
+     */
+    public boolean terminateSessionProcesses() {
+        return prefs.getBoolean(KEY_TERMINATE_SESSION_PROCESSES, true);
+    }
+
+    public void setTerminateSessionProcesses(boolean enabled) {
+        prefs.edit().putBoolean(KEY_TERMINATE_SESSION_PROCESSES, enabled).apply();
     }
 }

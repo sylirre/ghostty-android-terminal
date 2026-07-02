@@ -359,6 +359,9 @@ extern void terminate_tracee(Tracee *tracee);
 extern void free_terminated_tracees();
 extern int swap_config(Tracee *tracee1, Tracee *tracee2);
 extern void kill_all_tracees();
+#ifdef PROOT_JNI
+extern void kill_session_tracees();
+#endif
 
 typedef LIST_HEAD(tracees, tracee) Tracees;
 extern Tracees *get_tracees_list_head();
