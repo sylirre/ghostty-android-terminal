@@ -126,11 +126,14 @@ public class ShellSessionTest {
     }
 
     @Test
-    public void closeKillsShell() throws InterruptedException {
+    public void closeReportsShellExit() throws InterruptedException {
         waitForOnScreen("$");
         session.close();
         assertTrue("onExited after close", exited.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
-        assertEquals(-9, exitCode.get()); // SIGKILL
+        int code = exitCode.get();
+        assertTrue("close reports shell exit or SIGHUP, got " + code,
+                code == 0 || code == -1);
+        assertEquals(Integer.valueOf(code), session.exitCode());
     }
 
     @Test

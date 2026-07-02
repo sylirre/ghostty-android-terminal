@@ -3,7 +3,9 @@ package sh.easycli.proot.ui;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -60,8 +62,11 @@ public class ExtraKeysView extends LinearLayout {
     private final List<ModButton> modButtons = new ArrayList<>();
 
     private static final int BG = 0xFF21212A;
+    private static final int BG_PRESSED = 0xFF4A4A58;
     private static final int BG_ACTIVE = 0xFF3D5AFE;
+    private static final int BG_ACTIVE_PRESSED = 0xFF5C74FF;
     private static final int BG_LOCKED = 0xFF1565C0;
+    private static final int BG_LOCKED_PRESSED = 0xFF1E88E5;
     private static final int REPEAT_INTERVAL_MS = 80;
     // Floor on a key's tap width so scroll-mode (content-width) keys stay usable.
     private static final int MIN_KEY_WIDTH_DP = 40;
@@ -152,7 +157,7 @@ public class ExtraKeysView extends LinearLayout {
         int pad = dp(14);
         view.setPadding(pad, dp(12), pad, dp(12));
         view.setMinWidth(dp(MIN_KEY_WIDTH_DP));
-        view.setBackground(buttonBg(BG));
+        view.setBackground(buttonBg(BG, BG_PRESSED));
         view.setClickable(true);
         // Render arrows and other symbol glyphs as vectors, not font glyphs, so
         // they look the same on every device (combo labels keep their ASCII
@@ -196,6 +201,7 @@ public class ExtraKeysView extends LinearLayout {
         view.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    view.setPressed(true);
                     longPressed[0] = false;
                     longPressRun[0] = () -> {
                         longPressed[0] = true;
@@ -213,6 +219,7 @@ public class ExtraKeysView extends LinearLayout {
                     view.postDelayed(longPressRun[0], longPressMs);
                     break;
                 case MotionEvent.ACTION_UP:
+                    view.setPressed(false);
                     view.removeCallbacks(longPressRun[0]);
                     if (repeatRun[0] != null) {
                         view.removeCallbacks(repeatRun[0]);
@@ -222,6 +229,7 @@ public class ExtraKeysView extends LinearLayout {
                     longPressed[0] = false;
                     break;
                 case MotionEvent.ACTION_CANCEL:
+                    view.setPressed(false);
                     view.removeCallbacks(longPressRun[0]);
                     if (repeatRun[0] != null) {
                         view.removeCallbacks(repeatRun[0]);
@@ -255,11 +263,22 @@ public class ExtraKeysView extends LinearLayout {
         for (ModButton b : modButtons) {
             boolean active = modifierActive(b.modifier);
             boolean locked = modifierLocked(b.modifier);
-            b.view.setBackground(buttonBg(!active ? BG : locked ? BG_LOCKED : BG_ACTIVE));
+            b.view.setBackground(!active
+                    ? buttonBg(BG, BG_PRESSED)
+                    : locked
+                            ? buttonBg(BG_LOCKED, BG_LOCKED_PRESSED)
+                            : buttonBg(BG_ACTIVE, BG_ACTIVE_PRESSED));
         }
     }
 
-    private GradientDrawable buttonBg(int fill) {
+    private Drawable buttonBg(int fill, int pressedFill) {
+        StateListDrawable states = new StateListDrawable();
+        states.addState(new int[]{android.R.attr.state_pressed}, buttonShape(pressedFill));
+        states.addState(new int[]{}, buttonShape(fill));
+        return states;
+    }
+
+    private GradientDrawable buttonShape(int fill) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(fill);
         d.setStroke(dp(1), 0xFF3A3A44);

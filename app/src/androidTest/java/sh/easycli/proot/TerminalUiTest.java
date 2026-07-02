@@ -76,6 +76,16 @@ public class TerminalUiTest {
 
     @Before
     public void launch() {
+        // SessionManager is process-wide, and Android may run this class after
+        // another instrumented test in the same app process. Start each UI test
+        // from a single-session baseline instead of inheriting stale tabs.
+        SessionManager.get().closeAll();
+        // Preferences are process/app scoped and instrumentation does not
+        // guarantee this class runs first. Start from the stock toolbar so
+        // matchers below are not affected by another test's saved layout.
+        new ExtraKeysConfig(ApplicationProvider.getApplicationContext()).reset();
+        new AppSettings(ApplicationProvider.getApplicationContext())
+                .setExtraKeysEnabled(true);
         // Force the plain Android shell: these tests assert sh-specific
         // behavior and tab titles, and must not depend on whether a Debian
         // rootfs is bundled/installed (DebianSessionTest covers PRoot).
@@ -137,8 +147,63 @@ public class TerminalUiTest {
                 sb.append(" dims=").append(snap.cols).append('x').append(snap.rows);
                 sb.append("\nscreen:[").append(snap.text().trim()).append(']');
             }
+            sb.append(" newTabShown=").append(
+                    viewShown(a.findViewById(R.id.tabs), R.string.tab_new_description));
+            sb.append(" closeTabShown=").append(
+                    viewShown(a.findViewById(R.id.tabs), R.string.tab_close_description));
         });
         return sb.toString();
+    }
+
+    private boolean viewShown(View root, int contentDescriptionRes) {
+        CharSequence needle = ApplicationProvider.getApplicationContext()
+                .getString(contentDescriptionRes);
+        return viewShown(root, needle);
+    }
+
+    private boolean viewShown(View view, CharSequence contentDescription) {
+        if (view == null) return false;
+        CharSequence own = view.getContentDescription();
+        if (contentDescription.equals(own) && view.isShown()) return true;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (viewShown(group.getChildAt(i), contentDescription)) return true;
+            }
+        }
+        return false;
+    }
+
+    private void clickTabControl(int contentDescriptionRes) {
+        waitFor("tab control " + ApplicationProvider.getApplicationContext()
+                        .getString(contentDescriptionRes), TIMEOUT_MS,
+                () -> {
+                    AtomicBoolean shown = new AtomicBoolean();
+                    scenario.onActivity(a -> shown.set(viewShown(
+                            a.findViewById(R.id.tabs), contentDescriptionRes)));
+                    return shown.get();
+                }, this::diagnose);
+        scenario.onActivity(a -> {
+            View button = findViewWithContentDescription(
+                    a.findViewById(R.id.tabs),
+                    ApplicationProvider.getApplicationContext()
+                            .getString(contentDescriptionRes));
+            assertTrue("tab control click handled", button != null && button.performClick());
+        });
+    }
+
+    private View findViewWithContentDescription(View view, CharSequence contentDescription) {
+        if (view == null) return null;
+        if (contentDescription.equals(view.getContentDescription())) return view;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findViewWithContentDescription(
+                        group.getChildAt(i), contentDescription);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     @Test
@@ -236,9 +301,10 @@ public class TerminalUiTest {
 
     @Test
     public void newTabCreatesAndSwitchesSessions() {
-        onView(withText("+")).perform(click());
+        clickTabControl(R.string.tab_new_description);
         waitFor("two sessions", TIMEOUT_MS,
-                () -> SessionManager.get().sessions().size() == 2);
+                () -> SessionManager.get().sessions().size() == 2,
+                this::diagnose);
         onView(withText("sh:2")).check(matches(isDisplayed()));
 
         // Leave a marker in tab 2, switch to tab 1, verify the view rebinds.
@@ -512,12 +578,14 @@ public class TerminalUiTest {
 
     @Test
     public void closingActiveTabSwitchesToRemaining() {
-        onView(withText("+")).perform(click());
+        clickTabControl(R.string.tab_new_description);
         waitFor("two sessions", TIMEOUT_MS,
-                () -> SessionManager.get().sessions().size() == 2);
-        onView(withText("×")).perform(click());
+                () -> SessionManager.get().sessions().size() == 2,
+                this::diagnose);
+        clickTabControl(R.string.tab_close_description);
         waitFor("one session", TIMEOUT_MS,
-                () -> SessionManager.get().sessions().size() == 1);
+                () -> SessionManager.get().sessions().size() == 1,
+                this::diagnose);
         onView(withText("sh:1")).check(matches(isDisplayed()));
     }
 }

@@ -16,8 +16,8 @@ import sh.easycli.proot.term.TerminalNative;
  * {@link TerminalView} draws real output (monospace glyphs on the theme
  * background) so the editor shows what a theme actually looks like. It draws a
  * mock shell prompt, a colored file listing, error/warning lines, a cursor in
- * the cursor color (shape and blink mirror the global cursor setting), and a
- * strip of all 16 ANSI swatches.
+ * the cursor color (shape and blink mirror the global cursor setting), samples
+ * for all configured font styles, and a strip of all 16 ANSI swatches.
  *
  * Purely self-contained — it needs no terminal engine. Call {@link #setTheme}
  * after every edit to repaint.
@@ -35,6 +35,10 @@ public final class ThemePreviewView extends View {
     private TerminalTheme theme;
     private Bitmap backgroundImage;
     private int backgroundImageAlpha = 255;
+    private Typeface regularTypeface = Typeface.MONOSPACE;
+    private Typeface boldTypeface;
+    private Typeface italicTypeface;
+    private Typeface boldItalicTypeface;
 
     private int cursorStyle = TerminalNative.CURSOR_BLOCK;
     private boolean cursorBlink;
@@ -89,6 +93,17 @@ public final class ThemePreviewView extends View {
         invalidate();
     }
 
+    /** Mirrors {@link TerminalView}'s four-face font selection in the preview. */
+    public void setTerminalFonts(Typeface regular, Typeface bold, Typeface italic,
+            Typeface boldItalic) {
+        regularTypeface = regular != null ? regular : Typeface.MONOSPACE;
+        boldTypeface = bold;
+        italicTypeface = italic;
+        boldItalicTypeface = boldItalic;
+        textPaint.setTypeface(regularTypeface);
+        invalidate();
+    }
+
     /** Starts the blink loop when blinking and attached; stops it otherwise. */
     private void updateBlinkAnimation() {
         removeCallbacks(blinkTick);
@@ -111,15 +126,20 @@ public final class ThemePreviewView extends View {
         removeCallbacks(blinkTick);
     }
 
-    /** One colored, optionally-bold run of text on a preview line. */
+    /** One colored run of text on a preview line. */
     private static final class Seg {
         final String text;
         final int color;
         final boolean bold;
+        final boolean italic;
         Seg(String text, int color, boolean bold) {
+            this(text, color, bold, false);
+        }
+        Seg(String text, int color, boolean bold, boolean italic) {
             this.text = text;
             this.color = color;
             this.bold = bold;
+            this.italic = italic;
         }
     }
 
@@ -141,8 +161,14 @@ public final class ThemePreviewView extends View {
               new Seg("build.sh  ", a[2], false), new Seg("README.md", fg, false) },
             { new Seg("error: ", a[1], true), new Seg("file not found", fg, false) },
             { new Seg("warning: ", a[3], false), new Seg("deprecated call", fg, false) },
+            { new Seg("font: ", a[6], false), new Seg("regular  ", fg, false),
+              new Seg("bold  ", fg, true), new Seg("italic  ", fg, false, true),
+              new Seg("bold italic", fg, true, true) },
         };
 
+        textPaint.setTypeface(regularTypeface);
+        textPaint.setFakeBoldText(false);
+        textPaint.setTextSkewX(0);
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float lineHeight = (fm.descent - fm.ascent) * 1.15f;
         float pad = dp(10);
@@ -152,8 +178,7 @@ public final class ThemePreviewView extends View {
         for (Seg[] line : lines) {
             float x = pad;
             for (Seg s : line) {
-                textPaint.setColor(s.color);
-                textPaint.setFakeBoldText(s.bold);
+                applyStyle(s.color, s.bold, s.italic);
                 canvas.drawText(s.text, x, y, textPaint);
                 x += textPaint.measureText(s.text);
             }
@@ -166,7 +191,7 @@ public final class ThemePreviewView extends View {
         }
 
         // ANSI palette strip: 16 swatches across the width.
-        textPaint.setFakeBoldText(false);
+        applyStyle(fg, false, false);
         y += dp(6);
         float stripH = dp(18);
         float available = getWidth() - 2 * pad;
@@ -176,6 +201,42 @@ public final class ThemePreviewView extends View {
             float left = pad + i * sw;
             canvas.drawRect(left, y, left + sw - dp(1), y + stripH, fillPaint);
         }
+    }
+
+    private void applyStyle(int color, boolean bold, boolean italic) {
+        Typeface face = regularTypeface;
+        boolean fakeBold = false;
+        boolean fakeItalic = false;
+        if (bold && italic) {
+            if (boldItalicTypeface != null) {
+                face = boldItalicTypeface;
+            } else if (italicTypeface != null) {
+                face = italicTypeface;
+                fakeBold = true;
+            } else if (boldTypeface != null) {
+                face = boldTypeface;
+                fakeItalic = true;
+            } else {
+                fakeBold = true;
+                fakeItalic = true;
+            }
+        } else if (bold) {
+            if (boldTypeface != null) {
+                face = boldTypeface;
+            } else {
+                fakeBold = true;
+            }
+        } else if (italic) {
+            if (italicTypeface != null) {
+                face = italicTypeface;
+            } else {
+                fakeItalic = true;
+            }
+        }
+        textPaint.setColor(color);
+        textPaint.setTypeface(face);
+        textPaint.setFakeBoldText(fakeBold);
+        textPaint.setTextSkewX(fakeItalic ? -0.25f : 0);
     }
 
     /**

@@ -21,6 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * can't queue unbounded UI work.
  */
 public final class TerminalSession {
+    private static final int SIGQUIT = 3;
+    private static final int SIGKILL = 9;
+    private static final long PROOT_CLOSE_KILL_FALLBACK_MS = 1500;
 
     public interface Listener {
         /** Screen content changed; pull a fresh snapshot. */
@@ -45,6 +48,7 @@ public final class TerminalSession {
     private volatile boolean closed;
     private volatile String title;
     private volatile Integer exitCode;
+    private volatile boolean terminateProcessesOnExit;
 
     private final String label;
     private final boolean debian;
@@ -70,9 +74,18 @@ public final class TerminalSession {
     public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
             int scrollbackLines, SessionCommand command, Listener listener)
             throws IOException {
+        this(cols, rows, cellWidthPx, cellHeightPx, scrollbackLines, command,
+                false, listener);
+    }
+
+    public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
+            int scrollbackLines, SessionCommand command,
+            boolean terminateProcessesOnExit, Listener listener)
+            throws IOException {
         this.listener = listener;
         this.label = command.label;
         this.debian = command.debian;
+        this.terminateProcessesOnExit = terminateProcessesOnExit;
         this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
 
         int[] pidOut = new int[1];
@@ -182,6 +195,14 @@ public final class TerminalSession {
         return exitCode;
     }
 
+    /**
+     * When true, closing a Debian/PRoot tab asks PRoot to kill every traced
+     * process. When false, tab close only hangs up the top-level session.
+     */
+    public void setTerminateProcessesOnExit(boolean terminate) {
+        terminateProcessesOnExit = terminate;
+    }
+
     public void write(String text) {
         userInteracted = true;
         writeRaw(text.getBytes(StandardCharsets.UTF_8));
@@ -231,11 +252,27 @@ public final class TerminalSession {
                 cellHeightPx);
     }
 
-    /** Kills the shell and releases the PTY. Idempotent. */
+    /** Hangs up or terminates the session and releases the PTY. Idempotent. */
     public void close() {
         if (closed) return;
         closed = true;
-        TerminalNative.processKill(pid, 9);
+        if (debian && terminateProcessesOnExit) {
+            // PRoot's SIGQUIT handler kills all tracees; SIGKILL would bypass
+            // that cleanup and let daemonized guest processes survive tab close.
+            TerminalNative.processKill(pid, SIGQUIT);
+            Thread fallback = new Thread(() -> {
+                try {
+                    Thread.sleep(PROOT_CLOSE_KILL_FALLBACK_MS);
+                } catch (InterruptedException ignored) {
+                    return;
+                }
+                if (exitCode == null) TerminalNative.processKill(pid, SIGKILL);
+            }, "proot-close-kill-" + pid);
+            fallback.setDaemon(true);
+            fallback.start();
+        } else {
+            TerminalNative.ptyHangupForeground(masterFd.getFd(), pid);
+        }
         try {
             masterFd.close(); // unblocks the reader thread
         } catch (IOException ignored) {

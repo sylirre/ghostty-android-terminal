@@ -38,28 +38,49 @@ public final class SessionManager {
     public TerminalSession create(Context context, int cols, int rows,
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
             String loginShell, TerminalSession.Listener listener) throws IOException {
+        return create(context, cols, rows, cellWidthPx, cellHeightPx, scrollbackLines,
+                debian, loginShell, false, false, listener);
+    }
+
+    public TerminalSession create(Context context, int cols, int rows,
+            int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
+            String loginShell, boolean bindExternalStorage,
+            boolean terminateProcessesOnExit,
+            TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
-                ? DebianRootfs.command(context, loginShell)
+                ? DebianRootfs.command(context, loginShell, bindExternalStorage,
+                        terminateProcessesOnExit)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());
         TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
-                cellHeightPx, scrollbackLines, command, listener);
-        sessions.add(s);
+                cellHeightPx, scrollbackLines, command, terminateProcessesOnExit,
+                listener);
+        synchronized (this) {
+            sessions.add(s);
+        }
         return s;
     }
 
     public List<TerminalSession> sessions() {
-        return sessions;
+        synchronized (this) {
+            return new ArrayList<>(sessions);
+        }
     }
 
     public int indexOf(TerminalSession s) {
-        return sessions.indexOf(s);
+        synchronized (this) {
+            return sessions.indexOf(s);
+        }
     }
 
-    public void close(TerminalSession s) {
-        s.close();
-        sessions.remove(s);
+    public boolean close(TerminalSession s) {
+        boolean removed;
+        synchronized (this) {
+            removed = sessions.remove(s);
+        }
+        if (removed) s.close();
+        return removed;
     }
 
     /**
@@ -69,13 +90,19 @@ public final class SessionManager {
      * relaunch to re-attach to.
      */
     public void closeAll() {
-        for (TerminalSession s : sessions) {
+        List<TerminalSession> copy;
+        synchronized (this) {
+            copy = new ArrayList<>(sessions);
+            sessions.clear();
+        }
+        for (TerminalSession s : copy) {
             s.close();
         }
-        sessions.clear();
     }
 
     public boolean isEmpty() {
-        return sessions.isEmpty();
+        synchronized (this) {
+            return sessions.isEmpty();
+        }
     }
 }

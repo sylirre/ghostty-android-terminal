@@ -11,6 +11,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -107,6 +108,64 @@ abstract class Setting {
         @Override
         void onRowClick(View control) {
             ((Switch) control).toggle(); // fires the listener, which persists + applies
+        }
+    }
+
+    /**
+     * A boolean setting whose change can be refused. Used for toggles that
+     * must launch an external permission flow before the value can become true.
+     */
+    static final class RequestToggle extends Setting {
+
+        private final BooleanSupplier value;
+        private final Predicate<Boolean> onChange;
+        private boolean syncing;
+
+        RequestToggle(String title, String summary,
+                BooleanSupplier value, Predicate<Boolean> onChange) {
+            super(title, summary);
+            this.value = value;
+            this.onChange = onChange;
+        }
+
+        @Override
+        View createControl(Context context) {
+            Switch sw = new Switch(context);
+            sw.setChecked(value.getAsBoolean());
+            sw.setOnCheckedChangeListener((btn, checked) -> {
+                if (syncing) return;
+                boolean accepted = onChange.test(checked);
+                sync(sw);
+                if (accepted) notifyChanged();
+            });
+            sw.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                private final ViewTreeObserver.OnWindowFocusChangeListener onFocus =
+                        hasFocus -> {
+                            if (hasFocus) sync(sw);
+                        };
+
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                    v.getViewTreeObserver().addOnWindowFocusChangeListener(onFocus);
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    v.getViewTreeObserver().removeOnWindowFocusChangeListener(onFocus);
+                }
+            });
+            return sw;
+        }
+
+        @Override
+        void onRowClick(View control) {
+            ((Switch) control).toggle();
+        }
+
+        private void sync(Switch sw) {
+            syncing = true;
+            sw.setChecked(value.getAsBoolean());
+            syncing = false;
         }
     }
 

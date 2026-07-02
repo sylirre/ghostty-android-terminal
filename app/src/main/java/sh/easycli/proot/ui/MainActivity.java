@@ -12,15 +12,23 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.graphics.Typeface;
+import android.media.AudioManager;
+import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.PowerManager;
+import android.os.SystemClock;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.text.InputType;
@@ -70,9 +78,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     public static final String EXTRA_FORCE_SHELL = "sh.easycli.proot.FORCE_SHELL";
 
     private static final int REQ_POST_NOTIFICATIONS = 1;
+    private static final int REQ_STORAGE_PERMISSION = 2;
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
+    private static final long BELL_VIBRATION_MS = 300;
+    private static final long BELL_THROTTLE_MS = BELL_VIBRATION_MS;
 
     private final SessionManager sessions = SessionManager.get();
     private TerminalView terminal;
@@ -85,6 +96,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private ThemeStore themeStore;
     private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
+    private boolean pendingEnableStorageBinding;
+    private long lastBellUptime;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
     private final BroadcastReceiver exitReceiver = new BroadcastReceiver() {
@@ -114,6 +127,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         applyKeepScreenOn(settings.keepScreenOn());
+        applyImmersiveMode(settings.immersiveMode());
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         terminal.setSmoothScroll(settings.smoothScroll());
@@ -193,6 +207,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         for (TerminalSession s : sessions.sessions()) {
             s.setListener(this);
         }
+        applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
         if (sessions.isEmpty()) {
             // Spawn the first shell only once the view is laid out so the
             // PTY starts at its real size (see SessionManager.create).
@@ -238,11 +253,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         applyTheme();
         // Pick up a wallpaper chosen/removed in ThemeActivity.
         applyBackgroundImage();
+        // Pick up font choices made in ThemeActivity.
+        applyTerminalFonts();
         // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
         // the show/hide toggle.
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        applyImmersiveMode(settings.immersiveMode());
+        disableStorageBindingIfPermissionRevoked();
+        completePendingStorageBindingIfGranted();
         if (current != null && settings.touchKeyboard()) showKeyboard();
     }
 
@@ -292,6 +312,29 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setBackgroundImage(bmp, alpha);
     }
 
+    /** Loads custom terminal font files, forgetting paths that no longer decode. */
+    private void applyTerminalFonts() {
+        String regularPath = settings.terminalFontPath();
+        Typeface regular = TerminalFontStore.load(regularPath);
+        if (regularPath != null && regular == null) settings.setTerminalFontPath(null);
+
+        String boldPath = settings.terminalBoldFontPath();
+        Typeface bold = TerminalFontStore.load(boldPath);
+        if (boldPath != null && bold == null) settings.setTerminalBoldFontPath(null);
+
+        String italicPath = settings.terminalItalicFontPath();
+        Typeface italic = TerminalFontStore.load(italicPath);
+        if (italicPath != null && italic == null) settings.setTerminalItalicFontPath(null);
+
+        String boldItalicPath = settings.terminalBoldItalicFontPath();
+        Typeface boldItalic = TerminalFontStore.load(boldItalicPath);
+        if (boldItalicPath != null && boldItalic == null) {
+            settings.setTerminalBoldItalicFontPath(null);
+        }
+
+        terminal.setTerminalFonts(regular, bold, italic, boldItalic);
+    }
+
     private boolean debianByDefault() {
         return !forceShell && DebianRootfs.isUsable(this);
     }
@@ -313,10 +356,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     private void createSession(boolean debian) {
         try {
+            boolean bindExternalStorage = storageBindingEnabledForNewSession();
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
-                    settings.scrollbackLines(), debian, settings.prootLoginShell(), this);
+                    settings.scrollbackLines(), debian, settings.prootLoginShell(),
+                    bindExternalStorage, settings.terminateProcessesOnExit(), this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
             if (settings.touchKeyboard()) showKeyboard();
@@ -407,15 +452,25 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     private void closeTab(TerminalSession s) {
+        int closedIndex = sessions.indexOf(s);
+        if (closedIndex < 0) {
+            if (sessions.isEmpty()) {
+                terminal.attachSession(null);
+                current = null;
+            }
+            updateTabs();
+            return;
+        }
         sessions.close(s);
-        if (sessions.isEmpty()) {
+        List<TerminalSession> remaining = sessions.sessions();
+        if (remaining.isEmpty()) {
             SessionService.stop(this);
             finishAndRemoveTask();
             return;
         }
         SessionService.refresh(this); // reflect the new count in the notification
         if (s == current) {
-            switchTo(sessions.sessions().get(sessions.sessions().size() - 1));
+            switchTo(remaining.get(Math.min(closedIndex, remaining.size() - 1)));
         } else {
             updateTabs();
         }
@@ -460,6 +515,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     applyKeepScreenOn(enabled);
                 }));
         items.add(new Setting.Toggle(
+                getString(R.string.setting_immersive_mode_title),
+                getString(R.string.setting_immersive_mode_summary),
+                settings::immersiveMode,
+                enabled -> {
+                    settings.setImmersiveMode(enabled);
+                    applyImmersiveMode(enabled);
+                }));
+        items.add(new Setting.Toggle(
                 getString(R.string.setting_touch_keyboard_title),
                 getString(R.string.setting_touch_keyboard_summary),
                 settings::touchKeyboard,
@@ -500,6 +563,26 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.setMouseTracking(enabled);
                     terminal.setMouseTracking(enabled);
                 }));
+        items.add(new Setting.RequestToggle(
+                getString(R.string.setting_bind_storage_title),
+                getString(R.string.setting_bind_storage_summary),
+                settings::bindExternalStorage,
+                this::setBindExternalStorageRequested));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_terminate_processes_title),
+                getString(R.string.setting_terminate_processes_summary),
+                settings::terminateProcessesOnExit,
+                enabled -> {
+                    settings.setTerminateProcessesOnExit(enabled);
+                    applyTerminateProcessesOnExit(enabled);
+                }));
+        items.add(new Setting.Choice(
+                getString(R.string.setting_terminal_bell_title),
+                getString(R.string.setting_terminal_bell_summary),
+                getResources().getIntArray(R.array.terminal_bell_mode_values),
+                getResources().getStringArray(R.array.terminal_bell_mode_labels),
+                settings::terminalBellMode,
+                settings::setTerminalBellMode));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_extra_keys_enabled_title),
                 getString(R.string.setting_extra_keys_enabled_summary),
@@ -573,6 +656,96 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     this::confirmRestore));
         }
         SettingsDialog.show(this, items);
+    }
+
+    private void applyTerminateProcessesOnExit(boolean enabled) {
+        for (TerminalSession s : sessions.sessions()) {
+            s.setTerminateProcessesOnExit(enabled);
+        }
+    }
+
+    private boolean setBindExternalStorageRequested(boolean enabled) {
+        if (!enabled) {
+            pendingEnableStorageBinding = false;
+            settings.setBindExternalStorage(false);
+            return true;
+        }
+        if (hasStorageBindingPermission()) {
+            settings.setBindExternalStorage(true);
+            return true;
+        }
+        pendingEnableStorageBinding = true;
+        requestStorageBindingPermission();
+        return false;
+    }
+
+    private boolean storageBindingEnabledForNewSession() {
+        if (!settings.bindExternalStorage()) return false;
+        if (hasStorageBindingPermission()) return true;
+        settings.setBindExternalStorage(false);
+        return false;
+    }
+
+    private void disableStorageBindingIfPermissionRevoked() {
+        if (settings.bindExternalStorage() && !hasStorageBindingPermission()) {
+            settings.setBindExternalStorage(false);
+        }
+    }
+
+    private boolean hasStorageBindingPermission() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            return Environment.isExternalStorageManager();
+        }
+        return checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestStorageBindingPermission() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            Intent appSettings = new Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            try {
+                startActivity(appSettings);
+            } catch (ActivityNotFoundException e) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (ActivityNotFoundException ignored) {
+                    pendingEnableStorageBinding = false;
+                    Toast.makeText(this, R.string.storage_permission_settings_unavailable,
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+        } else {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    REQ_STORAGE_PERMISSION);
+        }
+    }
+
+    private void completePendingStorageBindingIfGranted() {
+        if (!pendingEnableStorageBinding || Build.VERSION.SDK_INT < 30) return;
+        pendingEnableStorageBinding = false;
+        if (hasStorageBindingPermission()) {
+            settings.setBindExternalStorage(true);
+            Toast.makeText(this, R.string.storage_binding_enabled, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, R.string.storage_permission_denied, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_STORAGE_PERMISSION) return;
+        pendingEnableStorageBinding = false;
+        if (grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            settings.setBindExternalStorage(true);
+            Toast.makeText(this, R.string.storage_binding_enabled, Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, R.string.storage_permission_denied, Toast.LENGTH_LONG).show();
+        }
     }
 
     // --- Debian rootfs settings ---
@@ -851,6 +1024,35 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
+    /** Hides or restores the status/navigation bars for a fullscreen terminal surface. */
+    private void applyImmersiveMode(boolean enabled) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) return;
+            if (enabled) {
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.hide(WindowInsets.Type.systemBars());
+            } else {
+                controller.show(WindowInsets.Type.systemBars());
+            }
+            return;
+        }
+
+        View decor = getWindow().getDecorView();
+        if (enabled) {
+            decor.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        } else {
+            decor.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
+    }
+
     private void updateTabs() {
         List<String> titles = new ArrayList<>();
         List<TerminalSession> all = sessions.sessions();
@@ -876,7 +1078,35 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     @Override
     public void onBell(TerminalSession session) {
-        // Deliberate no-op; a vibrate/flash option can hook in here.
+        if (session != current) return;
+        long now = SystemClock.uptimeMillis();
+        if (now - lastBellUptime < BELL_THROTTLE_MS) return;
+        lastBellUptime = now;
+        int mode = settings.terminalBellMode();
+        if (mode == AppSettings.BELL_HAPTIC) {
+            vibrateBell();
+        } else if (mode == AppSettings.BELL_SCREEN_FLASH) {
+            terminal.flashBell();
+        } else if (mode == AppSettings.BELL_SOUND) {
+            playBellSound();
+        }
+    }
+
+    private void vibrateBell() {
+        Vibrator vibrator = getSystemService(Vibrator.class);
+        if (vibrator == null || !vibrator.hasVibrator()) return;
+        vibrator.vibrate(VibrationEffect.createOneShot(
+                BELL_VIBRATION_MS, VibrationEffect.DEFAULT_AMPLITUDE));
+    }
+
+    private void playBellSound() {
+        try {
+            ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 150);
+            terminal.postDelayed(tone::release, 250);
+        } catch (RuntimeException ignored) {
+            // Audio service unavailable; drop the bell rather than surfacing a UI error.
+        }
     }
 
     @Override

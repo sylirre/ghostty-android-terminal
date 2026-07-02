@@ -18,6 +18,7 @@ public final class AppSettings {
 
     private static final String FILE = "settings";
     private static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
+    private static final String KEY_IMMERSIVE_MODE = "immersive_mode";
     private static final String KEY_RICH_KEYBOARD = "rich_keyboard";
     private static final String KEY_EXTRA_KEYS_ENABLED = "extra_keys_enabled";
     private static final String KEY_SCROLLBACK_LINES = "scrollback_lines";
@@ -33,13 +34,28 @@ public final class AppSettings {
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
+    private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
+    private static final String KEY_TERMINATE_PROCESSES_ON_EXIT =
+            "terminate_processes_on_exit";
+    private static final String KEY_TERMINAL_BELL_LEGACY = "terminal_bell";
+    private static final String KEY_TERMINAL_BELL_MODE = "terminal_bell_mode";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
+    private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
+    private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
+    private static final String KEY_TERMINAL_BOLD_FONT_PATH = "terminal_bold_font_path";
+    private static final String KEY_TERMINAL_BOLD_ITALIC_FONT_PATH =
+            "terminal_bold_italic_font_path";
 
     /** Default scrollback depth used until the user changes it. */
     private static final int DEFAULT_SCROLLBACK_LINES = 10_000;
 
     /** Default wallpaper strength (percent) when an image is first chosen. */
     private static final int DEFAULT_BG_IMAGE_OPACITY = 35;
+
+    public static final int BELL_OFF = 0;
+    public static final int BELL_HAPTIC = 1;
+    public static final int BELL_SCREEN_FLASH = 2;
+    public static final int BELL_SOUND = 3;
 
     private final SharedPreferences prefs;
 
@@ -55,6 +71,15 @@ public final class AppSettings {
 
     public void setKeepScreenOn(boolean enabled) {
         prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply();
+    }
+
+    /** When true, hide the status and navigation bars while the terminal is foreground. */
+    public boolean immersiveMode() {
+        return prefs.getBoolean(KEY_IMMERSIVE_MODE, false);
+    }
+
+    public void setImmersiveMode(boolean enabled) {
+        prefs.edit().putBoolean(KEY_IMMERSIVE_MODE, enabled).apply();
     }
 
     /**
@@ -276,6 +301,48 @@ public final class AppSettings {
     }
 
     /**
+     * When true, newly opened Debian-under-PRoot sessions bind Android shared
+     * storage into the guest under /mnt. Existing sessions keep the mount table
+     * they were spawned with.
+     */
+    public boolean bindExternalStorage() {
+        return prefs.getBoolean(KEY_BIND_EXTERNAL_STORAGE, false);
+    }
+
+    public void setBindExternalStorage(boolean enabled) {
+        prefs.edit().putBoolean(KEY_BIND_EXTERNAL_STORAGE, enabled).apply();
+    }
+
+    /**
+     * When true, closing a Debian-under-PRoot session asks PRoot to kill every
+     * traced process instead of only hanging up the top-level session.
+     */
+    public boolean terminateProcessesOnExit() {
+        return prefs.getBoolean(KEY_TERMINATE_PROCESSES_ON_EXIT, true);
+    }
+
+    public void setTerminateProcessesOnExit(boolean enabled) {
+        prefs.edit().putBoolean(KEY_TERMINATE_PROCESSES_ON_EXIT, enabled).apply();
+    }
+
+    /** BEL feedback mode for the active terminal session. Defaults to haptic feedback. */
+    public int terminalBellMode() {
+        if (prefs.contains(KEY_TERMINAL_BELL_MODE)) {
+            return prefs.getInt(KEY_TERMINAL_BELL_MODE, BELL_HAPTIC);
+        }
+        return prefs.getBoolean(KEY_TERMINAL_BELL_LEGACY, true)
+                ? BELL_HAPTIC : BELL_OFF;
+    }
+
+    public void setTerminalBellMode(int mode) {
+        if (mode != BELL_OFF && mode != BELL_HAPTIC
+                && mode != BELL_SCREEN_FLASH && mode != BELL_SOUND) {
+            mode = BELL_HAPTIC;
+        }
+        prefs.edit().putInt(KEY_TERMINAL_BELL_MODE, mode).apply();
+    }
+
+    /**
      * Guest-absolute path of the shell PRoot execs as the login shell
      * (e.g. {@code /bin/bash}, {@code /bin/zsh}). Defaults to
      * {@code /bin/bash}. Takes effect for sessions created afterwards.
@@ -286,5 +353,49 @@ public final class AppSettings {
 
     public void setProotLoginShell(String shell) {
         prefs.edit().putString(KEY_PROOT_LOGIN_SHELL, shell.trim()).apply();
+    }
+
+    /** Absolute path to the custom regular terminal font, or null for default monospace. */
+    public String terminalFontPath() {
+        return prefs.getString(KEY_TERMINAL_FONT_PATH, null);
+    }
+
+    public void setTerminalFontPath(String path) {
+        setNullableString(KEY_TERMINAL_FONT_PATH, path);
+    }
+
+    /** Absolute path to the custom italic terminal font, or null to synthesize italics. */
+    public String terminalItalicFontPath() {
+        return prefs.getString(KEY_TERMINAL_ITALIC_FONT_PATH, null);
+    }
+
+    public void setTerminalItalicFontPath(String path) {
+        setNullableString(KEY_TERMINAL_ITALIC_FONT_PATH, path);
+    }
+
+    /** Absolute path to the custom bold terminal font, or null to synthesize bold. */
+    public String terminalBoldFontPath() {
+        return prefs.getString(KEY_TERMINAL_BOLD_FONT_PATH, null);
+    }
+
+    public void setTerminalBoldFontPath(String path) {
+        setNullableString(KEY_TERMINAL_BOLD_FONT_PATH, path);
+    }
+
+    /** Absolute path to the custom bold italic terminal font, or null for fallback styling. */
+    public String terminalBoldItalicFontPath() {
+        return prefs.getString(KEY_TERMINAL_BOLD_ITALIC_FONT_PATH, null);
+    }
+
+    public void setTerminalBoldItalicFontPath(String path) {
+        setNullableString(KEY_TERMINAL_BOLD_ITALIC_FONT_PATH, path);
+    }
+
+    private void setNullableString(String key, String value) {
+        if (value == null) {
+            prefs.edit().remove(key).apply();
+        } else {
+            prefs.edit().putString(key, value).apply();
+        }
     }
 }

@@ -29,6 +29,10 @@
     <string name="setting_keep_screen_on_title">Keep screen on</string>
     <string name="setting_keep_screen_on_summary">Keep the display awake while the terminal is in the foreground.</string>
 
+    <!-- Settings: Immersive mode -->
+    <string name="setting_immersive_mode_title">Immersive mode</string>
+    <string name="setting_immersive_mode_summary">Hide the status and navigation bars while using the terminal. Swipe from an edge to reveal them temporarily.</string>
+
     <!-- Settings: Rich keyboard -->
     <string name="setting_rich_keyboard_title">Rich keyboard input</string>
     <string name="setting_rich_keyboard_summary">Enable suggestions, autocorrect and swipe typing at the shell prompt. Falls back to raw keys inside full-screen apps.</string>
@@ -44,6 +48,33 @@
     <!-- Settings: Mouse reporting -->
     <string name="setting_mouse_tracking_title">Mouse reporting</string>
     <string name="setting_mouse_tracking_summary">Send taps and swipes to programs that support the mouse: a tap is a left click, a swipe is wheel scroll (vertical and horizontal). Only active while a program enables mouse tracking.</string>
+
+    <!-- Settings: Storage binding -->
+    <string name="setting_bind_storage_title">Bind external storage</string>
+    <string name="setting_bind_storage_summary">Bind Android shared storage into newly opened Debian sessions as /mnt/shared, with standard folders under /mnt.</string>
+    <string name="storage_binding_enabled">Storage binding enabled for new Debian sessions</string>
+    <string name="storage_permission_denied">Storage permission is required to bind shared storage.</string>
+    <string name="storage_permission_settings_unavailable">Storage permission settings are not available on this device.</string>
+
+    <!-- Settings: Session close behavior -->
+    <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
+    <string name="setting_terminate_processes_summary">When closing a Debian tab, ask PRoot to kill all guest processes. Turn off before opening a tab to let detached daemons survive session hangup.</string>
+
+    <!-- Settings: Terminal bell -->
+    <string name="setting_terminal_bell_title">Terminal bell</string>
+    <string name="setting_terminal_bell_summary">Feedback when the active terminal session sends BEL.</string>
+    <string-array name="terminal_bell_mode_labels">
+        <item>Off</item>
+        <item>Haptic feedback</item>
+        <item>Screen flash</item>
+        <item>Sound</item>
+    </string-array>
+    <integer-array name="terminal_bell_mode_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </integer-array>
 
     <!-- Settings: Touch keyboard -->
     <string name="setting_touch_keyboard_title">Show touch keyboard</string>
@@ -91,7 +122,7 @@
 
     <!-- Settings: Terminal theme -->
     <string name="setting_theme_title">Terminal theme</string>
-    <string name="setting_theme_summary">Colors for the terminal: pick a preset or build your own palette.</string>
+    <string name="setting_theme_summary">Colors, wallpaper, cursor, and font files for the terminal.</string>
 
     <!-- Theme editor -->
     <string name="theme_activity_title">Terminal theme</string>
@@ -130,6 +161,15 @@
     <string name="theme_cursor_block">Block</string>
     <string name="theme_cursor_underline">Underline</string>
     <string name="theme_cursor_bar">Bar</string>
+    <string name="theme_font_default">Default font</string>
+    <string name="theme_font_bold">Bold font</string>
+    <string name="theme_font_italic">Italic font</string>
+    <string name="theme_font_bold_italic">Bold italic font</string>
+    <string name="theme_font_choose">Choose font…</string>
+    <string name="theme_font_change">Change font…</string>
+    <string name="theme_font_remove">Remove</string>
+    <string name="theme_font_failed">Couldn\'t load that font.</string>
+    <string name="theme_font_removed">Font removed</string>
     <string-array name="theme_ansi_names">
         <item>Black</item>
         <item>Red</item>

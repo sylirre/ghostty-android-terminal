@@ -2,9 +2,11 @@ package sh.easycli.proot.ui;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -49,18 +51,22 @@ public class TabStripView extends HorizontalScrollView {
 
     public void update(List<String> titles, int activeIndex) {
         row.removeAllViews();
+        View activeTab = null;
+        View activeClose = null;
         for (int i = 0; i < titles.size(); i++) {
             final int index = i;
             boolean active = i == activeIndex;
             TextView tab = makeButton(titles.get(i), active);
             tab.setOnClickListener(v -> listener.onTabSelected(index));
             row.addView(tab);
+            if (active) activeTab = tab;
             if (active) {
                 TextView close = makeButton("×", true);
                 Glyphs.applyTo(close);  // × → vector icon, not a font glyph
                 close.setContentDescription(getContext().getString(R.string.tab_close_description));
                 close.setOnClickListener(v -> listener.onTabClosed(index));
                 row.addView(close);
+                activeClose = close;
             }
         }
         TextView add = makeButton("+", false);
@@ -71,6 +77,19 @@ public class TabStripView extends HorizontalScrollView {
             return true;
         });
         row.addView(add);
+        if (activeTab != null) {
+            final View tabToShow = activeTab;
+            final View closeToShow = activeClose;
+            post(() -> {
+                if (activeIndex == titles.size() - 1) {
+                    fullScroll(View.FOCUS_RIGHT);
+                    return;
+                }
+                View rightEdge = closeToShow != null ? closeToShow : tabToShow;
+                row.requestRectangleOnScreen(new Rect(
+                        tabToShow.getLeft(), 0, rightEdge.getRight(), row.getHeight()), false);
+            });
+        }
     }
 
     private TextView makeButton(String label, boolean active) {
