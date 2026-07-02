@@ -75,7 +75,11 @@ jobs:
           # Espresso clicks need animations off (docs/testing.md).
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-audio -no-boot-anim
-          script: ./gradlew connectedDebugAndroidTest
+          # The emulator occasionally boots into a degraded state under CI's
+          # software rendering (dropped adb connections, "Failed to find
+          # ColorBuffer" GPU errors), which times out unrelated Espresso
+          # clicks. One retry absorbs that without masking real failures.
+          script: ./gradlew connectedDebugAndroidTest || ./gradlew connectedDebugAndroidTest
 
       - name: Upload test reports
         if: failure()
