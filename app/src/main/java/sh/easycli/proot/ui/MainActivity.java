@@ -123,6 +123,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
         applyKeepScreenOn(settings.keepScreenOn());
+        applyImmersiveMode(settings.immersiveMode());
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         terminal.setSmoothScroll(settings.smoothScroll());
@@ -243,6 +244,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     @Override
     protected void onResume() {
         super.onResume();
+        // Re-hide the system bars if the setting is on: returning here from
+        // ThemeActivity/ExtraKeysActivity or the background cancels them.
+        applyImmersiveMode(settings.immersiveMode());
         // Pick up theme changes made in ThemeActivity (and seed the first paint).
         applyTheme();
         // Pick up a wallpaper chosen/removed in ThemeActivity.
@@ -261,6 +265,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(exitReceiver);
+    }
+
+    /**
+     * The Settings dialog (its own {@code Window}) and any system dialog
+     * steal focus without pausing the activity, which cancels sticky/hidden
+     * system bars; re-hide them as soon as this window regains focus.
+     */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyImmersiveMode(settings.immersiveMode());
     }
 
     /**
@@ -517,6 +532,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 enabled -> {
                     settings.setKeepScreenOn(enabled);
                     applyKeepScreenOn(enabled);
+                }));
+        items.add(new Setting.Toggle(
+                getString(R.string.setting_immersive_mode_title),
+                getString(R.string.setting_immersive_mode_summary),
+                settings::immersiveMode,
+                enabled -> {
+                    settings.setImmersiveMode(enabled);
+                    applyImmersiveMode(enabled);
                 }));
         items.add(new Setting.Toggle(
                 getString(R.string.setting_touch_keyboard_title),
@@ -922,6 +945,38 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+    }
+
+    /**
+     * Hides (or restores) the status and navigation bars. API 30+ uses the
+     * WindowInsetsController with swipe-to-reveal-transiently behavior; API 29
+     * falls back to the legacy sticky-immersive system-UI-visibility flags.
+     * Sticky/hidden bars are cancelled by the OS on any window-focus loss (a
+     * dialog opening, another activity, backgrounding), so callers must
+     * re-invoke this on focus regain — see onResume/onWindowFocusChanged.
+     */
+    private void applyImmersiveMode(boolean enabled) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsetsController c = getWindow().getInsetsController();
+            if (c == null) return;
+            if (enabled) {
+                c.setSystemBarsBehavior(
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                c.hide(WindowInsets.Type.systemBars());
+            } else {
+                c.show(WindowInsets.Type.systemBars());
+            }
+        } else {
+            View decor = getWindow().getDecorView();
+            decor.setSystemUiVisibility(enabled
+                    ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    : View.SYSTEM_UI_FLAG_VISIBLE);
         }
     }
 

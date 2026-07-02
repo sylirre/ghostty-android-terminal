@@ -94,8 +94,9 @@ public class TerminalUiTest {
         }
         // Don't leak extra-keys edits into other tests / the app's real config.
         new ExtraKeysConfig(ApplicationProvider.getApplicationContext()).reset();
-        new AppSettings(ApplicationProvider.getApplicationContext())
-                .setExtraKeysEnabled(true);
+        AppSettings settings = new AppSettings(ApplicationProvider.getApplicationContext());
+        settings.setExtraKeysEnabled(true);
+        settings.setImmersiveMode(false);
         scenario.close();
     }
 
@@ -172,6 +173,17 @@ public class TerminalUiTest {
         dispatchText("\n");
         waitFor("toolbar chars echoed", TIMEOUT_MS,
                 () -> currentScreen().contains("/-"), this::diagnose);
+    }
+
+    @Test
+    public void immersiveModeTogglePersists() {
+        onView(withId(R.id.settings_button)).perform(click());
+        onView(withText(R.string.setting_immersive_mode_title))
+                .inRoot(isDialog()).perform(scrollTo(), click());
+        onView(withText(R.string.settings_dialog_close))
+                .inRoot(isDialog()).perform(click());
+        assertTrue(new AppSettings(ApplicationProvider.getApplicationContext())
+                .immersiveMode());
     }
 
     @Test

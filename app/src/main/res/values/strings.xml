@@ -29,6 +29,10 @@
     <string name="setting_keep_screen_on_title">Keep screen on</string>
     <string name="setting_keep_screen_on_summary">Keep the display awake while the terminal is in the foreground.</string>
 
+    <!-- Settings: Immersive mode -->
+    <string name="setting_immersive_mode_title">Immersive mode</string>
+    <string name="setting_immersive_mode_summary">Hide the status and navigation bars while the terminal is open. Swipe from a screen edge to reveal them briefly.</string>
+
     <!-- Settings: Rich keyboard -->
     <string name="setting_rich_keyboard_title">Rich keyboard input</string>
     <string name="setting_rich_keyboard_summary">Enable suggestions, autocorrect and swipe typing at the shell prompt. Falls back to raw keys inside full-screen apps.</string>

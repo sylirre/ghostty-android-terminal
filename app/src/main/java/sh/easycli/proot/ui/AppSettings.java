@@ -40,6 +40,7 @@ public final class AppSettings {
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
     private static final String KEY_BELL_MODE = "bell_mode";
     private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
+    private static final String KEY_IMMERSIVE_MODE = "immersive_mode";
 
     /** {@link #bellMode()} values. */
     public static final int BELL_OFF = 0;
@@ -398,5 +399,22 @@ public final class AppSettings {
 
     public void setBindExternalStorage(boolean enabled) {
         prefs.edit().putBoolean(KEY_BIND_EXTERNAL_STORAGE, enabled).apply();
+    }
+
+    /**
+     * When true, the status and navigation bars are hidden while the terminal
+     * is in the foreground (immersive/fullscreen mode). Swiping from a screen
+     * edge reveals them briefly. Off by default: opt-in, since it removes the
+     * system back/home affordances and status info some users rely on.
+     * Applied by {@code MainActivity#applyImmersiveMode} in onCreate, onResume,
+     * and onWindowFocusChanged (the OS cancels sticky-immersive on any focus
+     * loss, e.g. opening the settings dialog).
+     */
+    public boolean immersiveMode() {
+        return prefs.getBoolean(KEY_IMMERSIVE_MODE, false);
+    }
+
+    public void setImmersiveMode(boolean enabled) {
+        prefs.edit().putBoolean(KEY_IMMERSIVE_MODE, enabled).apply();
     }
 }
