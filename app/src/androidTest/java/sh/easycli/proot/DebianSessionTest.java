@@ -65,7 +65,7 @@ public class DebianSessionTest {
         // of the run, no-ops afterwards (the rootfs directory already exists).
         DebianRootfs.install(ctx, null);
         session = new TerminalSession(80, 24, 8, 16, 10_000,
-                DebianRootfs.command(ctx, "/bin/bash"), listener);
+                DebianRootfs.command(ctx, "/bin/bash", false), listener);
         waitForOnScreen("~#"); // root login prompt: "root@host:~#"
     }
 
@@ -149,7 +149,7 @@ public class DebianSessionTest {
         try {
             assertFalse("missing /bin/bash is detected", DebianRootfs.isUsable(ctx));
             try {
-                DebianRootfs.command(ctx, "/bin/bash");
+                DebianRootfs.command(ctx, "/bin/bash", false);
                 fail("command() must reject an incomplete rootfs");
             } catch (IOException expected) {
                 // expected: spawning here would only die instantly.

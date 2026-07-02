@@ -39,6 +39,7 @@ public final class AppSettings {
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
     private static final String KEY_PROOT_LOGIN_SHELL = "proot_login_shell";
     private static final String KEY_BELL_MODE = "bell_mode";
+    private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
 
     /** {@link #bellMode()} values. */
     public static final int BELL_OFF = 0;
@@ -382,5 +383,20 @@ public final class AppSettings {
 
     public void setBellMode(int mode) {
         prefs.edit().putInt(KEY_BELL_MODE, mode).apply();
+    }
+
+    /**
+     * User's intent to bind Android shared storage (/mnt/shared, plus
+     * Documents/Pictures/DCIM/Music where they exist) into new Debian
+     * sessions. Independent of whether the OS permission is actually granted
+     * right now — {@code MainActivity} combines the two for display and for
+     * deciding what to actually bind at session-creation time.
+     */
+    public boolean bindExternalStorage() {
+        return prefs.getBoolean(KEY_BIND_EXTERNAL_STORAGE, false);
+    }
+
+    public void setBindExternalStorage(boolean enabled) {
+        prefs.edit().putBoolean(KEY_BIND_EXTERNAL_STORAGE, enabled).apply();
     }
 }

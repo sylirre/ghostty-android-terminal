@@ -67,6 +67,34 @@ abstract class Setting {
     }
 
     /**
+     * Re-runs {@code refresh} whenever {@code view}'s window regains focus —
+     * i.e. returning to this dialog after a screen or system-settings page a
+     * row opened (theme editor, extra-keys editor, All Files Access settings,
+     * a runtime permission dialog). Shared by {@link Action} and
+     * {@link Toggle} so a row reflects state that can change while the
+     * dialog stays up underneath, rather than the stale snapshot taken when
+     * the row was built.
+     */
+    private static void refreshOnWindowFocusRegain(View view, Runnable refresh) {
+        view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            private final ViewTreeObserver.OnWindowFocusChangeListener onFocus =
+                    hasFocus -> {
+                        if (hasFocus) refresh.run();
+                    };
+
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                v.getViewTreeObserver().addOnWindowFocusChangeListener(onFocus);
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                v.getViewTreeObserver().removeOnWindowFocusChangeListener(onFocus);
+            }
+        });
+    }
+
+    /**
      * Builds this row's trailing control (e.g. a Switch), or returns null
      * for a row whose body is itself the only tap target.
      */
@@ -101,6 +129,10 @@ abstract class Setting {
                 onChange.accept(checked);
                 notifyChanged(); // a dependent row may need to grey out/in
             });
+            // Refresh on return from a permission dialog/settings screen a
+            // row's onChange may have opened: the displayed state can depend
+            // on more than the stored value (e.g. an OS permission grant).
+            refreshOnWindowFocusRegain(sw, () -> sw.setChecked(value.getAsBoolean()));
             return sw;
         }
 
@@ -196,22 +228,7 @@ abstract class Setting {
             // Refresh on return from the screen this row opens: when that
             // screen finishes, the dialog window regains focus and we re-read
             // the (possibly changed) value rather than showing a stale name.
-            label.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-                private final ViewTreeObserver.OnWindowFocusChangeListener onFocus =
-                        hasFocus -> {
-                            if (hasFocus) label.setText(value.get());
-                        };
-
-                @Override
-                public void onViewAttachedToWindow(View v) {
-                    v.getViewTreeObserver().addOnWindowFocusChangeListener(onFocus);
-                }
-
-                @Override
-                public void onViewDetachedFromWindow(View v) {
-                    v.getViewTreeObserver().removeOnWindowFocusChangeListener(onFocus);
-                }
-            });
+            refreshOnWindowFocusRegain(label, () -> label.setText(value.get()));
             return label;
         }
 

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- apt/curl/… inside the Debian guest run as the app's uid. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -15,10 +16,20 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Vibrate feedback for the terminal bell (BEL). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Legacy runtime permission; meaningful only on API 29 devices, together
+         with requestLegacyExternalStorage below (see Settings > Bind external
+         storage, for Debian sessions). -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <!-- Full filesystem access on API 30+, used to bind Android shared storage
+         into Debian sessions. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <activity

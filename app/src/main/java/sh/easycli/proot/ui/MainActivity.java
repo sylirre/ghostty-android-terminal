@@ -17,6 +17,7 @@ import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -77,6 +78,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     public static final String EXTRA_FORCE_SHELL = "sh.easycli.proot.FORCE_SHELL";
 
     private static final int REQ_POST_NOTIFICATIONS = 1;
+    private static final int REQ_WRITE_EXTERNAL_STORAGE = 2;
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
@@ -337,7 +339,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
-                    settings.scrollbackLines(), debian, settings.prootLoginShell(), this);
+                    settings.scrollbackLines(), debian, settings.prootLoginShell(),
+                    settings.bindExternalStorage() && storagePermissionGranted(), this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
             if (settings.touchKeyboard()) showKeyboard();
@@ -461,6 +464,41 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     Uri.parse("package:" + getPackageName())));
         } catch (android.content.ActivityNotFoundException ignored) {
             // No battery-optimization UI on this device.
+        }
+    }
+
+    /**
+     * Whether the OS currently grants full external-storage filesystem
+     * access, via whichever mechanism applies to this API level.
+     */
+    private boolean storagePermissionGranted() {
+        return Build.VERSION.SDK_INT >= 30
+                ? Environment.isExternalStorageManager()
+                : checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Kicks off whichever permission flow applies to this API level for
+     * "Bind external storage". The settings row re-syncs its displayed state
+     * (see {@link Setting.Toggle}) when the dialog's window regains focus
+     * after this returns, so no result callback is needed here.
+     */
+    private void requestStoragePermission() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (ActivityNotFoundException e) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (ActivityNotFoundException ignored) {
+                    // No All-Files-Access UI on this device/OEM build.
+                }
+            }
+        } else {
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    REQ_WRITE_EXTERNAL_STORAGE);
         }
     }
 
@@ -599,6 +637,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     getString(R.string.setting_restore_summary),
                     () -> "",
                     this::confirmRestore));
+            items.add(new Setting.Toggle(
+                    getString(R.string.setting_bind_external_storage_title),
+                    getString(R.string.setting_bind_external_storage_summary),
+                    () -> settings.bindExternalStorage() && storagePermissionGranted(),
+                    enabled -> {
+                        settings.setBindExternalStorage(enabled); // persist intent either way
+                        if (enabled && !storagePermissionGranted()) requestStoragePermission();
+                    }));
         }
         SettingsDialog.show(this, items);
     }

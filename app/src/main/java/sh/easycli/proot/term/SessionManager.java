@@ -34,12 +34,16 @@ public final class SessionManager {
      * @param loginShell guest-absolute path of the login shell (e.g.
      *                   {@code /bin/bash}); ignored when {@code debian} is false.
      * @param scrollbackLines lines of history the new session keeps.
+     * @param bindExternalStorage bind Android shared storage into the guest;
+     *                            ignored when {@code debian} is false (the
+     *                            plain Android shell isn't sandboxed).
      */
     public TerminalSession create(Context context, int cols, int rows,
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean debian,
-            String loginShell, TerminalSession.Listener listener) throws IOException {
+            String loginShell, boolean bindExternalStorage,
+            TerminalSession.Listener listener) throws IOException {
         SessionCommand command = debian
-                ? DebianRootfs.command(context, loginShell)
+                ? DebianRootfs.command(context, loginShell, bindExternalStorage)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());

@@ -2,6 +2,7 @@ package sh.easycli.proot.term;
 
 import android.content.Context;
 import android.os.Build;
+import android.os.Environment;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
@@ -206,8 +207,13 @@ public final class DebianRootfs {
      * nativeLibraryDir (its only exec-allowed location under W^X).
      *
      * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
+     * @param bindExternalStorage bind Android shared storage (and standard
+     *        public directories, where they exist) read-write into the guest
+     *        under /mnt; requires the storage permission (see MainActivity's
+     *        "Bind external storage" setting) or the binds are simply absent
      */
-    public static SessionCommand command(Context ctx, String shell) throws IOException {
+    public static SessionCommand command(Context ctx, String shell,
+            boolean bindExternalStorage) throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Debian rootfs not installed");
         if (!hasShell(dir(ctx))) {
             throw new IOException("Debian rootfs is incomplete: /bin/bash is "
@@ -226,7 +232,7 @@ public final class DebianRootfs {
         File tmp = new File(ctx.getFilesDir(), "proot-tmp");
         tmp.mkdirs();
 
-        String[] argv = {
+        List<String> argv = new ArrayList<>(Arrays.asList(
                 "proot",
                 "--kill-on-exit",  // no orphaned tracees after bash exits
                 "--link2symlink",  // apps can't hard-link; dpkg needs ln to work
@@ -235,7 +241,19 @@ public final class DebianRootfs {
                 "-w", "/root",
                 "-b", "/dev",
                 "-b", "/proc",
-                "-b", "/sys",
+                "-b", "/sys"));
+        if (bindExternalStorage) {
+            bindStorageDir(ctx, argv, Environment.getExternalStorageDirectory(), "mnt/shared");
+            bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOCUMENTS), "mnt/documents");
+            bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_PICTURES), "mnt/pictures");
+            bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DCIM), "mnt/dcim");
+            bindStorageDir(ctx, argv, Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_MUSIC), "mnt/music");
+        }
+        argv.addAll(Arrays.asList(
                 // env -i: the host environment (incl. PROOT_*) stops here;
                 // the guest gets a clean Debian login environment.
                 "/usr/bin/env", "-i",
@@ -244,16 +262,30 @@ public final class DebianRootfs {
                 "TERM=xterm-256color",
                 "LANG=C.UTF-8",
                 "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                shell, "--login",
-        };
+                shell, "--login"));
         String[] env = {
                 "PROOT_LOADER=" + loader.getAbsolutePath(),
                 "PROOT_TMP_DIR=" + tmp.getAbsolutePath(),
                 "PATH=/system/bin",
                 "HOME=" + ctx.getFilesDir().getAbsolutePath(),
         };
-        return new SessionCommand(null, argv, env,
+        return new SessionCommand(null, argv.toArray(new String[0]), env,
                 ctx.getFilesDir().getAbsolutePath(), "deb", true);
+    }
+
+    /**
+     * Binds {@code hostDir} read-write at {@code guestRelPath} under the
+     * rootfs, if it actually exists (a Music folder may not, for example).
+     * Creates the guest mount-point directory first: {@link #writeGuestDefaults}
+     * only runs at fresh-install/tar-extraction time, so rootfses installed
+     * before this feature existed won't have /mnt/* yet.
+     */
+    private static void bindStorageDir(Context ctx, List<String> argv, File hostDir,
+            String guestRelPath) {
+        if (hostDir == null || !hostDir.exists()) return;
+        new File(dir(ctx), guestRelPath).mkdirs();
+        argv.add("-b");
+        argv.add(hostDir.getAbsolutePath() + ":/" + guestRelPath);
     }
 
     // --- tar extraction ---
