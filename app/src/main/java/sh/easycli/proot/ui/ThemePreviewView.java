@@ -36,10 +36,13 @@ public final class ThemePreviewView extends View {
     private Bitmap backgroundImage;
     private int backgroundImageAlpha = 255;
 
-    // Custom default/italic fonts (mirrors TerminalView.setFontFiles). null
-    // italicTypeface means faux (skewed) italic on defaultTypeface.
+    // Custom default/bold/italic/bold-italic fonts (mirrors
+    // TerminalView.setFontFiles); FontStyle resolves the fallback chain for
+    // whichever roles are null the same way TerminalView does.
     private Typeface defaultTypeface = Typeface.MONOSPACE;
+    private Typeface boldTypeface;
     private Typeface italicTypeface;
+    private Typeface boldItalicTypeface;
 
     private int cursorStyle = TerminalNative.CURSOR_BLOCK;
     private boolean cursorBlink;
@@ -71,14 +74,18 @@ public final class ThemePreviewView extends View {
     }
 
     /**
-     * Sets the fonts to preview, mirroring {@link TerminalView#setFontFiles}:
-     * {@code defaultTf} is used for all text; {@code italicTf} may be null,
-     * meaning "use faux (skewed) italic on defaultTf" for the italic sample
-     * line, matching the terminal's own fallback.
+     * Sets the fonts to preview, mirroring {@link TerminalView#setFontFiles}.
+     * {@code defaultTf} is used for regular text; {@code boldTf}/{@code
+     * italicTf}/{@code boldItalicTf} may be null, meaning that role falls
+     * back through {@link FontStyle}'s faux-style chain, matching the
+     * terminal's own fallback.
      */
-    public void setFont(Typeface defaultTf, Typeface italicTf) {
+    public void setFont(Typeface defaultTf, Typeface boldTf, Typeface italicTf,
+            Typeface boldItalicTf) {
         this.defaultTypeface = defaultTf != null ? defaultTf : Typeface.MONOSPACE;
+        this.boldTypeface = boldTf;
         this.italicTypeface = italicTf;
+        this.boldItalicTypeface = boldItalicTf;
         invalidate();
     }
 
@@ -160,6 +167,7 @@ public final class ThemePreviewView extends View {
               new Seg("build.sh  ", a[2], false, false), new Seg("README.md", fg, false, false) },
             { new Seg("error: ", a[1], true, false), new Seg("file not found", fg, false, false) },
             { new Seg("warning: ", a[3], false, true), new Seg("deprecated call", fg, false, true) },
+            { new Seg("note: ", a[6], true, true), new Seg("bold italic sample", fg, true, true) },
         };
 
         textPaint.setTypeface(defaultTypeface);
@@ -174,14 +182,11 @@ public final class ThemePreviewView extends View {
             float x = pad;
             for (Seg s : line) {
                 textPaint.setColor(s.color);
-                textPaint.setFakeBoldText(s.bold);
-                if (s.italic && italicTypeface != null) {
-                    textPaint.setTypeface(italicTypeface);
-                    textPaint.setTextSkewX(0);
-                } else {
-                    textPaint.setTypeface(defaultTypeface);
-                    textPaint.setTextSkewX(s.italic ? -0.25f : 0);
-                }
+                FontStyle fs = FontStyle.select(defaultTypeface, boldTypeface, italicTypeface,
+                        boldItalicTypeface, s.bold, s.italic);
+                textPaint.setTypeface(fs.typeface);
+                textPaint.setFakeBoldText(fs.fakeBold);
+                textPaint.setTextSkewX(fs.fakeItalic ? -0.25f : 0);
                 canvas.drawText(s.text, x, y, textPaint);
                 x += textPaint.measureText(s.text);
             }

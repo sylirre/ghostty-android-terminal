@@ -11,22 +11,26 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * File lifecycle for the terminal's custom default/italic font files.
+ * File lifecycle for the terminal's custom font files: default, bold,
+ * italic, and bold-italic.
  *
  * The system file picker hands back a transient {@code content://} URI whose
  * read permission does not survive the process, so {@link #importFrom} copies
  * the picked bytes into a fixed file per slot in app-internal storage; that
  * path is what {@link AppSettings#customFontDefaultPath}/
- * {@link AppSettings#customFontItalicPath} persist. Unlike an image (which
- * {@link android.graphics.BitmapFactory} incidentally validates on decode), a
- * font file has no other validation step before {@link TerminalView} tries to
- * use it for live rendering, so the import is rejected up front if it doesn't
- * parse as a font.
+ * {@link AppSettings#customFontBoldPath}/{@link AppSettings#customFontItalicPath}/
+ * {@link AppSettings#customFontBoldItalicPath} persist. Unlike an image
+ * (which {@link android.graphics.BitmapFactory} incidentally validates on
+ * decode), a font file has no other validation step before
+ * {@link TerminalView} tries to use it for live rendering, so the import is
+ * rejected up front if it doesn't parse as a font.
  */
 final class FontStore {
 
     static final String SLOT_DEFAULT = "terminal_font_default";
+    static final String SLOT_BOLD = "terminal_font_bold";
     static final String SLOT_ITALIC = "terminal_font_italic";
+    static final String SLOT_BOLD_ITALIC = "terminal_font_bold_italic";
 
     private FontStore() {}
 

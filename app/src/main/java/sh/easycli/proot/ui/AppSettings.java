@@ -25,7 +25,9 @@ public final class AppSettings {
     private static final String KEY_BG_IMAGE_OPACITY = "bg_image_opacity";
     private static final String KEY_BG_IMAGE_BLUR = "bg_image_blur";
     private static final String KEY_FONT_DEFAULT_PATH = "font_default_path";
+    private static final String KEY_FONT_BOLD_PATH = "font_bold_path";
     private static final String KEY_FONT_ITALIC_PATH = "font_italic_path";
+    private static final String KEY_FONT_BOLD_ITALIC_PATH = "font_bold_italic_path";
     private static final String KEY_CURSOR_STYLE = "cursor_style";
     private static final String KEY_CURSOR_BLINK = "cursor_blink";
     private static final String KEY_TOUCH_KEYBOARD = "touch_keyboard";
@@ -169,6 +171,24 @@ public final class AppSettings {
     }
 
     /**
+     * Absolute path to a custom bold font file, or null to fall back to faux
+     * bold (a synthetic weight applied to the default/italic typeface) on
+     * bold glyphs.
+     */
+    public String customFontBoldPath() {
+        return prefs.getString(KEY_FONT_BOLD_PATH, null);
+    }
+
+    /** Pass null to revert to faux (synthetic) bold. */
+    public void setCustomFontBoldPath(String path) {
+        if (path == null) {
+            prefs.edit().remove(KEY_FONT_BOLD_PATH).apply();
+        } else {
+            prefs.edit().putString(KEY_FONT_BOLD_PATH, path).apply();
+        }
+    }
+
+    /**
      * Absolute path to a custom italic font file, or null to fall back to
      * faux italic (a skew applied to the default typeface) on italic glyphs.
      */
@@ -182,6 +202,24 @@ public final class AppSettings {
             prefs.edit().remove(KEY_FONT_ITALIC_PATH).apply();
         } else {
             prefs.edit().putString(KEY_FONT_ITALIC_PATH, path).apply();
+        }
+    }
+
+    /**
+     * Absolute path to a custom bold-italic font file, or null to fall back
+     * to the best available combination of the other three fonts (see
+     * {@code TerminalView#applyStyle}) on bold+italic glyphs.
+     */
+    public String customFontBoldItalicPath() {
+        return prefs.getString(KEY_FONT_BOLD_ITALIC_PATH, null);
+    }
+
+    /** Pass null to revert to the bold/italic fallback chain. */
+    public void setCustomFontBoldItalicPath(String path) {
+        if (path == null) {
+            prefs.edit().remove(KEY_FONT_BOLD_ITALIC_PATH).apply();
+        } else {
+            prefs.edit().putString(KEY_FONT_BOLD_ITALIC_PATH, path).apply();
         }
     }
 

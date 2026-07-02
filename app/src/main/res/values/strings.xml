@@ -126,7 +126,9 @@
     <string name="theme_bg_image_failed">Couldn\'t load that image.</string>
     <string name="theme_bg_image_removed">Background image removed</string>
     <string name="theme_font_default_label">Default font</string>
+    <string name="theme_font_bold_label">Bold font</string>
     <string name="theme_font_italic_label">Italic font</string>
+    <string name="theme_font_bold_italic_label">Bold italic font</string>
     <string name="theme_font_choose">Choose…</string>
     <string name="theme_font_change">Change…</string>
     <string name="theme_font_remove">Remove</string>

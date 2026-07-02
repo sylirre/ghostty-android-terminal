@@ -295,14 +295,15 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     /**
-     * Loads the global default/italic font paths (if any) and hands them to
-     * the view. A missing or invalid path falls back silently inside
-     * {@link TerminalView#setFontFiles}, so unlike the wallpaper there is no
-     * "forget a stale path" step here — it's cheap to keep retrying, and the
-     * user's choice may become loadable again later.
+     * Loads the global default/bold/italic/bold-italic font paths (if any)
+     * and hands them to the view. A missing or invalid path falls back
+     * silently inside {@link TerminalView#setFontFiles}, so unlike the
+     * wallpaper there is no "forget a stale path" step here — it's cheap to
+     * keep retrying, and the user's choice may become loadable again later.
      */
     private void applyFonts() {
-        terminal.setFontFiles(settings.customFontDefaultPath(), settings.customFontItalicPath());
+        terminal.setFontFiles(settings.customFontDefaultPath(), settings.customFontBoldPath(),
+                settings.customFontItalicPath(), settings.customFontBoldItalicPath());
     }
 
     private boolean debianByDefault() {

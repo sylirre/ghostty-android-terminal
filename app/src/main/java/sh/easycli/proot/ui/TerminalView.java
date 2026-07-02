@@ -135,12 +135,15 @@ public class TerminalView extends View {
     private boolean restartInputPending; // a debounced restartInput is queued
 
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    // Custom default/italic fonts (AppSettings.customFontDefaultPath/
-    // customFontItalicPath, set via setFontFiles). italicTypeface null means
-    // no custom italic font is chosen: applyStyle falls back to a faux
-    // (skewed) italic on defaultTypeface, same as before this was added.
+    // Custom default/bold/italic/bold-italic fonts (AppSettings.customFont*
+    // Path, set via setFontFiles). A null slot other than defaultTypeface
+    // means no custom font is chosen for that role: applyStyle falls back to
+    // faux bold/italic built from whichever slots are available, same as
+    // before per-role fonts existed.
     private Typeface defaultTypeface = Typeface.MONOSPACE;
+    private Typeface boldTypeface;
     private Typeface italicTypeface;
+    private Typeface boldItalicTypeface;
     private final Paint bgPaint = new Paint();
     // Stylized underlines (SGR 4:2..4:5) are stroked by hand — Paint only does a
     // single solid line. The dash effects depend only on the cell metrics, so
@@ -756,17 +759,21 @@ public class TerminalView extends View {
     }
 
     /**
-     * Loads custom font files for the default and italic roles, falling back
-     * to the built-in monospace typeface when {@code defaultPath} is null,
-     * missing, or not a valid font, and to a faux (skewed) italic on the
-     * default typeface when {@code italicPath} is null/invalid (see
-     * {@link #applyStyle}). Cell metrics depend on the default typeface's own
-     * font metrics, so this recomputes them and reflows the grid exactly like
-     * a font-size change.
+     * Loads custom font files for the default, bold, italic, and bold-italic
+     * roles, falling back to the built-in monospace typeface when
+     * {@code defaultPath} is null, missing, or not a valid font, and to a
+     * faux (synthetic bold / skewed italic) style built from whichever other
+     * slots are available when {@code boldPath}/{@code italicPath}/
+     * {@code boldItalicPath} is null/invalid (see {@link #applyStyle}). Cell
+     * metrics depend on the default typeface's own font metrics, so this
+     * recomputes them and reflows the grid exactly like a font-size change.
      */
-    public void setFontFiles(String defaultPath, String italicPath) {
+    public void setFontFiles(String defaultPath, String boldPath, String italicPath,
+            String boldItalicPath) {
         defaultTypeface = loadTypeface(defaultPath, Typeface.MONOSPACE);
+        boldTypeface = loadTypeface(boldPath, null);
         italicTypeface = loadTypeface(italicPath, null);
+        boldItalicTypeface = loadTypeface(boldItalicPath, null);
         textPaint.setTypeface(defaultTypeface);
         setTextSizePx(spToPx(fontSizeSp));
         if (getWidth() > 0) {
@@ -1573,15 +1580,12 @@ public class TerminalView extends View {
 
     private void applyStyle(int fg, int attr) {
         textPaint.setColor(fg);
-        textPaint.setFakeBoldText((attr & TerminalNative.ATTR_BOLD) != 0);
-        boolean italic = (attr & TerminalNative.ATTR_ITALIC) != 0;
-        if (italic && italicTypeface != null) {
-            textPaint.setTypeface(italicTypeface);
-            textPaint.setTextSkewX(0);
-        } else {
-            textPaint.setTypeface(defaultTypeface);
-            textPaint.setTextSkewX(italic ? -0.25f : 0);
-        }
+        FontStyle fs = FontStyle.select(defaultTypeface, boldTypeface, italicTypeface,
+                boldItalicTypeface, (attr & TerminalNative.ATTR_BOLD) != 0,
+                (attr & TerminalNative.ATTR_ITALIC) != 0);
+        textPaint.setTypeface(fs.typeface);
+        textPaint.setFakeBoldText(fs.fakeBold);
+        textPaint.setTextSkewX(fs.fakeItalic ? -0.25f : 0);
         // Underlines are stroked separately by drawUnderline so the engine's
         // 4:2..4:5 styles render; Paint's underline only does a solid line.
         textPaint.setStrikeThruText((attr & TerminalNative.ATTR_STRIKE) != 0);

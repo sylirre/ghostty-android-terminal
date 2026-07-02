@@ -57,6 +57,8 @@ public final class ThemeActivity extends Activity {
     private static final int REQ_PICK_BG_IMAGE = 1;
     private static final int REQ_PICK_FONT_DEFAULT = 2;
     private static final int REQ_PICK_FONT_ITALIC = 3;
+    private static final int REQ_PICK_FONT_BOLD = 4;
+    private static final int REQ_PICK_FONT_BOLD_ITALIC = 5;
 
     private ThemeStore store;
     private AppSettings settings;
@@ -79,12 +81,14 @@ public final class ThemeActivity extends Activity {
     private SeekBar bgOpacity, bgBlur;
     private Bitmap bgPreviewBitmap;
 
-    // Custom default/italic fonts (also a global setting, not part of the
-    // theme's color working copy). The stored paths live in AppSettings;
-    // this activity only imports/removes files via FontStore and refreshes
-    // the button labels + preview.
+    // Custom default/bold/italic/bold-italic fonts (also a global setting,
+    // not part of the theme's color working copy). The stored paths live in
+    // AppSettings; this activity only imports/removes files via FontStore
+    // and refreshes the button labels + preview.
     private Button btnFontDefaultChoose, btnFontDefaultRemove;
+    private Button btnFontBoldChoose, btnFontBoldRemove;
     private Button btnFontItalicChoose, btnFontItalicRemove;
+    private Button btnFontBoldItalicChoose, btnFontBoldItalicRemove;
 
     // Cursor shape + blink: global settings (like the background image), not
     // part of the color working copy, so editing them never marks the theme
@@ -274,8 +278,14 @@ public final class ThemeActivity extends Activity {
             case REQ_PICK_FONT_DEFAULT:
                 importFont(uri, FontStore.SLOT_DEFAULT);
                 break;
+            case REQ_PICK_FONT_BOLD:
+                importFont(uri, FontStore.SLOT_BOLD);
+                break;
             case REQ_PICK_FONT_ITALIC:
                 importFont(uri, FontStore.SLOT_ITALIC);
+                break;
+            case REQ_PICK_FONT_BOLD_ITALIC:
+                importFont(uri, FontStore.SLOT_BOLD_ITALIC);
                 break;
             default:
                 break;
@@ -303,11 +313,7 @@ public final class ThemeActivity extends Activity {
                 toast(R.string.theme_font_failed);
                 return;
             }
-            if (slot.equals(FontStore.SLOT_DEFAULT)) {
-                settings.setCustomFontDefaultPath(path);
-            } else {
-                settings.setCustomFontItalicPath(path);
-            }
+            setFontPathForSlot(slot, path);
             refreshFontLabels();
             reloadPreviewFonts();
         } catch (IOException e) {
@@ -358,13 +364,21 @@ public final class ThemeActivity extends Activity {
     private void setupFontControls() {
         btnFontDefaultChoose = findViewById(R.id.theme_font_default_choose);
         btnFontDefaultRemove = findViewById(R.id.theme_font_default_remove);
+        btnFontBoldChoose = findViewById(R.id.theme_font_bold_choose);
+        btnFontBoldRemove = findViewById(R.id.theme_font_bold_remove);
         btnFontItalicChoose = findViewById(R.id.theme_font_italic_choose);
         btnFontItalicRemove = findViewById(R.id.theme_font_italic_remove);
+        btnFontBoldItalicChoose = findViewById(R.id.theme_font_bold_italic_choose);
+        btnFontBoldItalicRemove = findViewById(R.id.theme_font_bold_italic_remove);
 
         btnFontDefaultChoose.setOnClickListener(v -> pickFont(REQ_PICK_FONT_DEFAULT));
         btnFontDefaultRemove.setOnClickListener(v -> removeFont(FontStore.SLOT_DEFAULT));
+        btnFontBoldChoose.setOnClickListener(v -> pickFont(REQ_PICK_FONT_BOLD));
+        btnFontBoldRemove.setOnClickListener(v -> removeFont(FontStore.SLOT_BOLD));
         btnFontItalicChoose.setOnClickListener(v -> pickFont(REQ_PICK_FONT_ITALIC));
         btnFontItalicRemove.setOnClickListener(v -> removeFont(FontStore.SLOT_ITALIC));
+        btnFontBoldItalicChoose.setOnClickListener(v -> pickFont(REQ_PICK_FONT_BOLD_ITALIC));
+        btnFontBoldItalicRemove.setOnClickListener(v -> removeFont(FontStore.SLOT_BOLD_ITALIC));
 
         refreshFontLabels();
         reloadPreviewFonts();
@@ -387,32 +401,46 @@ public final class ThemeActivity extends Activity {
 
     private void removeFont(String slot) {
         FontStore.clear(this, slot);
-        if (slot.equals(FontStore.SLOT_DEFAULT)) {
-            settings.setCustomFontDefaultPath(null);
-        } else {
-            settings.setCustomFontItalicPath(null);
-        }
+        setFontPathForSlot(slot, null);
         refreshFontLabels();
         reloadPreviewFonts();
         toast(R.string.theme_font_removed);
     }
 
+    /** Routes a stored font path to its {@link AppSettings} slot. */
+    private void setFontPathForSlot(String slot, String path) {
+        switch (slot) {
+            case FontStore.SLOT_DEFAULT: settings.setCustomFontDefaultPath(path); break;
+            case FontStore.SLOT_BOLD: settings.setCustomFontBoldPath(path); break;
+            case FontStore.SLOT_ITALIC: settings.setCustomFontItalicPath(path); break;
+            case FontStore.SLOT_BOLD_ITALIC: settings.setCustomFontBoldItalicPath(path); break;
+            default: break;
+        }
+    }
+
     private void refreshFontLabels() {
-        boolean hasDefault = settings.customFontDefaultPath() != null;
-        boolean hasItalic = settings.customFontItalicPath() != null;
-        btnFontDefaultChoose.setText(hasDefault
-                ? R.string.theme_font_change : R.string.theme_font_choose);
-        btnFontDefaultRemove.setVisibility(hasDefault ? View.VISIBLE : View.GONE);
-        btnFontItalicChoose.setText(hasItalic
-                ? R.string.theme_font_change : R.string.theme_font_choose);
-        btnFontItalicRemove.setVisibility(hasItalic ? View.VISIBLE : View.GONE);
+        setFontButtonState(btnFontDefaultChoose, btnFontDefaultRemove,
+                settings.customFontDefaultPath() != null);
+        setFontButtonState(btnFontBoldChoose, btnFontBoldRemove,
+                settings.customFontBoldPath() != null);
+        setFontButtonState(btnFontItalicChoose, btnFontItalicRemove,
+                settings.customFontItalicPath() != null);
+        setFontButtonState(btnFontBoldItalicChoose, btnFontBoldItalicRemove,
+                settings.customFontBoldItalicPath() != null);
+    }
+
+    private void setFontButtonState(Button choose, Button remove, boolean hasFont) {
+        choose.setText(hasFont ? R.string.theme_font_change : R.string.theme_font_choose);
+        remove.setVisibility(hasFont ? View.VISIBLE : View.GONE);
     }
 
     /** Re-decodes the stored fonts (if any) and pushes them to the preview. */
     private void reloadPreviewFonts() {
         Typeface def = loadTypefaceOrNull(settings.customFontDefaultPath());
+        Typeface bold = loadTypefaceOrNull(settings.customFontBoldPath());
         Typeface ital = loadTypefaceOrNull(settings.customFontItalicPath());
-        preview.setFont(def != null ? def : Typeface.MONOSPACE, ital);
+        Typeface boldItal = loadTypefaceOrNull(settings.customFontBoldItalicPath());
+        preview.setFont(def != null ? def : Typeface.MONOSPACE, bold, ital, boldItal);
     }
 
     private Typeface loadTypefaceOrNull(String path) {
