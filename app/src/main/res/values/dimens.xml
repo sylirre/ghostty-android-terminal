@@ -22,6 +22,9 @@
     <!-- Minimum comfortable touch target. -->
     <dimen name="touch_min">48dp</dimen>
 
+    <!-- Square top-bar icon buttons (new-tab, search, settings). -->
+    <dimen name="icon_button">44dp</dimen>
+
     <!-- Extra-keys keycap metrics. -->
     <dimen name="key_min_width">44dp</dimen>
     <dimen name="key_pad_h">12dp</dimen>

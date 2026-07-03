@@ -58,7 +58,10 @@ public class TabStripView extends HorizontalScrollView {
             row.addView(tab, tabLayout());
             if (active) activeTab = tab;
         }
-        row.addView(makeAddButton(), tabLayout());
+        LinearLayout.LayoutParams addLp = new LinearLayout.LayoutParams(
+                dp(R.dimen.icon_button), dp(R.dimen.icon_button));
+        addLp.setMarginEnd(dp(R.dimen.space_1));
+        row.addView(makeAddButton(), addLp);
         if (activeTab != null) {
             final View tabToShow = activeTab;
             post(() -> {
@@ -126,9 +129,6 @@ public class TabStripView extends HorizontalScrollView {
         add.setTextSize(22);
         add.setTypeface(Typeface.DEFAULT_BOLD);
         add.setGravity(Gravity.CENTER);
-        add.setMinWidth(dp(R.dimen.touch_min));
-        int padV = dp(R.dimen.tab_pad_v);
-        add.setPadding(0, padV, 0, padV);
         add.setBackground(Chrome.ripple(getContext(), R.color.surface_2,
                 Chrome.dimen(getContext(), R.dimen.radius_md), R.color.border));
         add.setContentDescription(getContext().getString(R.string.tab_new_description));
