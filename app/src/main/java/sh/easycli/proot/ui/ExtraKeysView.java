@@ -28,10 +28,12 @@ import sh.easycli.proot.term.TerminalNative;
  * {@link #setConfig} once and {@link #reload} whenever the config may have
  * changed.
  *
- * The toolbar is a vertical stack of 1–3 rows. Each row is a {@link FillRow}:
- * its keys stretch to fill the width evenly when they fit, and it falls back to
- * horizontal scrolling only when they don't — so a stable keyboard-grid layout
- * is the norm and a crowded row degrades gracefully instead of hiding keys.
+ * The toolbar is a vertical stack of 1–3 rows. Each row is a {@link KeyRow}
+ * (a horizontal scroller). Every non-combo key is given one uniform width —
+ * the widest non-combo keycap's natural width, computed in {@link #onMeasure}
+ * across all rows — so the keycaps line up like a keyboard grid; modifier-combo
+ * keys keep their natural (wider) width to fit their longer labels. A crowded
+ * row scrolls sideways instead of hiding keys.
  *
  * CTRL and ALT are sticky: they highlight and apply to the next key or typed
  * character (via {@link TerminalView.StickyModifiers}). Everything else sends
@@ -59,6 +61,10 @@ public class ExtraKeysView extends LinearLayout {
     // Sticky-modifier buttons currently on screen, with the bit each toggles, so
     // updateToggles() can recolor them without knowing the layout in advance.
     private final List<ModButton> modButtons = new ArrayList<>();
+
+    // Non-combo key views (mods == 0). onMeasure gives them all one width — the
+    // widest keycap's natural width — so the toolbar reads as a uniform grid.
+    private final List<TextView> uniformKeys = new ArrayList<>();
 
     private static final int REPEAT_INTERVAL_MS = 80;
 
@@ -124,11 +130,12 @@ public class ExtraKeysView extends LinearLayout {
     public void reload() {
         removeAllViews();
         modButtons.clear();
+        uniformKeys.clear();
         if (config == null) return;
         List<List<ExtraKey>> rows = config.enabledRows(getContext());
         hasKeys = !rows.isEmpty();
         for (List<ExtraKey> row : rows) {
-            FillRow rowView = new FillRow(getContext());
+            KeyRow rowView = new KeyRow(getContext());
             for (ExtraKey key : row) addKey(key, rowView.content());
             addView(rowView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
@@ -139,6 +146,28 @@ public class ExtraKeysView extends LinearLayout {
     private void applyVisibility() {
         boolean show = enabledRow && hasKeys && (!hideWhenKeyboardHidden || keyboardVisible);
         setVisibility(show ? VISIBLE : GONE);
+    }
+
+    /**
+     * Before the rows lay out, give every non-combo key the same width — the
+     * widest non-combo keycap's natural width — so the toolbar reads as a
+     * uniform grid regardless of label length or which row a key sits in. Combo
+     * keys are left at their natural (wider) width.
+     */
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (!uniformKeys.isEmpty()) {
+            int unspec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            int max = 0;
+            for (TextView k : uniformKeys) {
+                k.measure(unspec, unspec);
+                max = Math.max(max, k.getMeasuredWidth());
+            }
+            for (TextView k : uniformKeys) {
+                if (k.getLayoutParams().width != max) k.getLayoutParams().width = max;
+            }
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
     private void addKey(ExtraKey key, LinearLayout row) {
@@ -182,10 +211,10 @@ public class ExtraKeysView extends LinearLayout {
                 wireRepeat(view, () -> { if (terminal != null) terminal.dispatchText(key.text, key.mods); });
                 break;
         }
-        // Width/weight are managed per measure by FillRow (fill vs scroll); start
-        // from wrap-content so the row can find its natural width. The small
-        // margins (a gap between keycaps) are preserved through the fill re-measure
-        // since FillRow only rewrites width/weight, not margins.
+        // Non-combo keys share one uniform width, assigned in onMeasure; combo
+        // keys keep their natural (wider) width. Both start wrap-content so the
+        // natural widths can be measured; the key_gap/2 margins are untouched.
+        if (key.mods == 0) uniformKeys.add(view);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         int m = Chrome.dp(getContext(), R.dimen.key_gap) / 2;
@@ -290,18 +319,15 @@ public class ExtraKeysView extends LinearLayout {
     }
 
     /**
-     * One toolbar row. Wraps a horizontal {@link LinearLayout} of key buttons in
-     * a {@link HorizontalScrollView} and decides, each measure, between two
-     * modes: when the keys' natural width fits the viewport they stretch to fill
-     * it as equal columns (no scrolling, stable positions); when they don't, the
-     * keys keep their natural width and the row scrolls sideways like the old
-     * single-row toolbar. Picking the mode from a real measurement means it
-     * adapts to label widths, screen width and rotation automatically.
+     * One toolbar row: a horizontal {@link LinearLayout} of keycaps wrapped in a
+     * {@link HorizontalScrollView} so an over-full row scrolls sideways instead
+     * of hiding keys. Key widths are assigned by {@link ExtraKeysView#onMeasure}
+     * (uniform for non-combo keys), not here.
      */
-    private static final class FillRow extends HorizontalScrollView {
+    private static final class KeyRow extends HorizontalScrollView {
         private final LinearLayout content;
 
-        FillRow(Context c) {
+        KeyRow(Context c) {
             super(c);
             setHorizontalScrollBarEnabled(false);
             setOverScrollMode(OVER_SCROLL_NEVER);
@@ -311,35 +337,5 @@ public class ExtraKeysView extends LinearLayout {
         }
 
         LinearLayout content() { return content; }
-
-        @Override
-        protected void onMeasure(int widthSpec, int heightSpec) {
-            // Natural pass: a HorizontalScrollView measures its child with an
-            // unbounded width, so this yields the row's intrinsic (wrap) width.
-            setChildLayout(LinearLayout.LayoutParams.WRAP_CONTENT, 0f);
-            super.onMeasure(widthSpec, heightSpec);
-
-            int avail = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
-            boolean fill = content.getChildCount() > 0 && content.getMeasuredWidth() <= avail;
-            if (!fill) return;  // scroll mode: the natural pass already fits
-
-            // Fill mode: equal columns. Give every key width=0/weight=1 and
-            // re-measure the row exactly at the viewport width so LinearLayout's
-            // weight pass splits it evenly. The scroll view's own measured size
-            // (full width, content height) stays as the natural pass set it.
-            setChildLayout(0, 1f);
-            content.measure(
-                    MeasureSpec.makeMeasureSpec(avail, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(content.getMeasuredHeight(), MeasureSpec.EXACTLY));
-        }
-
-        private void setChildLayout(int width, float weight) {
-            for (int i = 0; i < content.getChildCount(); i++) {
-                LinearLayout.LayoutParams lp =
-                        (LinearLayout.LayoutParams) content.getChildAt(i).getLayoutParams();
-                lp.width = width;
-                lp.weight = weight;
-            }
-        }
     }
 }
