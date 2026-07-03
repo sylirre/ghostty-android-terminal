@@ -27,48 +27,32 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1" />
 
-            <!-- Subtle separator between the scrolling tabs and the action buttons. -->
-            <View
-                android:layout_width="@dimen/stroke_hairline"
-                android:layout_height="@dimen/space_6"
-                android:layout_marginStart="2dp"
-                android:layout_gravity="center_vertical"
-                android:background="@color/divider" />
-
             <TextView
                 android:id="@+id/search_button"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:layout_marginStart="2dp"
+                android:layout_marginStart="4dp"
                 android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/search_button_icon"
                 android:textColor="@color/text_secondary"
                 android:textSize="18sp"
-                android:background="@drawable/bg_toolbar_icon"
+                android:background="@drawable/bg_chip"
                 android:contentDescription="@string/search_button_description"
                 android:clickable="true"
                 android:focusable="true" />
-
-            <!-- Subtle separator between the two action buttons. -->
-            <View
-                android:layout_width="@dimen/stroke_hairline"
-                android:layout_height="@dimen/space_6"
-                android:layout_marginStart="2dp"
-                android:layout_gravity="center_vertical"
-                android:background="@color/divider" />
 
             <TextView
                 android:id="@+id/settings_button"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:layout_marginStart="2dp"
+                android:layout_marginStart="4dp"
                 android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/settings_button_icon"
                 android:textColor="@color/text_secondary"
                 android:textSize="18sp"
-                android:background="@drawable/bg_toolbar_icon"
+                android:background="@drawable/bg_chip"
                 android:contentDescription="@string/settings_button_description"
                 android:clickable="true"
                 android:focusable="true" />

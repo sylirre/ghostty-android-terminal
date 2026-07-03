@@ -33,7 +33,6 @@
     <dimen name="tab_pad_h">14dp</dimen>
     <dimen name="tab_pad_v">9dp</dimen>
     <dimen name="tab_indicator">2dp</dimen>
-    <dimen name="tab_radius">10dp</dimen>
     <dimen name="tab_max_width">168dp</dimen>
 
     <!-- Chrome text sizes. -->

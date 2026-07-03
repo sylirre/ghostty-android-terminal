@@ -99,7 +99,6 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         });
         LayoutParams fieldLp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
         addView(field, fieldLp);
-        addDivider();
 
         count = new TextView(context);
         count.setTextColor(Chrome.color(context, R.color.text_secondary));
@@ -108,8 +107,9 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         count.setPadding(dp(6), 0, dp(6), 0);
         count.setMinWidth(dp(44));
         setCountText(0, 0);
-        addView(count, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        addDivider();
+        LayoutParams countLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        countLp.setMarginStart(dp(4));
+        addView(count, countLp);
 
         caseToggle = new TextView(context);
         caseToggle.setText(R.string.search_case_label);
@@ -123,20 +123,18 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         caseToggle.setFocusable(true);
         caseToggle.setOnClickListener(v -> toggleCase());
         applyCaseToggle();
-        addView(caseToggle,
-                new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-        addDivider();
+        LayoutParams caseLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        caseLp.setMarginStart(dp(4));
+        addView(caseToggle, caseLp);
 
         addIconButton(context.getString(R.string.search_prev_label),
                 context.getString(R.string.search_prev_description), () -> {
                     if (listener != null) listener.onPrev();
                 });
-        addDivider();
         addIconButton(context.getString(R.string.search_next_label),
                 context.getString(R.string.search_next_description), () -> {
                     if (listener != null) listener.onNext();
                 });
-        addDivider();
         addIconButton(context.getString(R.string.search_close_label),
                 context.getString(R.string.search_close_description), () -> {
                     if (listener != null) listener.onClose();
@@ -182,7 +180,7 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
     }
 
     private void applyCaseToggle() {
-        float r = Chrome.dimen(getContext(), R.dimen.radius_sm);
+        float r = Chrome.dimen(getContext(), R.dimen.radius_md);
         caseToggle.setBackground(caseSensitive
                 ? Chrome.rounded(getContext(), R.color.accent, r, 0)
                 : Chrome.ripple(getContext(), R.color.surface_2, r, R.color.border));
@@ -214,24 +212,15 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         b.setContentDescription(description);
         b.setMinWidth(dp(40));
         b.setPadding(dp(8), dp(10), dp(8), dp(10));
-        b.setBackground(getContext().getDrawable(R.drawable.bg_toolbar_icon));
+        b.setBackground(Chrome.ripple(getContext(), R.color.surface_2,
+                Chrome.dimen(getContext(), R.dimen.radius_md), R.color.border));
         b.setClickable(true);
         b.setFocusable(true);
         b.setOnClickListener(v -> action.run());
         Glyphs.applyTo(b);  // ▲ ▼ ✕ → vector icons
-        addView(b, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-    }
-
-    /** A subtle vertical hairline separating two adjacent controls. */
-    private void addDivider() {
-        View d = new View(getContext());
-        d.setBackgroundColor(Chrome.color(getContext(), R.color.divider));
-        LayoutParams lp = new LayoutParams(
-                Chrome.dp(getContext(), R.dimen.stroke_hairline),
-                Chrome.dp(getContext(), R.dimen.space_6));
-        lp.setMarginStart(dp(2));
-        lp.setMarginEnd(dp(2));
-        addView(d, lp);
+        LayoutParams lp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        lp.setMarginStart(dp(4));
+        addView(b, lp);
     }
 
     private int dp(int v) {

@@ -79,10 +79,10 @@ public class TabStripView extends HorizontalScrollView {
         chip.setGravity(Gravity.CENTER_VERTICAL);
         chip.setClickable(true);
         chip.setFocusable(true);
-        float r = Chrome.dimen(getContext(), R.dimen.tab_radius);
+        float r = Chrome.dimen(getContext(), R.dimen.radius_md);
         chip.setBackground(active
                 ? Chrome.rounded(getContext(), R.color.surface_3, r, R.color.border)
-                : Chrome.rippleTransparent(getContext(), r));
+                : Chrome.ripple(getContext(), R.color.surface_2, r, R.color.border));
         int padH = dp(R.dimen.tab_pad_h);
         int padV = dp(R.dimen.tab_pad_v);
         chip.setPadding(padH, padV, active ? dp(R.dimen.space_1) : padH, padV);
@@ -129,8 +129,8 @@ public class TabStripView extends HorizontalScrollView {
         add.setMinWidth(dp(R.dimen.touch_min));
         int padV = dp(R.dimen.tab_pad_v);
         add.setPadding(0, padV, 0, padV);
-        add.setBackground(Chrome.rippleTransparent(getContext(),
-                Chrome.dimen(getContext(), R.dimen.tab_radius)));
+        add.setBackground(Chrome.ripple(getContext(), R.color.surface_2,
+                Chrome.dimen(getContext(), R.dimen.radius_md), R.color.border));
         add.setContentDescription(getContext().getString(R.string.tab_new_description));
         add.setClickable(true);
         add.setFocusable(true);
