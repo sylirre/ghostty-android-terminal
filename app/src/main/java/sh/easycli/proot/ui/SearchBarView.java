@@ -98,8 +98,8 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
             return true;
         });
         LayoutParams fieldLp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
-        fieldLp.setMarginEnd(dp(4));
         addView(field, fieldLp);
+        addDivider();
 
         count = new TextView(context);
         count.setTextColor(Chrome.color(context, R.color.text_secondary));
@@ -109,6 +109,7 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         count.setMinWidth(dp(44));
         setCountText(0, 0);
         addView(count, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        addDivider();
 
         caseToggle = new TextView(context);
         caseToggle.setText(R.string.search_case_label);
@@ -122,18 +123,20 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         caseToggle.setFocusable(true);
         caseToggle.setOnClickListener(v -> toggleCase());
         applyCaseToggle();
-        LayoutParams caseLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
-        caseLp.setMarginEnd(dp(2));
-        addView(caseToggle, caseLp);
+        addView(caseToggle,
+                new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+        addDivider();
 
         addIconButton(context.getString(R.string.search_prev_label),
                 context.getString(R.string.search_prev_description), () -> {
                     if (listener != null) listener.onPrev();
                 });
+        addDivider();
         addIconButton(context.getString(R.string.search_next_label),
                 context.getString(R.string.search_next_description), () -> {
                     if (listener != null) listener.onNext();
                 });
+        addDivider();
         addIconButton(context.getString(R.string.search_close_label),
                 context.getString(R.string.search_close_description), () -> {
                     if (listener != null) listener.onClose();
@@ -217,6 +220,18 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         b.setOnClickListener(v -> action.run());
         Glyphs.applyTo(b);  // ▲ ▼ ✕ → vector icons
         addView(b, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+    }
+
+    /** A subtle vertical hairline separating two adjacent controls. */
+    private void addDivider() {
+        View d = new View(getContext());
+        d.setBackgroundColor(Chrome.color(getContext(), R.color.divider));
+        LayoutParams lp = new LayoutParams(
+                Chrome.dp(getContext(), R.dimen.stroke_hairline),
+                Chrome.dp(getContext(), R.dimen.space_6));
+        lp.setMarginStart(dp(2));
+        lp.setMarginEnd(dp(2));
+        addView(d, lp);
     }
 
     private int dp(int v) {
