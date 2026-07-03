@@ -53,7 +53,9 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
         setBackgroundColor(Chrome.color(context, R.color.surface_1));
-        setPadding(dp(8), dp(6), dp(8), dp(6));
+        // 4dp horizontal padding matches the top bar so the buttons line up
+        // in the same columns as the search/settings buttons above.
+        setPadding(dp(4), dp(6), dp(4), dp(6));
 
         field = new EditText(context);
         field.setSingleLine(true);
@@ -64,7 +66,7 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         field.setBackground(Chrome.rounded(context, R.color.surface_2,
                 Chrome.dimen(context, R.dimen.radius_md), R.color.border));
         field.setPadding(dp(12), dp(8), dp(12), dp(8));
-        field.setMinHeight(dp(40));
+        field.setMinHeight(Chrome.dp(context, R.dimen.icon_button));
         field.setCompoundDrawablesRelativeWithIntrinsicBounds(
                 R.drawable.ic_glyph_search, 0, 0, 0);
         field.setCompoundDrawablePadding(dp(8));
@@ -117,13 +119,14 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         caseToggle.setGravity(Gravity.CENTER);
         caseToggle.setTextSize(14);
         caseToggle.setContentDescription(context.getString(R.string.search_case_description));
-        caseToggle.setMinWidth(dp(40));
-        caseToggle.setPadding(dp(10), dp(8), dp(10), dp(8));
+        caseToggle.setMinWidth(Chrome.dp(context, R.dimen.icon_button));
+        caseToggle.setPadding(dp(10), 0, dp(10), 0);
         caseToggle.setClickable(true);
         caseToggle.setFocusable(true);
         caseToggle.setOnClickListener(v -> toggleCase());
         applyCaseToggle();
-        LayoutParams caseLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        LayoutParams caseLp = new LayoutParams(
+                LayoutParams.WRAP_CONTENT, Chrome.dp(context, R.dimen.icon_button));
         caseLp.setMarginStart(dp(4));
         addView(caseToggle, caseLp);
 
@@ -207,18 +210,18 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         TextView b = new TextView(getContext());
         b.setText(label);
         b.setTextColor(Chrome.color(getContext(), R.color.text_secondary));
-        b.setTextSize(16);
+        b.setTextSize(18);
         b.setGravity(Gravity.CENTER);
         b.setContentDescription(description);
-        b.setMinWidth(dp(40));
-        b.setPadding(dp(8), dp(10), dp(8), dp(10));
         b.setBackground(Chrome.ripple(getContext(), R.color.surface_2,
                 Chrome.dimen(getContext(), R.dimen.radius_md), R.color.border));
         b.setClickable(true);
         b.setFocusable(true);
         b.setOnClickListener(v -> action.run());
         Glyphs.applyTo(b);  // ▲ ▼ ✕ → vector icons
-        LayoutParams lp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        // Same fixed square as the top-bar icon buttons so the two bars match.
+        int size = Chrome.dp(getContext(), R.dimen.icon_button);
+        LayoutParams lp = new LayoutParams(size, size);
         lp.setMarginStart(dp(4));
         addView(b, lp);
     }
