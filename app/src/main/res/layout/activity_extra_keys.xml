@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Full-screen extra-keys toolbar editor, reached from Settings. Mirrors
-     activity_theme.xml: a fixed top bar with a title and actions, then a
-     scrolling body. ExtraKeysActivity fills preview_rows / enabled_list /
-     available_grid at runtime. -->
+<!-- Full-screen extra-keys toolbar editor, reached from Settings. A fixed top
+     bar with a title and actions, then a scrolling body. ExtraKeysActivity
+     fills preview_rows / enabled_list / available_grid at runtime. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF000000">
+    android:background="@color/surface_base">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -20,18 +19,16 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="#FF14141A">
+            android:minHeight="56dp"
+            android:background="@color/surface_1">
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                style="@style/TopBarTitle"
                 android:text="@string/extra_keys_title"
-                android:textColor="#FFEAEAF0"
-                android:textSize="18sp"
-                android:paddingLeft="20dp"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp" />
+                android:paddingLeft="20dp" />
 
             <TextView
                 android:id="@+id/extra_keys_reset"
@@ -39,12 +36,12 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:text="@string/extra_keys_reset"
-                android:textColor="#FF9999A6"
+                android:textColor="@color/text_secondary"
                 android:textSize="15sp"
                 android:paddingLeft="16dp"
                 android:paddingRight="16dp"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="16dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true" />
@@ -55,35 +52,43 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:text="@string/extra_keys_done"
-                android:textColor="#FF6E8BFF"
+                android:textColor="@color/accent"
                 android:textSize="15sp"
                 android:textStyle="bold"
                 android:paddingLeft="16dp"
                 android:paddingRight="20dp"
-                android:paddingTop="14dp"
-                android:paddingBottom="14dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="16dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true" />
 
         </LinearLayout>
 
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider" />
+
         <ScrollView
             android:id="@+id/page_scroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:scrollbars="none"
             android:fillViewport="true">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
                 android:paddingBottom="32dp">
 
                 <!-- Live preview of the toolbar as configured: one strip per row. -->
                 <TextView
-                    style="@style/ExtraKeysSectionHeader"
+                    style="@style/SectionHeader"
                     android:text="@string/extra_keys_section_preview" />
 
                 <LinearLayout
@@ -94,7 +99,7 @@
 
                 <!-- Enabled keys: reorder by dragging the handle, remove with ✕. -->
                 <TextView
-                    style="@style/ExtraKeysSectionHeader"
+                    style="@style/SectionHeader"
                     android:text="@string/extra_keys_section_enabled" />
 
                 <TextView
@@ -102,10 +107,10 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/extra_keys_empty"
-                    android:textColor="#FF8A8A99"
+                    android:textColor="@color/text_tertiary"
                     android:textSize="14sp"
-                    android:paddingLeft="20dp"
-                    android:paddingRight="20dp"
+                    android:paddingLeft="4dp"
+                    android:paddingRight="4dp"
                     android:paddingTop="8dp"
                     android:paddingBottom="8dp"
                     android:visibility="gone" />
@@ -121,7 +126,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/extra_keys_add_row"
-                    android:textColor="#FF6E8BFF"
+                    android:textColor="@color/accent"
                     android:textSize="15sp"
                     android:gravity="center"
                     android:paddingTop="16dp"
@@ -133,7 +138,7 @@
 
                 <!-- Available keys to add, plus a custom-text entry point. -->
                 <TextView
-                    style="@style/ExtraKeysSectionHeader"
+                    style="@style/SectionHeader"
                     android:text="@string/extra_keys_section_available" />
 
                 <GridLayout
@@ -141,8 +146,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:columnCount="4"
-                    android:paddingLeft="12dp"
-                    android:paddingRight="12dp"
                     android:paddingTop="4dp" />
 
                 <TextView
@@ -150,12 +153,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/extra_keys_add_custom"
-                    android:textColor="#FF6E8BFF"
+                    android:textColor="@color/accent"
                     android:textSize="15sp"
                     android:gravity="center"
                     android:paddingTop="18dp"
                     android:paddingBottom="18dp"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="12dp"
                     android:background="?android:attr/selectableItemBackground"
                     android:clickable="true"
                     android:focusable="true" />
@@ -165,7 +168,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/extra_keys_add_combo"
-                    android:textColor="#FF6E8BFF"
+                    android:textColor="@color/accent"
                     android:textSize="15sp"
                     android:gravity="center"
                     android:paddingTop="18dp"

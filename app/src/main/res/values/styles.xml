@@ -1,18 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Section header inside the Extra-keys editor (activity_extra_keys.xml). -->
-    <style name="ExtraKeysSectionHeader">
+    <!-- Grouped-list section header (Settings, theme editor, extra-keys editor). -->
+    <style name="SectionHeader">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">#FF8FA0C0</item>
-        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textSize">@dimen/text_section</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textAllCaps">true</item>
-        <item name="android:paddingLeft">20dp</item>
-        <item name="android:paddingRight">20dp</item>
-        <item name="android:paddingTop">22dp</item>
-        <item name="android:paddingBottom">8dp</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:paddingLeft">@dimen/space_6</item>
+        <item name="android:paddingRight">@dimen/space_6</item>
+        <item name="android:paddingTop">@dimen/space_6</item>
+        <item name="android:paddingBottom">@dimen/space_2</item>
+    </style>
+
+    <!-- Kept as a named alias: activity_extra_keys.xml references it directly. -->
+    <style name="ExtraKeysSectionHeader" parent="SectionHeader" />
+
+    <!-- Title shown in a screen's top bar. -->
+    <style name="TopBarTitle">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_title</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <!-- Borderless accent text action (e.g. "Done"). -->
+    <style name="ButtonText" parent="@android:style/Widget.Material.Button.Borderless">
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <!-- Compact tonal (filled) button used in dense control rows. -->
+    <style name="ButtonTonal" parent="@android:style/Widget.Material.Button.Borderless">
+        <item name="android:background">@drawable/bg_button_tonal</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">40dp</item>
+        <item name="android:paddingLeft">@dimen/space_4</item>
+        <item name="android:paddingRight">@dimen/space_4</item>
+    </style>
+
+    <!-- Settings / control row title + summary. -->
+    <style name="SettingsRowTitle">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_row_title</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="SettingsRowSummary">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">@dimen/text_row_summary</item>
+        <item name="android:lineSpacingMultiplier">1.15</item>
     </style>
 
 </resources>

@@ -1,41 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One editable color tile in ThemeActivity's grid: a color box above a
-     short label. ThemeActivity sets the box color, the label, and the tap
-     handler; the width is set per-cell so columns share the grid evenly. -->
+<!-- One editable color tile in ThemeActivity's grid: a rounded color chip above
+     a short label. ThemeActivity sets the chip's rounded fill, the label, and
+     the tap handler; the width is set per-cell so columns share the grid evenly. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:padding="4dp"
+    android:padding="6dp"
     android:background="?android:attr/selectableItemBackground"
     android:clickable="true"
     android:focusable="true">
 
-    <!-- A 1dp light frame so dark swatches (black, the dark background) stay
-         visible against the dark editor background. -->
-    <FrameLayout
+    <!-- The rounded color fill (with a hairline edge for dark swatches) is
+         applied by ThemeActivity so it can carry the live color. -->
+    <View
+        android:id="@+id/swatch_color"
         android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:padding="1dp"
-        android:background="#55FFFFFF">
-
-        <View
-            android:id="@+id/swatch_color"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-
-    </FrameLayout>
+        android:layout_height="44dp" />
 
     <TextView
         android:id="@+id/swatch_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="6dp"
         android:gravity="center"
         android:maxLines="1"
         android:ellipsize="end"
         android:textSize="11sp"
-        android:textColor="?android:attr/textColorSecondary" />
+        android:textColor="@color/text_secondary" />
 
 </LinearLayout>

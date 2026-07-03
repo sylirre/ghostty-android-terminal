@@ -2,6 +2,7 @@ package sh.easycli.proot.ui;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.TextWatcher;
@@ -22,8 +23,8 @@ import sh.easycli.proot.R;
 /**
  * A self-contained RGB color picker: a live swatch, three 0–255 channel
  * sliders, and a hex field, kept in sync. Returns an opaque ARGB int via
- * {@code onPicked} when the user confirms. Built programmatically (like
- * {@link SettingsDialog}) so it needs no layout or third-party dependency.
+ * {@code onPicked} when the user confirms. Built programmatically so it needs
+ * no layout or third-party dependency.
  */
 final class ColorPickerDialog {
 
@@ -51,6 +52,11 @@ final class ColorPickerDialog {
         hex.setFilters(new InputFilter[]{new InputFilter.LengthFilter(6),
                 new HexFilter()});
         hex.setHint("RRGGBB");
+        hex.setBackground(Chrome.rounded(ctx, R.color.surface_2,
+                Chrome.dimen(ctx, R.dimen.radius_sm), R.color.border));
+        hex.setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8));
+        hex.setTextColor(Chrome.color(ctx, R.color.text_primary));
+        hex.setHintTextColor(Chrome.color(ctx, R.color.text_tertiary));
 
         // A single guard prevents the slider and hex listeners from echoing
         // each other into an infinite update loop.
@@ -58,7 +64,7 @@ final class ColorPickerDialog {
 
         Runnable refreshFromBars = () -> {
             int c = colorFrom(bars);
-            swatch.setBackgroundColor(c);
+            paintSwatch(swatch, c);
             for (int i = 0; i < 3; i++) vals[i].setText(String.valueOf(bars[i].getProgress()));
             updating[0] = true;
             hex.setText(String.format(Locale.US, "%06X", c & 0xFFFFFF));
@@ -72,6 +78,7 @@ final class ColorPickerDialog {
 
             TextView label = new TextView(ctx);
             label.setText(names[i]);
+            label.setTextColor(Chrome.color(ctx, R.color.text_secondary));
             label.setWidth(dp(ctx, 24));
 
             SeekBar bar = new SeekBar(ctx);
@@ -82,6 +89,7 @@ final class ColorPickerDialog {
 
             TextView val = new TextView(ctx);
             val.setText(String.valueOf(start[i]));
+            val.setTextColor(Chrome.color(ctx, R.color.text_secondary));
             val.setWidth(dp(ctx, 36));
             val.setGravity(Gravity.END);
 
@@ -104,7 +112,10 @@ final class ColorPickerDialog {
             vals[i] = val;
         }
 
-        root.addView(hex);
+        LinearLayout.LayoutParams hexLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hexLp.topMargin = dp(ctx, 12);
+        root.addView(hex, hexLp);
         hex.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
@@ -123,14 +134,14 @@ final class ColorPickerDialog {
                 bars[1].setProgress((c >> 8) & 0xFF);
                 bars[2].setProgress(c & 0xFF);
                 updating[0] = false;
-                swatch.setBackgroundColor(0xFF000000 | c);
+                paintSwatch(swatch, 0xFF000000 | c);
                 for (int i = 0; i < 3; i++) {
                     vals[i].setText(String.valueOf(bars[i].getProgress()));
                 }
             }
         });
 
-        swatch.setBackgroundColor(0xFF000000 | (initial & 0xFFFFFF));
+        paintSwatch(swatch, 0xFF000000 | (initial & 0xFFFFFF));
         hex.setText(String.format(Locale.US, "%06X", initial & 0xFFFFFF));
 
         new AlertDialog.Builder(ctx)
@@ -147,6 +158,17 @@ final class ColorPickerDialog {
                 | (bars[0].getProgress() << 16)
                 | (bars[1].getProgress() << 8)
                 | bars[2].getProgress();
+    }
+
+    /** Paints the live preview as a rounded chip with a hairline edge. */
+    private static void paintSwatch(View v, int color) {
+        Context ctx = v.getContext();
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(Chrome.dimen(ctx, R.dimen.radius_md));
+        d.setStroke(Chrome.dp(ctx, R.dimen.stroke_hairline),
+                Chrome.color(ctx, R.color.border));
+        v.setBackground(d);
     }
 
     private static int dp(Context ctx, int v) {

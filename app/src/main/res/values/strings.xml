@@ -21,9 +21,14 @@
     <string name="search_close_label">&#10005;</string>
     <string name="search_close_description">Close search</string>
 
-    <!-- Settings dialog -->
+    <!-- Settings screen -->
     <string name="settings_dialog_title">Settings</string>
     <string name="settings_dialog_close">Close</string>
+    <string name="settings_back_description">Back</string>
+    <string name="settings_group_appearance">Appearance</string>
+    <string name="settings_group_keyboard">Keyboard &amp; input</string>
+    <string name="settings_group_terminal">Terminal</string>
+    <string name="settings_group_debian">Debian</string>
 
     <!-- Settings: Keep screen on -->
     <string name="setting_keep_screen_on_title">Keep screen on</string>
@@ -127,6 +132,10 @@
     <!-- Theme editor -->
     <string name="theme_activity_title">Terminal theme</string>
     <string name="theme_done">Done</string>
+    <string name="theme_section_background">Background</string>
+    <string name="theme_section_cursor">Cursor</string>
+    <string name="theme_section_fonts">Fonts</string>
+    <string name="theme_section_theme">Theme &amp; colors</string>
     <string name="theme_picker_label">Theme</string>
     <string name="theme_save">Save</string>
     <string name="theme_save_as">Save as…</string>

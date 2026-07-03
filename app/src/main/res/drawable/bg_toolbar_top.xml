@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Extra-keys toolbar fill with a hairline top edge separating it from the
+     terminal surface above. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="@color/surface_1" />
+    </item>
+    <item android:gravity="top" android:height="1dp">
+        <color android:color="@color/divider" />
+    </item>
+</layer-list>

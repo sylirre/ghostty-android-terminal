@@ -4,8 +4,6 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -19,6 +17,7 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.List;
 
+import sh.easycli.proot.R;
 import sh.easycli.proot.term.TerminalNative;
 
 /**
@@ -61,15 +60,7 @@ public class ExtraKeysView extends LinearLayout {
     // updateToggles() can recolor them without knowing the layout in advance.
     private final List<ModButton> modButtons = new ArrayList<>();
 
-    private static final int BG = 0xFF21212A;
-    private static final int BG_PRESSED = 0xFF4A4A58;
-    private static final int BG_ACTIVE = 0xFF3D5AFE;
-    private static final int BG_ACTIVE_PRESSED = 0xFF5C74FF;
-    private static final int BG_LOCKED = 0xFF1565C0;
-    private static final int BG_LOCKED_PRESSED = 0xFF1E88E5;
     private static final int REPEAT_INTERVAL_MS = 80;
-    // Floor on a key's tap width so scroll-mode (content-width) keys stay usable.
-    private static final int MIN_KEY_WIDTH_DP = 40;
 
     private static final class ModButton {
         final TextView view;
@@ -83,7 +74,9 @@ public class ExtraKeysView extends LinearLayout {
     public ExtraKeysView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setOrientation(VERTICAL);
-        setBackgroundColor(BG);
+        setBackground(context.getDrawable(R.drawable.bg_toolbar_top));
+        int pad = Chrome.dp(context, R.dimen.key_gap);
+        setPadding(pad, pad, pad, pad);
         sticky.onChanged = this::updateToggles;
     }
 
@@ -154,10 +147,12 @@ public class ExtraKeysView extends LinearLayout {
         view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         view.setTextColor(Color.WHITE);
         view.setGravity(Gravity.CENTER);
-        int pad = dp(14);
-        view.setPadding(pad, dp(12), pad, dp(12));
-        view.setMinWidth(dp(MIN_KEY_WIDTH_DP));
-        view.setBackground(buttonBg(BG, BG_PRESSED));
+        view.setPadding(Chrome.dp(getContext(), R.dimen.key_pad_h),
+                Chrome.dp(getContext(), R.dimen.key_pad_v),
+                Chrome.dp(getContext(), R.dimen.key_pad_h),
+                Chrome.dp(getContext(), R.dimen.key_pad_v));
+        view.setMinWidth(Chrome.dp(getContext(), R.dimen.key_min_width));
+        view.setBackground(keyBg());
         view.setClickable(true);
         // Render arrows and other symbol glyphs as vectors, not font glyphs, so
         // they look the same on every device (combo labels keep their ASCII
@@ -188,9 +183,14 @@ public class ExtraKeysView extends LinearLayout {
                 break;
         }
         // Width/weight are managed per measure by FillRow (fill vs scroll); start
-        // from wrap-content so the row can find its natural width.
-        row.addView(view, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        // from wrap-content so the row can find its natural width. The small
+        // margins (a gap between keycaps) are preserved through the fill re-measure
+        // since FillRow only rewrites width/weight, not margins.
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        int m = Chrome.dp(getContext(), R.dimen.key_gap) / 2;
+        lp.setMargins(m, m, m, m);
+        row.addView(view, lp);
     }
 
     private void wireRepeat(TextView view, Runnable emit) {
@@ -263,30 +263,30 @@ public class ExtraKeysView extends LinearLayout {
         for (ModButton b : modButtons) {
             boolean active = modifierActive(b.modifier);
             boolean locked = modifierLocked(b.modifier);
-            b.view.setBackground(!active
-                    ? buttonBg(BG, BG_PRESSED)
-                    : locked
-                            ? buttonBg(BG_LOCKED, BG_LOCKED_PRESSED)
-                            : buttonBg(BG_ACTIVE, BG_ACTIVE_PRESSED));
+            b.view.setBackground(!active ? keyBg() : locked ? keyBgLocked() : keyBgActive());
         }
     }
 
-    private Drawable buttonBg(int fill, int pressedFill) {
-        StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_pressed}, buttonShape(pressedFill));
-        states.addState(new int[]{}, buttonShape(fill));
-        return states;
+    // Rounded keycaps drawn from the design tokens. The idle cap carries a
+    // hairline border; the accent (active) and deep-accent (locked) states drop
+    // it so the fill reads as the whole key.
+    private Drawable keyBg() {
+        return Chrome.stateful(getContext(), R.color.surface_2, R.color.surface_4,
+                keyRadius(), R.color.border);
     }
 
-    private GradientDrawable buttonShape(int fill) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(fill);
-        d.setStroke(dp(1), 0xFF3A3A44);
-        return d;
+    private Drawable keyBgActive() {
+        return Chrome.stateful(getContext(), R.color.accent, R.color.accent_pressed,
+                keyRadius(), 0);
     }
 
-    private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density);
+    private Drawable keyBgLocked() {
+        return Chrome.stateful(getContext(), R.color.accent_deep, R.color.accent,
+                keyRadius(), 0);
+    }
+
+    private float keyRadius() {
+        return Chrome.dimen(getContext(), R.dimen.key_radius);
     }
 
     /**

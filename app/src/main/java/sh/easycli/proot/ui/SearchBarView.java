@@ -1,7 +1,7 @@
 package sh.easycli.proot.ui;
 
 import android.content.Context;
-import android.graphics.Color;
+import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.text.Editable;
 import android.text.InputType;
@@ -18,14 +18,16 @@ import android.widget.TextView;
 import sh.easycli.proot.R;
 
 /**
- * Find bar shown below the top bar: a query field, a match counter, a
- * case-sensitivity toggle, previous/next buttons, and a close button.
+ * Find bar shown below the top bar: a rounded query field with a leading search
+ * glyph, a match counter, a case-sensitivity toggle, previous/next buttons, and
+ * a close button.
  *
  * It implements {@link TerminalView.SearchListener} so the terminal can push
  * the live match count back into the counter. Typing is debounced so a fresh
  * scan runs shortly after the user stops rather than on every keystroke. All
  * terminal work is delegated to a {@link Listener} (wired in MainActivity to
- * the TerminalView search methods).
+ * the TerminalView search methods). Styling comes from the design tokens via
+ * {@link Chrome}.
  */
 public class SearchBarView extends LinearLayout implements TerminalView.SearchListener {
 
@@ -36,9 +38,6 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         void onClose();
     }
 
-    private static final int BG = 0xFF14141A;
-    private static final int KEY_BG = 0xFF21212A;
-    private static final int KEY_BG_ACTIVE = 0xFF3D5AFE;
     private static final long DEBOUNCE_MS = 150;
 
     private final EditText field;
@@ -53,14 +52,24 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
         super(context, attrs);
         setOrientation(HORIZONTAL);
         setGravity(Gravity.CENTER_VERTICAL);
-        setBackgroundColor(BG);
+        setBackgroundColor(Chrome.color(context, R.color.surface_1));
+        setPadding(dp(8), dp(6), dp(8), dp(6));
 
         field = new EditText(context);
         field.setSingleLine(true);
         field.setHint(R.string.search_hint);
-        field.setTextColor(Color.WHITE);
-        field.setHintTextColor(0xFF777788);
-        field.setTextSize(16);
+        field.setTextColor(Chrome.color(context, R.color.text_primary));
+        field.setHintTextColor(Chrome.color(context, R.color.text_tertiary));
+        field.setTextSize(15);
+        field.setBackground(Chrome.rounded(context, R.color.surface_2,
+                Chrome.dimen(context, R.dimen.radius_md), R.color.border));
+        field.setPadding(dp(12), dp(8), dp(12), dp(8));
+        field.setMinHeight(dp(40));
+        field.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                R.drawable.ic_glyph_search, 0, 0, 0);
+        field.setCompoundDrawablePadding(dp(8));
+        field.setCompoundDrawableTintList(
+                ColorStateList.valueOf(Chrome.color(context, R.color.text_secondary)));
         // A filter field: no autocorrect/suggestions getting in the way of a
         // literal search query; Enter acts as the search/next action.
         field.setInputType(InputType.TYPE_CLASS_TEXT
@@ -88,28 +97,44 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
             }
             return true;
         });
-        addView(field, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
+        LayoutParams fieldLp = new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f);
+        fieldLp.setMarginEnd(dp(4));
+        addView(field, fieldLp);
 
         count = new TextView(context);
-        count.setTextColor(0xFF9999A6);
+        count.setTextColor(Chrome.color(context, R.color.text_secondary));
+        count.setTextSize(13);
         count.setGravity(Gravity.CENTER);
-        count.setPadding(dp(8), 0, dp(8), 0);
-        count.setMinWidth(dp(48));
+        count.setPadding(dp(6), 0, dp(6), 0);
+        count.setMinWidth(dp(44));
         setCountText(0, 0);
-        addView(count, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
+        addView(count, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
 
-        caseToggle = addButton(context.getString(R.string.search_case_label),
-                context.getString(R.string.search_case_description), this::toggleCase);
-        caseToggle.setBackgroundColor(KEY_BG);
-        addButton(context.getString(R.string.search_prev_label),
+        caseToggle = new TextView(context);
+        caseToggle.setText(R.string.search_case_label);
+        caseToggle.setTypeface(Typeface.DEFAULT_BOLD);
+        caseToggle.setGravity(Gravity.CENTER);
+        caseToggle.setTextSize(14);
+        caseToggle.setContentDescription(context.getString(R.string.search_case_description));
+        caseToggle.setMinWidth(dp(40));
+        caseToggle.setPadding(dp(10), dp(8), dp(10), dp(8));
+        caseToggle.setClickable(true);
+        caseToggle.setFocusable(true);
+        caseToggle.setOnClickListener(v -> toggleCase());
+        applyCaseToggle();
+        LayoutParams caseLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+        caseLp.setMarginEnd(dp(2));
+        addView(caseToggle, caseLp);
+
+        addIconButton(context.getString(R.string.search_prev_label),
                 context.getString(R.string.search_prev_description), () -> {
                     if (listener != null) listener.onPrev();
                 });
-        addButton(context.getString(R.string.search_next_label),
+        addIconButton(context.getString(R.string.search_next_label),
                 context.getString(R.string.search_next_description), () -> {
                     if (listener != null) listener.onNext();
                 });
-        addButton(context.getString(R.string.search_close_label),
+        addIconButton(context.getString(R.string.search_close_label),
                 context.getString(R.string.search_close_description), () -> {
                     if (listener != null) listener.onClose();
                 });
@@ -148,9 +173,18 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
 
     private void toggleCase() {
         caseSensitive = !caseSensitive;
-        caseToggle.setBackgroundColor(caseSensitive ? KEY_BG_ACTIVE : KEY_BG);
+        applyCaseToggle();
         removeCallbacks(runQuery);
         fireQuery();
+    }
+
+    private void applyCaseToggle() {
+        float r = Chrome.dimen(getContext(), R.dimen.radius_sm);
+        caseToggle.setBackground(caseSensitive
+                ? Chrome.rounded(getContext(), R.color.accent, r, 0)
+                : Chrome.ripple(getContext(), R.color.surface_2, r, R.color.border));
+        caseToggle.setTextColor(Chrome.color(getContext(),
+                caseSensitive ? R.color.on_accent : R.color.text_secondary));
     }
 
     private void fireQuery() {
@@ -161,26 +195,28 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
     private void setCountText(int current, int total) {
         // Flag a query that found nothing (but not an empty field) in red.
         boolean noResults = total == 0 && field.getText().length() > 0;
-        count.setTextColor(noResults ? 0xFFE57373 : 0xFF9999A6);
+        count.setTextColor(Chrome.color(getContext(),
+                noResults ? R.color.danger : R.color.text_secondary));
         count.setText(total == 0
                 ? getContext().getString(R.string.search_no_results)
                 : getContext().getString(R.string.search_count, current, total));
     }
 
-    private TextView addButton(String label, String description, Runnable action) {
+    private void addIconButton(String label, String description, Runnable action) {
         TextView b = new TextView(getContext());
         b.setText(label);
-        b.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        b.setTextColor(Color.WHITE);
+        b.setTextColor(Chrome.color(getContext(), R.color.text_secondary));
+        b.setTextSize(16);
         b.setGravity(Gravity.CENTER);
         b.setContentDescription(description);
-        int pad = dp(14);
-        b.setPadding(pad, dp(12), pad, dp(12));
+        b.setMinWidth(dp(40));
+        b.setPadding(dp(8), dp(10), dp(8), dp(10));
+        b.setBackground(getContext().getDrawable(R.drawable.bg_toolbar_icon));
         b.setClickable(true);
+        b.setFocusable(true);
         b.setOnClickListener(v -> action.run());
-        Glyphs.applyTo(b);  // ▲ ▼ ✕ → vector icons; "Aa" stays text
-        addView(b, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
-        return b;
+        Glyphs.applyTo(b);  // ▲ ▼ ✕ → vector icons
+        addView(b, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
     }
 
     private int dp(int v) {

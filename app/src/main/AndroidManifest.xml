@@ -24,7 +24,7 @@
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@android:style/Theme.Material.NoActionBar"
+        android:theme="@style/Theme.Terminal"
         android:requestLegacyExternalStorage="true">
 
         <activity
@@ -38,6 +38,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- App settings screen, launched from the top-bar gear. -->
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Terminal theme editor, launched from Settings. -->
         <activity

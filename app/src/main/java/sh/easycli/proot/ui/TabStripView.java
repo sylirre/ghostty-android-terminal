@@ -1,9 +1,9 @@
 package sh.easycli.proot.ui;
 
 import android.content.Context;
-import android.graphics.Color;
 import android.graphics.Rect;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.Typeface;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.View;
@@ -16,9 +16,10 @@ import java.util.List;
 import sh.easycli.proot.R;
 
 /**
- * Session tab bar: one tab per shell, a close (×) on the active tab and a
- * trailing + button. Rebuilt wholesale on every change — the tab count is
- * tiny, so diffing isn't worth the code.
+ * Session tab bar: one rounded pill per shell, a close (×) on the active tab
+ * and a trailing + button. Rebuilt wholesale on every change — the tab count is
+ * tiny, so diffing isn't worth the code. Styling comes from the design tokens
+ * via {@link Chrome}.
  */
 public class TabStripView extends HorizontalScrollView {
 
@@ -30,18 +31,16 @@ public class TabStripView extends HorizontalScrollView {
         void onNewTabLongPress();
     }
 
-    private static final int BG = 0xFF14141A;
-    private static final int BG_ACTIVE = 0xFF2B2B36;
-
     private final LinearLayout row;
     private Listener listener;
 
     public TabStripView(Context context, AttributeSet attrs) {
         super(context, attrs);
-        setBackgroundColor(BG);
         setHorizontalScrollBarEnabled(false);
+        setOverScrollMode(OVER_SCROLL_NEVER);
         row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
         addView(row, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT));
     }
 
@@ -52,65 +51,105 @@ public class TabStripView extends HorizontalScrollView {
     public void update(List<String> titles, int activeIndex) {
         row.removeAllViews();
         View activeTab = null;
-        View activeClose = null;
         for (int i = 0; i < titles.size(); i++) {
             final int index = i;
             boolean active = i == activeIndex;
-            TextView tab = makeButton(titles.get(i), active);
-            tab.setOnClickListener(v -> listener.onTabSelected(index));
-            row.addView(tab);
+            View tab = makeTab(titles.get(i), active, index);
+            row.addView(tab, tabLayout());
             if (active) activeTab = tab;
-            if (active) {
-                TextView close = makeButton("×", true);
-                Glyphs.applyTo(close);  // × → vector icon, not a font glyph
-                close.setContentDescription(getContext().getString(R.string.tab_close_description));
-                close.setOnClickListener(v -> listener.onTabClosed(index));
-                row.addView(close);
-                activeClose = close;
-            }
         }
-        TextView add = makeButton("+", false);
-        add.setContentDescription(getContext().getString(R.string.tab_new_description));
-        add.setOnClickListener(v -> listener.onNewTab());
-        add.setOnLongClickListener(v -> {
-            listener.onNewTabLongPress();
-            return true;
-        });
-        row.addView(add);
+        row.addView(makeAddButton(), tabLayout());
         if (activeTab != null) {
             final View tabToShow = activeTab;
-            final View closeToShow = activeClose;
             post(() -> {
                 if (activeIndex == titles.size() - 1) {
                     fullScroll(View.FOCUS_RIGHT);
                     return;
                 }
-                View rightEdge = closeToShow != null ? closeToShow : tabToShow;
                 row.requestRectangleOnScreen(new Rect(
-                        tabToShow.getLeft(), 0, rightEdge.getRight(), row.getHeight()), false);
+                        tabToShow.getLeft(), 0, tabToShow.getRight(), row.getHeight()), false);
             });
         }
     }
 
-    private TextView makeButton(String label, boolean active) {
-        TextView v = new TextView(getContext());
-        v.setText(label);
-        v.setTextColor(active ? Color.WHITE : 0xFF9999A6);
-        v.setBackground(tabBg(active ? BG_ACTIVE : BG, !active));
-        v.setGravity(Gravity.CENTER);
-        float d = getResources().getDisplayMetrics().density;
-        v.setPadding((int) (14 * d), (int) (10 * d), (int) (14 * d), (int) (10 * d));
-        v.setClickable(true);
-        return v;
+    /** One tab pill: a label plus, when active, a close affordance. */
+    private View makeTab(String title, boolean active, int index) {
+        LinearLayout chip = new LinearLayout(getContext());
+        chip.setOrientation(LinearLayout.HORIZONTAL);
+        chip.setGravity(Gravity.CENTER_VERTICAL);
+        chip.setClickable(true);
+        chip.setFocusable(true);
+        float r = Chrome.dimen(getContext(), R.dimen.tab_radius);
+        chip.setBackground(active
+                ? Chrome.rounded(getContext(), R.color.surface_3, r, R.color.border)
+                : Chrome.rippleTransparent(getContext(), r));
+        int padH = dp(R.dimen.tab_pad_h);
+        int padV = dp(R.dimen.tab_pad_v);
+        chip.setPadding(padH, padV, active ? dp(R.dimen.space_1) : padH, padV);
+        chip.setOnClickListener(v -> listener.onTabSelected(index));
+
+        TextView label = new TextView(getContext());
+        label.setText(title);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
+        label.setMaxWidth(dp(R.dimen.tab_max_width));
+        label.setTextSize(14);
+        label.setTextColor(Chrome.color(getContext(),
+                active ? R.color.text_primary : R.color.text_secondary));
+        if (active) label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        chip.addView(label);
+
+        if (active) {
+            TextView close = new TextView(getContext());
+            close.setText("×");
+            Glyphs.applyTo(close);  // × → vector icon, not a font glyph
+            close.setTextColor(Chrome.color(getContext(), R.color.text_secondary));
+            close.setGravity(Gravity.CENTER);
+            close.setContentDescription(getContext().getString(R.string.tab_close_description));
+            close.setClickable(true);
+            close.setFocusable(true);
+            close.setBackground(Chrome.rippleTransparent(getContext(), dp(R.dimen.radius_pill)));
+            close.setPadding(dp(R.dimen.space_1), dp(R.dimen.space_1),
+                    dp(R.dimen.space_2), dp(R.dimen.space_1));
+            close.setOnClickListener(v -> listener.onTabClosed(index));
+            chip.addView(close);
+        }
+        return chip;
     }
 
-    private GradientDrawable tabBg(int fill, boolean border) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(fill);
-        if (border) {
-            float density = getResources().getDisplayMetrics().density;
-            d.setStroke((int) (density + 0.5f), 0xFF2A2A35);
-        }
-        return d;
+    /** Trailing new-tab (+) ghost button. */
+    private View makeAddButton() {
+        TextView add = new TextView(getContext());
+        add.setText("+");
+        add.setTextColor(Chrome.color(getContext(), R.color.accent));
+        add.setTextSize(22);
+        add.setTypeface(Typeface.DEFAULT_BOLD);
+        add.setGravity(Gravity.CENTER);
+        add.setMinWidth(dp(R.dimen.touch_min));
+        int padV = dp(R.dimen.tab_pad_v);
+        add.setPadding(0, padV, 0, padV);
+        add.setBackground(Chrome.rippleTransparent(getContext(),
+                Chrome.dimen(getContext(), R.dimen.tab_radius)));
+        add.setContentDescription(getContext().getString(R.string.tab_new_description));
+        add.setClickable(true);
+        add.setFocusable(true);
+        add.setOnClickListener(v -> listener.onNewTab());
+        add.setOnLongClickListener(v -> {
+            listener.onNewTabLongPress();
+            return true;
+        });
+        return add;
+    }
+
+    private LinearLayout.LayoutParams tabLayout() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMarginEnd(dp(R.dimen.space_1));
+        return lp;
+    }
+
+    private int dp(int dimenRes) {
+        return Chrome.dp(getContext(), dimenRes);
     }
 }

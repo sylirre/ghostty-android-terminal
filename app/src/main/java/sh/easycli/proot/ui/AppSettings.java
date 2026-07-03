@@ -11,8 +11,8 @@ import sh.easycli.proot.term.TerminalNative;
  * activity-local {@code getPreferences()} store used for one-off prompts).
  *
  * Add a new option as a typed getter/setter pair, then declare a matching
- * {@link Setting} in {@code MainActivity#showSettings}; {@link SettingsDialog}
- * renders one row (title, description, control) per option.
+ * {@link Setting} in {@code SettingsActivity#buildSections}; the screen renders
+ * one row (title, description, control) per option.
  */
 public final class AppSettings {
 

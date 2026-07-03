@@ -6,6 +6,8 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -203,7 +205,7 @@ public final class ThemeActivity extends Activity {
         preview.setTheme(working());
         themeName.setText(dirty ? getString(R.string.theme_name_modified, basedOn) : basedOn);
         for (Map.Entry<Integer, View> e : boxes.entrySet()) {
-            e.getValue().setBackgroundColor(colorOf(e.getKey()));
+            e.getValue().setBackground(swatchFill(colorOf(e.getKey())));
         }
         boolean userTheme = !store.isPreset(basedOn) && store.findByName(basedOn) != null;
         btnSave.setVisibility(userTheme && dirty ? View.VISIBLE : View.GONE);
@@ -667,5 +669,16 @@ public final class ThemeActivity extends Activity {
 
     private void toast(int resId) {
         Toast.makeText(this, resId, Toast.LENGTH_SHORT).show();
+    }
+
+    /** A rounded fill for a color swatch, with a hairline edge so dark colors
+     *  (black, a dark background) stay visible against the card. */
+    private Drawable swatchFill(int color) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(getResources().getDimension(R.dimen.radius_sm));
+        d.setStroke(Chrome.dp(this, R.dimen.stroke_hairline),
+                Chrome.color(this, R.color.border));
+        return d;
     }
 }

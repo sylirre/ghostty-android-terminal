@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- App theme. Stays on the platform Material base (no appcompat/material
+         dependency, per docs/architecture.md) but layers the design tokens on
+         top so widgets, ripples, dialogs and text colors all pick up the
+         indigo/violet identity for free. -->
+    <style name="Theme.Terminal" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/surface_base</item>
+
+        <!-- Accent drives Switch/SeekBar/CheckBox/EditText/progress tinting. -->
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorPrimary">@color/surface_1</item>
+        <item name="android:colorPrimaryDark">@color/surface_base</item>
+
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorTertiary">@color/text_tertiary</item>
+        <item name="android:textColorHint">@color/text_tertiary</item>
+        <item name="android:textColorHighlight">@color/accent_translucent</item>
+
+        <item name="android:colorControlNormal">@color/text_secondary</item>
+        <item name="android:colorControlActivated">@color/accent</item>
+        <!-- Accent-tinted touch ripples on every ?selectableItemBackground. -->
+        <item name="android:colorControlHighlight">@color/accent_translucent</item>
+
+        <!-- Edge-to-edge: content pads itself past the bars, so let them show
+             the window background rather than an opaque band. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- Restyle every android.app.AlertDialog app-wide in one place. -->
+        <item name="android:alertDialogTheme">@style/Theme.Terminal.Dialog</item>
+    </style>
+
+    <!-- Shared dialog look: rounded surface, accent buttons, token text. Applied
+         to all AlertDialogs via alertDialogTheme above (pickers, color picker,
+         progress, confirms, prompts). -->
+    <style name="Theme.Terminal.Dialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="android:backgroundDimAmount">0.6</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorControlActivated">@color/accent</item>
+        <item name="android:colorControlHighlight">@color/accent_translucent</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_tertiary</item>
+        <item name="android:textColorHighlight">@color/accent_translucent</item>
+    </style>
+
+</resources>

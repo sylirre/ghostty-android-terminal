@@ -356,7 +356,7 @@ public final class ExtraKeysActivity extends Activity {
     private CheckBox comboToggle(int labelRes) {
         CheckBox box = new CheckBox(this);
         box.setText(labelRes);
-        box.setTextColor(0xFFEAEAF0);
+        box.setTextColor(Chrome.color(this, R.color.text_primary));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -387,7 +387,10 @@ public final class ExtraKeysActivity extends Activity {
         for (int r = 0; r < rows.size(); r++) {
             HorizontalScrollView scroll = new HorizontalScrollView(this);
             scroll.setHorizontalScrollBarEnabled(false);
-            scroll.setBackgroundColor(0xFF21212A);
+            scroll.setBackground(Chrome.rounded(this, R.color.surface_1,
+                    Chrome.dimen(this, R.dimen.radius_md), R.color.border));
+            int stripPad = dp(6);
+            scroll.setPadding(stripPad, stripPad, stripPad, stripPad);
             LinearLayout strip = new LinearLayout(this);
             strip.setOrientation(LinearLayout.HORIZONTAL);
             for (String id : rows.get(r)) {
@@ -398,16 +401,20 @@ public final class ExtraKeysActivity extends Activity {
                 chip.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
                 chip.setTextColor(Color.WHITE);
                 chip.setGravity(Gravity.CENTER);
-                int pad = dp(14);
-                chip.setPadding(pad, dp(12), pad, dp(12));
+                chip.setPadding(dp(14), dp(10), dp(14), dp(10));
+                chip.setBackground(Chrome.rounded(this, R.color.surface_3,
+                        Chrome.dimen(this, R.dimen.key_radius), R.color.border));
                 Glyphs.applyTo(chip);
-                strip.addView(chip);
+                LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                chipLp.setMarginEnd(dp(4));
+                strip.addView(chip, chipLp);
             }
             scroll.addView(strip, new HorizontalScrollView.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            if (r > 0) lp.topMargin = dp(1);  // hairline gap so stacked rows read apart
+            lp.topMargin = dp(r > 0 ? 6 : 4);  // gap so stacked rows read apart
             previewRows.addView(scroll, lp);
         }
     }
@@ -467,10 +474,10 @@ public final class ExtraKeysActivity extends Activity {
     private void addAvailableChip(ExtraKey key) {
         TextView chip = new TextView(this);
         chip.setText(getString(R.string.extra_keys_add_chip, key.label));
-        chip.setTextColor(0xFFEAEAF0);
+        chip.setTextColor(Chrome.color(this, R.color.text_primary));
         chip.setGravity(Gravity.CENTER);
         chip.setPadding(dp(8), dp(12), dp(8), dp(12));
-        chip.setBackgroundColor(0xFF262630);
+        chip.setBackground(getDrawable(R.drawable.bg_chip));
         chip.setClickable(true);
         chip.setOnClickListener(v -> addId(key.id));
         Glyphs.applyTo(chip);
@@ -480,7 +487,7 @@ public final class ExtraKeysActivity extends Activity {
         lp.height = GridLayout.LayoutParams.WRAP_CONTENT;
         lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
         lp.setGravity(Gravity.FILL_HORIZONTAL);
-        lp.setMargins(dp(2), dp(2), dp(2), dp(2));
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
         chip.setLayoutParams(lp);
         availableGrid.addView(chip);
     }
@@ -585,16 +592,20 @@ public final class ExtraKeysActivity extends Activity {
             origIndex = enabledList.indexOfChild(rowView);
             target = origIndex;
             count = enabledList.getChildCount();
-            rowHeight = rowView.getHeight();
+            // Pitch includes the inter-row gap so neighbours shift by a full slot.
+            ViewGroup.MarginLayoutParams mlp =
+                    (ViewGroup.MarginLayoutParams) rowView.getLayoutParams();
+            rowHeight = rowView.getHeight() + mlp.topMargin + mlp.bottomMargin;
             if (rowHeight <= 0) rowHeight = dp(52);
             downRawY = e.getRawY();
             lastRawY = downRawY;
             scrollStartY = pageScroll.getScrollY();
             autoDir = 0;
             active = true;
-            dragRow.setAlpha(0.92f);
+            dragRow.setAlpha(0.95f);
             dragRow.setElevation(dp(8));
-            dragRow.setBackgroundColor(0xFF2B2B3A);
+            dragRow.setBackground(Chrome.rounded(ExtraKeysActivity.this, R.color.surface_4,
+                    Chrome.dimen(ExtraKeysActivity.this, R.dimen.radius_md), R.color.accent));
             pageScroll.requestDisallowInterceptTouchEvent(true);
         }
 

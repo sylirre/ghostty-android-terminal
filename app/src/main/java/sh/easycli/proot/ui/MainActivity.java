@@ -18,7 +18,6 @@ import android.media.ToneGenerator;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
@@ -31,8 +30,6 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
-import android.text.InputType;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -78,9 +75,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     public static final String EXTRA_FORCE_SHELL = "sh.easycli.proot.FORCE_SHELL";
 
     private static final int REQ_POST_NOTIFICATIONS = 1;
-    private static final int REQ_STORAGE_PERMISSION = 2;
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
+    private static final int REQ_SETTINGS = 102;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
     private static final long BELL_VIBRATION_MS = 300;
     private static final long BELL_THROTTLE_MS = BELL_VIBRATION_MS;
@@ -96,7 +93,6 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private ThemeStore themeStore;
     private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
-    private boolean pendingEnableStorageBinding;
     private long lastBellUptime;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
@@ -133,7 +129,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setSmoothScroll(settings.smoothScroll());
         terminal.setMouseTracking(settings.mouseTracking());
         applyTextMargins();
-        findViewById(R.id.settings_button).setOnClickListener(this::showSettings);
+        findViewById(R.id.settings_button).setOnClickListener(this::openSettings);
         Glyphs.applyTo(findViewById(R.id.settings_button));
 
         searchBar = findViewById(R.id.search_bar);
@@ -249,21 +245,34 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     @Override
     protected void onResume() {
         super.onResume();
-        // Pick up theme changes made in ThemeActivity (and seed the first paint).
-        applyTheme();
-        // Pick up a wallpaper chosen/removed in ThemeActivity.
+        // Re-apply the whole settings surface: edits made in SettingsActivity /
+        // ThemeActivity / ExtraKeysActivity only persist to the stores, so
+        // returning here is what pushes them to the live terminal, window and
+        // sessions (and seeds the first paint).
+        applyAllSettings();
+        disableStorageBindingIfPermissionRevoked();
+        if (current != null && settings.touchKeyboard()) showKeyboard();
+    }
+
+    /**
+     * Re-applies every persisted setting to the live terminal, window and open
+     * sessions. Idempotent; called from {@code onResume} so changes made on the
+     * settings/theme/extra-keys screens take effect when the user comes back.
+     */
+    private void applyAllSettings() {
+        applyTheme();               // colors + cursor style/blink + grapheme clustering
         applyBackgroundImage();
-        // Pick up font choices made in ThemeActivity.
         applyTerminalFonts();
-        // Pick up extra-keys edits made in ExtraKeysActivity, and re-apply
-        // the show/hide toggle.
+        applyTextMargins();
+        applyKeepScreenOn(settings.keepScreenOn());
+        applyImmersiveMode(settings.immersiveMode());
+        terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
+        terminal.setRichKeyboard(settings.richKeyboard());
+        terminal.setSmoothScroll(settings.smoothScroll());
+        terminal.setMouseTracking(settings.mouseTracking());
+        applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
-        terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
-        applyImmersiveMode(settings.immersiveMode());
-        disableStorageBindingIfPermissionRevoked();
-        completePendingStorageBindingIfGranted();
-        if (current != null && settings.touchKeyboard()) showKeyboard();
     }
 
     @Override
@@ -498,164 +507,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
-    /** Opens the settings dialog from the gear button in the top bar. */
-    private void showSettings(View ignored) {
-        List<Setting> items = new ArrayList<>();
-        items.add(new Setting.Action(
-                getString(R.string.setting_theme_title),
-                getString(R.string.setting_theme_summary),
-                () -> themeStore.current().name,
-                () -> startActivity(new Intent(this, ThemeActivity.class))));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_keep_screen_on_title),
-                getString(R.string.setting_keep_screen_on_summary),
-                settings::keepScreenOn,
-                enabled -> {
-                    settings.setKeepScreenOn(enabled);
-                    applyKeepScreenOn(enabled);
-                }));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_immersive_mode_title),
-                getString(R.string.setting_immersive_mode_summary),
-                settings::immersiveMode,
-                enabled -> {
-                    settings.setImmersiveMode(enabled);
-                    applyImmersiveMode(enabled);
-                }));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_touch_keyboard_title),
-                getString(R.string.setting_touch_keyboard_summary),
-                settings::touchKeyboard,
-                enabled -> {
-                    settings.setTouchKeyboard(enabled);
-                    terminal.setTouchKeyboardEnabled(enabled);
-                }));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_rich_keyboard_title),
-                getString(R.string.setting_rich_keyboard_summary),
-                settings::richKeyboard,
-                enabled -> {
-                    settings.setRichKeyboard(enabled);
-                    terminal.setRichKeyboard(enabled);
-                })
-                .enabledWhen(settings::touchKeyboard));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_grapheme_title),
-                getString(R.string.setting_grapheme_summary),
-                settings::graphemeClustering,
-                enabled -> {
-                    settings.setGraphemeClustering(enabled);
-                    applyTheme(); // re-pushes the mode to every open session
-                }));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_smooth_scroll_title),
-                getString(R.string.setting_smooth_scroll_summary),
-                settings::smoothScroll,
-                enabled -> {
-                    settings.setSmoothScroll(enabled);
-                    terminal.setSmoothScroll(enabled);
-                }));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_mouse_tracking_title),
-                getString(R.string.setting_mouse_tracking_summary),
-                settings::mouseTracking,
-                enabled -> {
-                    settings.setMouseTracking(enabled);
-                    terminal.setMouseTracking(enabled);
-                }));
-        items.add(new Setting.RequestToggle(
-                getString(R.string.setting_bind_storage_title),
-                getString(R.string.setting_bind_storage_summary),
-                settings::bindExternalStorage,
-                this::setBindExternalStorageRequested));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_terminate_processes_title),
-                getString(R.string.setting_terminate_processes_summary),
-                settings::terminateProcessesOnExit,
-                enabled -> {
-                    settings.setTerminateProcessesOnExit(enabled);
-                    applyTerminateProcessesOnExit(enabled);
-                }));
-        items.add(new Setting.Choice(
-                getString(R.string.setting_terminal_bell_title),
-                getString(R.string.setting_terminal_bell_summary),
-                getResources().getIntArray(R.array.terminal_bell_mode_values),
-                getResources().getStringArray(R.array.terminal_bell_mode_labels),
-                settings::terminalBellMode,
-                settings::setTerminalBellMode));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_extra_keys_enabled_title),
-                getString(R.string.setting_extra_keys_enabled_summary),
-                settings::extraKeysEnabled,
-                enabled -> {
-                    settings.setExtraKeysEnabled(enabled);
-                    extraKeys.setRowEnabled(enabled);
-                }));
-        items.add(new Setting.Toggle(
-                getString(R.string.setting_extra_keys_hide_when_kb_hidden_title),
-                getString(R.string.setting_extra_keys_hide_when_kb_hidden_summary),
-                settings::hideExtraKeysWhenKeyboardHidden,
-                hide -> {
-                    settings.setHideExtraKeysWhenKeyboardHidden(hide);
-                    extraKeys.setHideWhenKeyboardHidden(hide);
-                })
-                .enabledWhen(settings::extraKeysEnabled));
-        // Greyed out while the toolbar is off — its keys are kept, just hidden,
-        // so there is nothing to edit until it is shown again.
-        items.add(new Setting.Action(
-                getString(R.string.setting_extra_keys_title),
-                getString(R.string.setting_extra_keys_summary),
-                () -> getResources().getQuantityString(R.plurals.extra_keys_count,
-                        extraKeysConfig.order().size(), extraKeysConfig.order().size()),
-                () -> startActivity(new Intent(this, ExtraKeysActivity.class)))
-                .enabledWhen(settings::extraKeysEnabled));
-        items.add(new Setting.Choice(
-                getString(R.string.setting_scrollback_title),
-                getString(R.string.setting_scrollback_summary),
-                getResources().getIntArray(R.array.scrollback_option_values),
-                getResources().getStringArray(R.array.scrollback_option_labels),
-                settings::scrollbackLines,
-                settings::setScrollbackLines));
-        items.add(new Setting.Choice(
-                getString(R.string.setting_text_margin_left_title),
-                getString(R.string.setting_text_margin_left_summary),
-                getResources().getIntArray(R.array.text_margin_option_values),
-                getResources().getStringArray(R.array.text_margin_option_labels),
-                settings::textMarginLeft,
-                dp -> {
-                    settings.setTextMarginLeft(dp);
-                    applyTextMargins();
-                }));
-        items.add(new Setting.Choice(
-                getString(R.string.setting_text_margin_right_title),
-                getString(R.string.setting_text_margin_right_summary),
-                getResources().getIntArray(R.array.text_margin_option_values),
-                getResources().getStringArray(R.array.text_margin_option_labels),
-                settings::textMarginRight,
-                dp -> {
-                    settings.setTextMarginRight(dp);
-                    applyTextMargins();
-                }));
-        // Debian-specific settings: only meaningful on an ABI that can run it.
-        if (DebianRootfs.assetName() != null) {
-            items.add(new Setting.Action(
-                    getString(R.string.setting_proot_shell_title),
-                    getString(R.string.setting_proot_shell_summary),
-                    settings::prootLoginShell,
-                    this::showLoginShellDialog));
-            items.add(new Setting.Action(
-                    getString(R.string.setting_backup_title),
-                    getString(R.string.setting_backup_summary),
-                    () -> "",
-                    this::startBackup)
-                    .enabledWhen(() -> DebianRootfs.isInstalled(this)));
-            items.add(new Setting.Action(
-                    getString(R.string.setting_restore_title),
-                    getString(R.string.setting_restore_summary),
-                    () -> "",
-                    this::confirmRestore));
-        }
-        SettingsDialog.show(this, items);
+    /** Opens the dedicated settings screen from the gear button in the top bar. */
+    private void openSettings(View ignored) {
+        // SettingsActivity persists changes to the stores; onResume re-applies
+        // them. Backup/restore are terminal-coupled, so it hands those back as an
+        // activity result rather than running them itself.
+        startActivityForResult(new Intent(this, SettingsActivity.class), REQ_SETTINGS);
     }
 
     private void applyTerminateProcessesOnExit(boolean enabled) {
@@ -664,115 +521,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
-    private boolean setBindExternalStorageRequested(boolean enabled) {
-        if (!enabled) {
-            pendingEnableStorageBinding = false;
-            settings.setBindExternalStorage(false);
-            return true;
-        }
-        if (hasStorageBindingPermission()) {
-            settings.setBindExternalStorage(true);
-            return true;
-        }
-        pendingEnableStorageBinding = true;
-        requestStorageBindingPermission();
-        return false;
-    }
-
     private boolean storageBindingEnabledForNewSession() {
         if (!settings.bindExternalStorage()) return false;
-        if (hasStorageBindingPermission()) return true;
+        if (StoragePermission.granted(this)) return true;
         settings.setBindExternalStorage(false);
         return false;
     }
 
     private void disableStorageBindingIfPermissionRevoked() {
-        if (settings.bindExternalStorage() && !hasStorageBindingPermission()) {
+        if (settings.bindExternalStorage() && !StoragePermission.granted(this)) {
             settings.setBindExternalStorage(false);
         }
-    }
-
-    private boolean hasStorageBindingPermission() {
-        if (Build.VERSION.SDK_INT >= 30) {
-            return Environment.isExternalStorageManager();
-        }
-        return checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private void requestStorageBindingPermission() {
-        if (Build.VERSION.SDK_INT >= 30) {
-            Intent appSettings = new Intent(
-                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    Uri.parse("package:" + getPackageName()));
-            try {
-                startActivity(appSettings);
-            } catch (ActivityNotFoundException e) {
-                try {
-                    startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-                } catch (ActivityNotFoundException ignored) {
-                    pendingEnableStorageBinding = false;
-                    Toast.makeText(this, R.string.storage_permission_settings_unavailable,
-                            Toast.LENGTH_LONG).show();
-                }
-            }
-        } else {
-            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    REQ_STORAGE_PERMISSION);
-        }
-    }
-
-    private void completePendingStorageBindingIfGranted() {
-        if (!pendingEnableStorageBinding || Build.VERSION.SDK_INT < 30) return;
-        pendingEnableStorageBinding = false;
-        if (hasStorageBindingPermission()) {
-            settings.setBindExternalStorage(true);
-            Toast.makeText(this, R.string.storage_binding_enabled, Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, R.string.storage_permission_denied, Toast.LENGTH_LONG).show();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != REQ_STORAGE_PERMISSION) return;
-        pendingEnableStorageBinding = false;
-        if (grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            settings.setBindExternalStorage(true);
-            Toast.makeText(this, R.string.storage_binding_enabled, Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, R.string.storage_permission_denied, Toast.LENGTH_LONG).show();
-        }
-    }
-
-    // --- Debian rootfs settings ---
-
-    private void showLoginShellDialog() {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setSingleLine(true);
-        input.setHint(R.string.setting_proot_shell_hint);
-        input.setText(settings.prootLoginShell());
-
-        LinearLayout container = new LinearLayout(this);
-        int p = (int) (20 * getResources().getDisplayMetrics().density);
-        container.setPadding(p, p / 2, p, 0);
-        container.addView(input, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.setting_proot_shell_title)
-                .setView(container)
-                .setPositiveButton(android.R.string.ok, (d, w) -> {
-                    String shell = input.getText().toString().trim();
-                    if (!shell.isEmpty()) settings.setProotLoginShell(shell);
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
     }
 
     // --- Debian rootfs backup & restore ---
@@ -816,6 +575,18 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        // Settings hands back the terminal-coupled Debian flows to run here.
+        if (requestCode == REQ_SETTINGS) {
+            if (resultCode == RESULT_OK && data != null) {
+                String action = data.getStringExtra(SettingsActivity.EXTRA_ACTION);
+                if (SettingsActivity.ACTION_BACKUP.equals(action)) {
+                    startBackup();
+                } else if (SettingsActivity.ACTION_RESTORE.equals(action)) {
+                    confirmRestore();
+                }
+            }
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         if (requestCode == REQ_BACKUP) {
@@ -948,12 +719,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         box.setPadding(pad, pad, pad, pad);
         TextView status = new TextView(this);
         status.setText(titleRes);
+        status.setTextColor(getColor(R.color.text_primary));
         ProgressBar bar = new ProgressBar(this, null,
                 android.R.attr.progressBarStyleHorizontal);
         bar.setIndeterminate(true);
         bar.setMax(100);
         box.addView(status);
-        box.addView(bar);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        barLp.topMargin = (int) (16 * getResources().getDisplayMetrics().density);
+        box.addView(bar, barLp);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(box)

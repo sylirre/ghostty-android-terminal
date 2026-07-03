@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Grouped-content card: an elevated rounded surface with a hairline edge. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/surface_2" />
+    <corners android:radius="@dimen/radius_lg" />
+    <stroke android:width="@dimen/stroke_hairline" android:color="@color/border" />
+</shape>

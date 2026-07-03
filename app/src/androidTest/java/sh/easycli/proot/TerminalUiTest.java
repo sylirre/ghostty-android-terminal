@@ -8,7 +8,6 @@ import static androidx.test.espresso.action.ViewActions.scrollTo;
 import static androidx.test.espresso.action.ViewActions.typeText;
 import static androidx.test.espresso.assertion.ViewAssertions.doesNotExist;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
-import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static androidx.test.espresso.matcher.RootMatchers.isPlatformPopup;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withContentDescription;
@@ -242,12 +241,13 @@ public class TerminalUiTest {
     @Test
     public void extraKeysSettingOpensEditor() {
         onView(withId(R.id.settings_button)).perform(click());
+        // Settings is now a full screen (SettingsActivity), not a dialog.
         onView(withText(R.string.setting_extra_keys_title))
-                .inRoot(isDialog()).perform(scrollTo(), click());
+                .perform(scrollTo(), click());
         // The editor's top bar (Done button) is unique to ExtraKeysActivity and
         // pinned on screen — its presence proves the editor opened.
         onView(withId(R.id.extra_keys_done)).check(matches(isDisplayed()));
-        pressBack(); // close the editor, back to the terminal
+        pressBack(); // close the editor, back to the settings screen
     }
 
     @Test
@@ -257,12 +257,12 @@ public class TerminalUiTest {
         int keyCount = new ExtraKeysConfig(
                 ApplicationProvider.getApplicationContext()).order().size();
 
-        // Turn the row off via the settings toggle, then close the dialog.
+        // Turn the row off via the settings toggle, then return to the terminal;
+        // MainActivity.onResume re-applies the persisted toggle.
         onView(withId(R.id.settings_button)).perform(click());
         onView(withText(R.string.setting_extra_keys_enabled_title))
-                .inRoot(isDialog()).perform(scrollTo(), click());
-        onView(withText(R.string.settings_dialog_close))
-                .inRoot(isDialog()).perform(click());
+                .perform(scrollTo(), click());
+        pressBack();
 
         // The toolbar is gone, but the configured keys are untouched.
         onView(withText("ESC")).check(matches(not(isDisplayed())));
@@ -356,18 +356,18 @@ public class TerminalUiTest {
         // Off by default: the window flag is clear at launch.
         assertFalse("keep-screen-on starts off", keepScreenOnFlag());
 
-        // Open the settings dialog (gear in the top bar) and tap the row to
-        // enable the toggle, then dismiss the dialog.
+        // Open the settings screen (gear in the top bar), tap the row to enable
+        // the toggle, then return — MainActivity.onResume applies the change.
         onView(withId(R.id.settings_button)).perform(click());
-        onView(withText("Keep screen on")).inRoot(isDialog()).perform(click());
-        onView(withText("Close")).inRoot(isDialog()).perform(click());
+        onView(withText("Keep screen on")).perform(scrollTo(), click());
+        pressBack();
         assertTrue("flag set after enabling", keepScreenOnFlag());
 
         // Reopen and disable it, leaving the shared preference clean for
         // other tests (the setting persists across activity instances).
         onView(withId(R.id.settings_button)).perform(click());
-        onView(withText("Keep screen on")).inRoot(isDialog()).perform(click());
-        onView(withText("Close")).inRoot(isDialog()).perform(click());
+        onView(withText("Keep screen on")).perform(scrollTo(), click());
+        pressBack();
         assertFalse("flag cleared after disabling", keepScreenOnFlag());
     }
 

@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Full-screen terminal theme editor. ThemeActivity fills the swatch grid
      programmatically (one theme_swatch per editable color) and drives the
-     preview, picker label, and action buttons. -->
+     preview, picker label, and action buttons. All @id/theme_* ids and the
+     widget types are relied on by ThemeActivity; only the chrome around them
+     is styled here. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#FF000000">
+    android:background="@color/surface_base">
 
     <!-- Top bar: title + Done. -->
     <LinearLayout
@@ -15,368 +17,448 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#FF14141A">
+        android:minHeight="56dp"
+        android:paddingLeft="20dp"
+        android:paddingRight="8dp"
+        android:background="@color/surface_1">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/theme_activity_title"
-            android:textColor="#FFEEEEEE"
-            android:textSize="18sp"
-            android:paddingLeft="16dp"
-            android:paddingTop="12dp"
-            android:paddingBottom="12dp" />
+            style="@style/TopBarTitle"
+            android:text="@string/theme_activity_title" />
 
         <Button
             android:id="@+id/theme_done"
-            style="?android:attr/borderlessButtonStyle"
+            style="@style/ButtonText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/theme_done" />
 
     </LinearLayout>
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:scrollbars="none">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="28dp">
 
-            <sh.easycli.proot.ui.ThemePreviewView
-                android:id="@+id/theme_preview"
-                android:layout_width="match_parent"
-                android:layout_height="200dp" />
-
-            <!-- Background image (a global wallpaper, independent of the theme
-                 colors). The opacity row hides itself while no image is set. -->
-            <LinearLayout
+            <!-- Live preview, framed in a card. -->
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="16dp">
+                android:layout_marginTop="16dp"
+                android:padding="8dp"
+                android:background="@drawable/bg_card">
 
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_bg_image_label"
-                    android:textColor="?android:attr/textColorSecondary" />
+                <sh.easycli.proot.ui.ThemePreviewView
+                    android:id="@+id/theme_preview"
+                    android:layout_width="match_parent"
+                    android:layout_height="196dp" />
 
-                <Button
-                    android:id="@+id/theme_bg_choose"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_bg_image_choose" />
+            </FrameLayout>
 
-                <Button
-                    android:id="@+id/theme_bg_remove"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_bg_image_remove" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/theme_bg_opacity_row"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_bg_image_opacity"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <SeekBar
-                    android:id="@+id/theme_bg_opacity"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:layout_marginLeft="8dp"
-                    android:max="100" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/theme_bg_blur_row"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_bg_image_blur"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <SeekBar
-                    android:id="@+id/theme_bg_blur"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:layout_marginLeft="8dp"
-                    android:max="100" />
-
-            </LinearLayout>
-
-            <!-- Cursor shape + blink. Global, like the background image, not
-                 part of the theme color working copy; a running program can
-                 still override the shape (e.g. a bar in vim insert mode). -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_cursor_style"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Button
-                    android:id="@+id/theme_cursor_style"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
+            <!-- Background wallpaper (a global setting, independent of colors). -->
+            <TextView
+                style="@style/SectionHeader"
+                android:text="@string/theme_section_background" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_cursor_blink"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Switch
-                    android:id="@+id/theme_cursor_blink"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" />
-
-            </LinearLayout>
-
-            <!-- Terminal fonts. Global appearance settings, independent of
-                 the color theme. Picked files are copied into app storage. -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="16dp">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_font_default"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Button
-                    android:id="@+id/theme_font_default_choose"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_choose" />
-
-                <Button
-                    android:id="@+id/theme_font_default_remove"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_remove" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_font_bold"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Button
-                    android:id="@+id/theme_font_bold_choose"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_choose" />
-
-                <Button
-                    android:id="@+id/theme_font_bold_remove"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_remove" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_font_italic"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Button
-                    android:id="@+id/theme_font_italic_choose"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_choose" />
-
-                <Button
-                    android:id="@+id/theme_font_italic_remove"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_remove" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/theme_font_bold_italic"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Button
-                    android:id="@+id/theme_font_bold_italic_choose"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_choose" />
-
-                <Button
-                    android:id="@+id/theme_font_bold_italic_remove"
-                    style="?android:attr/buttonStyleSmall"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_font_remove" />
-
-            </LinearLayout>
-
-            <!-- Active theme + switcher. -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="16dp">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/theme_picker_label"
-                    android:textColor="?android:attr/textColorSecondary" />
-
-                <Button
-                    android:id="@+id/theme_name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:layout_marginLeft="8dp" />
-
-            </LinearLayout>
-
-            <!-- Theme actions; horizontally scrollable so they never clip. -->
-            <HorizontalScrollView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:scrollbars="none">
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:background="@drawable/bg_card">
 
                 <LinearLayout
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_bg_image_label"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
 
                     <Button
-                        android:id="@+id/theme_save"
-                        style="?android:attr/buttonStyleSmall"
+                        android:id="@+id/theme_bg_choose"
+                        style="@style/ButtonTonal"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/theme_save" />
+                        android:text="@string/theme_bg_image_choose" />
 
                     <Button
-                        android:id="@+id/theme_save_as"
-                        style="?android:attr/buttonStyleSmall"
+                        android:id="@+id/theme_bg_remove"
+                        style="@style/ButtonText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/theme_save_as" />
-
-                    <Button
-                        android:id="@+id/theme_revert"
-                        style="?android:attr/buttonStyleSmall"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/theme_revert" />
-
-                    <Button
-                        android:id="@+id/theme_rename"
-                        style="?android:attr/buttonStyleSmall"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/theme_rename" />
-
-                    <Button
-                        android:id="@+id/theme_delete"
-                        style="?android:attr/buttonStyleSmall"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/theme_delete" />
+                        android:layout_marginStart="4dp"
+                        android:text="@string/theme_bg_image_remove" />
 
                 </LinearLayout>
 
-            </HorizontalScrollView>
+                <LinearLayout
+                    android:id="@+id/theme_bg_opacity_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
 
-            <GridLayout
-                android:id="@+id/theme_swatches"
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_bg_image_opacity"
+                        android:textColor="@color/text_secondary" />
+
+                    <SeekBar
+                        android:id="@+id/theme_bg_opacity"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp"
+                        android:max="100" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/theme_bg_blur_row"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_bg_image_blur"
+                        android:textColor="@color/text_secondary" />
+
+                    <SeekBar
+                        android:id="@+id/theme_bg_blur"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp"
+                        android:max="100" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Cursor shape + blink (global, like the background image). -->
+            <TextView
+                style="@style/SectionHeader"
+                android:text="@string/theme_section_cursor" />
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:columnCount="4" />
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:background="@drawable/bg_card">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_cursor_style"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/theme_cursor_style"
+                        style="@style/ButtonTonal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_cursor_blink"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
+
+                    <Switch
+                        android:id="@+id/theme_cursor_blink"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Terminal fonts (global appearance, independent of the color theme). -->
+            <TextView
+                style="@style/SectionHeader"
+                android:text="@string/theme_section_fonts" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:background="@drawable/bg_card">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_font_default"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/theme_font_default_choose"
+                        style="@style/ButtonTonal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_font_choose" />
+
+                    <Button
+                        android:id="@+id/theme_font_default_remove"
+                        style="@style/ButtonText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/theme_font_remove" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_font_bold"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/theme_font_bold_choose"
+                        style="@style/ButtonTonal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_font_choose" />
+
+                    <Button
+                        android:id="@+id/theme_font_bold_remove"
+                        style="@style/ButtonText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/theme_font_remove" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_font_italic"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/theme_font_italic_choose"
+                        style="@style/ButtonTonal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_font_choose" />
+
+                    <Button
+                        android:id="@+id/theme_font_italic_remove"
+                        style="@style/ButtonText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/theme_font_remove" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="4dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/theme_font_bold_italic"
+                        android:textColor="@color/text_primary"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/theme_font_bold_italic_choose"
+                        style="@style/ButtonTonal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_font_choose" />
+
+                    <Button
+                        android:id="@+id/theme_font_bold_italic_remove"
+                        style="@style/ButtonText"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="@string/theme_font_remove" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Active theme, actions, and the editable color swatches. -->
+            <TextView
+                style="@style/SectionHeader"
+                android:text="@string/theme_section_theme" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:background="@drawable/bg_card">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/theme_picker_label"
+                        android:textColor="@color/text_secondary" />
+
+                    <Button
+                        android:id="@+id/theme_name"
+                        style="@style/ButtonTonal"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="12dp" />
+
+                </LinearLayout>
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <Button
+                            android:id="@+id/theme_save"
+                            style="@style/ButtonTonal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:text="@string/theme_save" />
+
+                        <Button
+                            android:id="@+id/theme_save_as"
+                            style="@style/ButtonTonal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:text="@string/theme_save_as" />
+
+                        <Button
+                            android:id="@+id/theme_revert"
+                            style="@style/ButtonTonal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:text="@string/theme_revert" />
+
+                        <Button
+                            android:id="@+id/theme_rename"
+                            style="@style/ButtonTonal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="6dp"
+                            android:text="@string/theme_rename" />
+
+                        <Button
+                            android:id="@+id/theme_delete"
+                            style="@style/ButtonText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/theme_delete" />
+
+                    </LinearLayout>
+
+                </HorizontalScrollView>
+
+                <GridLayout
+                    android:id="@+id/theme_swatches"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:columnCount="4" />
+
+            </LinearLayout>
 
         </LinearLayout>
 

@@ -15,9 +15,9 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * One entry in the settings dialog: a title, a one-line description, and an
+ * One entry in the settings screen: a title, a one-line description, and an
  * optional trailing control. The control type lives in a subclass so the
- * dialog ({@link SettingsDialog}) stays type-agnostic — it lays out the
+ * screen ({@link SettingsActivity}) stays type-agnostic — it lays out the
  * shared title/summary row and drops in whatever {@link #createControl}
  * returns.
  *
@@ -32,8 +32,8 @@ abstract class Setting {
     final String summary;
 
     /**
-     * Gates whether this row is interactive. When it returns false the dialog
-     * greys the row out and ignores taps (see {@link SettingsDialog}). Null
+     * Gates whether this row is interactive. When it returns false the screen
+     * greys the row out and ignores taps (see {@link SettingsActivity}). Null
      * means always enabled. Re-evaluated whenever any row reports a change, so
      * one toggle can disable another live (e.g. hiding the extra-keys toolbar
      * greys out its editor row).

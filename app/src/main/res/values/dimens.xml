@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Spacing scale (4dp grid). -->
+    <dimen name="space_1">4dp</dimen>
+    <dimen name="space_2">8dp</dimen>
+    <dimen name="space_3">12dp</dimen>
+    <dimen name="space_4">16dp</dimen>
+    <dimen name="space_5">20dp</dimen>
+    <dimen name="space_6">24dp</dimen>
+    <dimen name="space_7">28dp</dimen>
+    <dimen name="space_8">32dp</dimen>
+
+    <!-- Corner radii. -->
+    <dimen name="radius_sm">8dp</dimen>
+    <dimen name="radius_md">12dp</dimen>
+    <dimen name="radius_lg">16dp</dimen>
+    <dimen name="radius_pill">999dp</dimen>
+
+    <!-- Hairline stroke width. -->
+    <dimen name="stroke_hairline">1dp</dimen>
+
+    <!-- Minimum comfortable touch target. -->
+    <dimen name="touch_min">48dp</dimen>
+
+    <!-- Extra-keys keycap metrics. -->
+    <dimen name="key_min_width">44dp</dimen>
+    <dimen name="key_pad_h">12dp</dimen>
+    <dimen name="key_pad_v">12dp</dimen>
+    <dimen name="key_gap">4dp</dimen>
+    <dimen name="key_radius">10dp</dimen>
+
+    <!-- Session tab metrics. -->
+    <dimen name="tab_pad_h">14dp</dimen>
+    <dimen name="tab_pad_v">9dp</dimen>
+    <dimen name="tab_indicator">2dp</dimen>
+    <dimen name="tab_radius">10dp</dimen>
+    <dimen name="tab_max_width">168dp</dimen>
+
+    <!-- Chrome text sizes. -->
+    <dimen name="text_title">19sp</dimen>
+    <dimen name="text_row_title">16sp</dimen>
+    <dimen name="text_row_summary">13sp</dimen>
+    <dimen name="text_section">13sp</dimen>
+</resources>

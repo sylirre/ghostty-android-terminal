@@ -1,4 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_bg">#1C1C1E</color>
+    <!-- Launcher adaptive-icon background (indigo-tinted near-black, matches
+         the in-app surface identity). -->
+    <color name="launcher_bg">#0B0B12</color>
+
+    <!-- ================= App chrome design tokens (dark-only) =================
+         Every non-terminal surface draws from these. Layouts and the
+         programmatically built views (via ui/Chrome.java) share one source. -->
+
+    <!-- Layered surfaces, darkest (app root, behind the terminal) to lightest. -->
+    <color name="surface_base">#0B0B10</color>
+    <color name="surface_1">#14141B</color>
+    <color name="surface_2">#1C1C26</color>
+    <color name="surface_3">#262633</color>
+    <color name="surface_4">#33333F</color>
+
+    <!-- Hairlines and strokes (white at low alpha so they read on any surface). -->
+    <color name="divider">#14FFFFFF</color>
+    <color name="border">#24FFFFFF</color>
+
+    <!-- Text. -->
+    <color name="text_primary">#F3F3F7</color>
+    <color name="text_secondary">#A6A6B5</color>
+    <color name="text_tertiary">#6F6F82</color>
+    <color name="on_accent">#FFFFFFFF</color>
+
+    <!-- Accent (indigo / violet). -->
+    <color name="accent">#7C6CF6</color>
+    <color name="accent_pressed">#9384F8</color>
+    <color name="accent_deep">#4C3FB0</color>
+    <color name="accent_translucent">#337C6CF6</color>
+
+    <!-- Semantic. -->
+    <color name="danger">#FF6B7A</color>
+    <color name="danger_pressed">#FF8A96</color>
+    <color name="success">#4CD964</color>
+
+    <!-- Dialog scrim. -->
+    <color name="scrim">#99000000</color>
 </resources>

@@ -3,19 +3,23 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF000000">
+    android:background="@color/surface_base">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <!-- Top bar: scrolling tab strip plus a fixed settings button. -->
+        <!-- Top bar: scrolling tab strip plus fixed search + settings buttons. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:background="#FF14141A">
+            android:gravity="center_vertical"
+            android:minHeight="52dp"
+            android:paddingLeft="4dp"
+            android:paddingRight="4dp"
+            android:background="@color/surface_1">
 
             <sh.easycli.proot.ui.TabStripView
                 android:id="@+id/tabs"
@@ -25,33 +29,41 @@
 
             <TextView
                 android:id="@+id/search_button"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="2dp"
+                android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/search_button_icon"
-                android:textColor="#FF9999A6"
+                android:textColor="@color/text_secondary"
                 android:textSize="18sp"
-                android:paddingLeft="16dp"
-                android:paddingRight="16dp"
+                android:background="@drawable/bg_toolbar_icon"
                 android:contentDescription="@string/search_button_description"
                 android:clickable="true"
                 android:focusable="true" />
 
             <TextView
                 android:id="@+id/settings_button"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="2dp"
+                android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/settings_button_icon"
-                android:textColor="#FF9999A6"
+                android:textColor="@color/text_secondary"
                 android:textSize="18sp"
-                android:paddingLeft="16dp"
-                android:paddingRight="16dp"
+                android:background="@drawable/bg_toolbar_icon"
                 android:contentDescription="@string/settings_button_description"
                 android:clickable="true"
                 android:focusable="true" />
 
         </LinearLayout>
+
+        <!-- Hairline separating the top bar from the terminal surface. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/divider" />
 
         <!-- Find bar; hidden until the search button is tapped. -->
         <sh.easycli.proot.ui.SearchBarView
@@ -80,7 +92,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:textColor="#FFCCCCCC"
+        android:textColor="@color/text_primary"
         android:textSize="16sp"
         android:fontFamily="monospace"
         android:visibility="gone" />
