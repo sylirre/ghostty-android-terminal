@@ -145,11 +145,22 @@ public final class SettingsActivity extends Activity {
                 settings::hideExtraKeysWhenKeyboardHidden,
                 settings::setHideExtraKeysWhenKeyboardHidden)
                 .enabledWhen(settings::extraKeysEnabled));
+        keyboard.add(new Setting.Toggle(
+                getString(R.string.setting_extra_keys_switch_title),
+                getString(R.string.setting_extra_keys_switch_summary),
+                settings::showExtraKeysSwitch,
+                settings::setShowExtraKeysSwitch)
+                .enabledWhen(settings::extraKeysEnabled));
         keyboard.add(new Setting.Action(
                 getString(R.string.setting_extra_keys_title),
                 getString(R.string.setting_extra_keys_summary),
-                () -> getResources().getQuantityString(R.plurals.extra_keys_count,
-                        extraKeysConfig.order().size(), extraKeysConfig.order().size()),
+                () -> {
+                    int keys = extraKeysConfig.order().size();
+                    int profs = extraKeysConfig.profileCount();
+                    return profs > 1
+                            ? getString(R.string.extra_keys_summary_profiles, keys, profs)
+                            : getResources().getQuantityString(R.plurals.extra_keys_count, keys, keys);
+                },
                 () -> startActivity(new Intent(this, ExtraKeysActivity.class)))
                 .enabledWhen(settings::extraKeysEnabled));
         sections.add(new SettingsSection(getString(R.string.settings_group_keyboard), keyboard));

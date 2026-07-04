@@ -177,11 +177,17 @@ public class ExtraKeysConfigTest {
     // --- Multi-row layout ---
 
     @Test
-    public void defaultRowsIsLegacyDefaultAsSingleRow() {
-        assertEquals(Collections.singletonList(ExtraKeysConfig.DEFAULT_IDS),
-                ExtraKeysConfig.DEFAULT_ROWS);
+    public void defaultRowsAreStackedButFlattenToDefaultIds() {
+        // The default is stacked across rows, but its keys — in order — are
+        // exactly DEFAULT_IDS, so order() and legacy migration are unchanged.
+        assertTrue("default should be stacked into multiple rows",
+                ExtraKeysConfig.DEFAULT_ROWS.size() > 1);
+        List<String> flat = new java.util.ArrayList<>();
+        for (List<String> row : ExtraKeysConfig.DEFAULT_ROWS) flat.addAll(row);
+        assertEquals(ExtraKeysConfig.DEFAULT_IDS, flat);
         // Unset config falls back to that default.
         assertEquals(ExtraKeysConfig.DEFAULT_ROWS, config.rows());
+        assertEquals(ExtraKeysConfig.DEFAULT_IDS, config.order());
     }
 
     @Test
@@ -231,5 +237,113 @@ public class ExtraKeysConfigTest {
         assertEquals(1, rows.get(0).size());
         assertEquals("esc", rows.get(0).get(0).id);
         assertEquals("tab", rows.get(1).get(0).id);
+    }
+
+    // --- Width & secondary placements ---
+
+    @Test
+    public void keySpecWidthAndSecondaryRoundTrip() {
+        List<List<ExtraKeysConfig.KeySpec>> rows = Collections.singletonList(Arrays.asList(
+                new ExtraKeysConfig.KeySpec("esc"),
+                new ExtraKeysConfig.KeySpec("tab", ExtraKeysConfig.WIDTH_2, null),
+                new ExtraKeysConfig.KeySpec("slash", ExtraKeysConfig.WIDTH_1, "lit:\\")));
+        config.setActiveRows(rows);
+
+        // A fresh instance reads the width and secondary back.
+        List<List<ExtraKeysConfig.KeySpec>> back = new ExtraKeysConfig(context).activeRows();
+        assertEquals(1, back.size());
+        assertEquals(3, back.get(0).size());
+        assertEquals(ExtraKeysConfig.WIDTH_2, back.get(0).get(1).width, 0.001f);
+        assertEquals("lit:\\", back.get(0).get(2).secondaryId);
+
+        // Resolved keys carry the width and secondary through to ExtraKey.
+        List<List<ExtraKey>> resolved = config.enabledRows(context);
+        ExtraKey tab = resolved.get(0).get(1);
+        assertEquals(ExtraKeysConfig.WIDTH_2, tab.width, 0.001f);
+        ExtraKey slash = resolved.get(0).get(2);
+        assertTrue(slash.hasSecondary());
+        assertEquals("lit:\\", slash.secondaryId);
+    }
+
+    @Test
+    public void widthSnapsToSupportedMultiplier() {
+        assertEquals(ExtraKeysConfig.WIDTH_1, ExtraKeysConfig.clampWidth(1.1f), 0.001f);
+        assertEquals(ExtraKeysConfig.WIDTH_1_5, ExtraKeysConfig.clampWidth(1.4f), 0.001f);
+        assertEquals(ExtraKeysConfig.WIDTH_2, ExtraKeysConfig.clampWidth(3.0f), 0.001f);
+    }
+
+    // --- Migration from the legacy formats ---
+
+    @Test
+    public void migratesLegacyFlatArray() {
+        config.seedRawForTest("[\"esc\",\"ctrl\",\"tab\"]");
+        assertEquals(1, config.profileCount());
+        assertEquals(Collections.singletonList(Arrays.asList("esc", "ctrl", "tab")),
+                config.rows());
+    }
+
+    @Test
+    public void migratesLegacyRowsArray() {
+        config.seedRawForTest("[[\"esc\",\"ctrl\"],[\"tab\"]]");
+        assertEquals(Arrays.asList(Arrays.asList("esc", "ctrl"), Arrays.asList("tab")),
+                config.rows());
+    }
+
+    @Test
+    public void readsV2WithWidthAndSecondary() {
+        config.seedRawForTest(
+                "{\"v\":2,\"active\":0,\"profiles\":[{\"name\":\"Default\","
+                + "\"rows\":[[{\"k\":\"tab\",\"w\":1.5,\"s\":\"lit:x\"}]]}]}");
+        List<List<ExtraKeysConfig.KeySpec>> rows = config.activeRows();
+        assertEquals(ExtraKeysConfig.WIDTH_1_5, rows.get(0).get(0).width, 0.001f);
+        assertEquals("lit:x", rows.get(0).get(0).secondaryId);
+    }
+
+    // --- Profiles ---
+
+    @Test
+    public void addRenameDuplicateRemoveProfile() {
+        assertEquals(1, config.profileCount());
+        int vim = config.addProfile("Vim");
+        assertEquals(2, config.profileCount());
+        assertEquals(vim, config.activeIndex());        // add switches to the new profile
+        assertEquals("Vim", config.activeProfileName());
+
+        config.renameProfile(vim, "Neovim");
+        assertEquals("Neovim", config.profiles().get(vim).name);
+
+        int dup = config.duplicateProfile(vim);
+        assertEquals(3, config.profileCount());
+        assertEquals("Neovim 2", config.profiles().get(dup).name);  // de-duplicated name
+
+        config.removeProfile(dup);
+        assertEquals(2, config.profileCount());
+    }
+
+    @Test
+    public void removeProfileKeepsAtLeastOne() {
+        config.removeProfile(0);
+        assertEquals(1, config.profileCount());
+    }
+
+    @Test
+    public void activeIndexClampedAndPersisted() {
+        config.addProfile("Vim");     // active → 1
+        config.setActiveIndex(0);
+        assertEquals(0, new ExtraKeysConfig(context).activeIndex());
+        config.setActiveIndex(99);    // out of range → ignored
+        assertEquals(0, config.activeIndex());
+    }
+
+    @Test
+    public void profilesAreIndependent() {
+        // Editing the active profile must not touch another.
+        config.setOrder(Arrays.asList("esc"));
+        int vim = config.addProfile("Vim");            // active → Vim (default rows)
+        config.setOrder(Arrays.asList("tab"));         // edits Vim only
+        config.setActiveIndex(0);
+        assertEquals(Arrays.asList("esc"), config.order());
+        config.setActiveIndex(vim);
+        assertEquals(Arrays.asList("tab"), config.order());
     }
 }

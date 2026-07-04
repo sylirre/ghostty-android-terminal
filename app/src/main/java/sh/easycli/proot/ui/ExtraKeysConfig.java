@@ -6,6 +6,8 @@ import android.view.KeyEvent;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
+import org.json.JSONTokener;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,13 +22,25 @@ import sh.easycli.proot.R;
 import sh.easycli.proot.term.TerminalNative;
 
 /**
- * The source of truth for the extra-keys toolbar layout: the built-in key
- * {@linkplain #catalog catalog} plus the user's ordered list of enabled key ids.
+ * The source of truth for the extra-keys toolbar: the built-in key
+ * {@linkplain #catalog catalog} plus the user's named {@linkplain Profile
+ * profiles}, each an ordered set of rows of {@linkplain KeySpec key placements}.
  *
- * Same approach as {@link ThemeStore}: the order is persisted in its own
- * {@link SharedPreferences} file as a JSON array of ids, so it survives process
- * death. An id is either a catalog key (e.g. {@code "esc"}) or {@code "lit:"} +
- * an arbitrary literal for a user-defined text key.
+ * <h3>Persistence</h3>
+ * The whole thing lives in one {@link SharedPreferences} value (JSON) so it
+ * survives process death. The reader accepts three shapes under the same key so
+ * older installs keep working:
+ * <ul>
+ *   <li><b>v2</b> (current): a JSON object
+ *       {@code {"v":2,"active":i,"profiles":[{"name":…,"rows":[[{"k":id,"w":width,"s":secId}…]…]}…]}}.
+ *       {@code w} defaults to 1.0 and {@code s} is optional.</li>
+ *   <li><b>v1</b> (legacy): a JSON array of arrays of id strings → one
+ *       {@link #DEFAULT_PROFILE_NAME} profile of those rows.</li>
+ *   <li><b>v0</b> (oldest): a flat JSON array of id strings → a single-row
+ *       {@code Default} profile.</li>
+ * </ul>
+ * A key {@link #id} is either a catalog key (e.g. {@code "esc"}), {@code "lit:"}
+ * + a literal for a custom text key, or {@code "combo:"} for a modifier combo.
  *
  * The catalog is intentionally limited to keys the native {@code map_keycode}
  * (terminal_jni.c) actually encodes — offering a key that produces nothing would
@@ -35,6 +49,7 @@ import sh.easycli.proot.term.TerminalNative;
 public final class ExtraKeysConfig {
 
     private static final String FILE = "extrakeys";
+    /** Persisted under the original key so pre-v2 installs are found and migrated. */
     private static final String KEY_ORDER = "order";
 
     /** Prefix marking a user-defined literal text key; the rest is the text. */
@@ -58,18 +73,32 @@ public final class ExtraKeysConfig {
             "home", "end", "pgup", "pgdn", "dash", "slash", "pipe"));
 
     /**
-     * The most rows the toolbar will ever show. Each row eats vertical space
+     * The most rows a single profile will ever show. Each row eats vertical space
      * above the keyboard, so this stays small; the editor caps additions here.
      */
     static final int MAX_ROWS = 3;
 
+    /** Upper bound on the number of named profiles. */
+    static final int MAX_PROFILES = 8;
+
+    /** Name of the always-present first profile. */
+    static final String DEFAULT_PROFILE_NAME = "Default";
+
+    /** The three flex-grid width multipliers a keycap may take. */
+    static final float WIDTH_1 = 1.0f;
+    static final float WIDTH_1_5 = 1.5f;
+    static final float WIDTH_2 = 2.0f;
+
     /**
-     * The default layout: the legacy {@link #DEFAULT_IDS} as a single row, so a
-     * fresh install and {@link #reset()} look exactly as before the toolbar
-     * gained rows.
+     * The default layout: the {@link #DEFAULT_IDS}, in the same order, split into
+     * two stacked rows so the flex grid reads as a proper keyboard rather than a
+     * single overcrowded strip. Flattening the rows still yields {@link
+     * #DEFAULT_IDS}, so migration from the old flat/single-row formats and the
+     * {@code order()} contract are unchanged.
      */
-    static final List<List<String>> DEFAULT_ROWS =
-            Collections.singletonList(DEFAULT_IDS);
+    static final List<List<String>> DEFAULT_ROWS = Collections.unmodifiableList(Arrays.asList(
+            Arrays.asList("esc", "ctrl", "alt", "tab", "up", "down", "left", "right"),
+            Arrays.asList("home", "end", "pgup", "pgdn", "dash", "slash", "pipe")));
 
     /**
      * Modifier-combo presets offered in the "Add keys" palette (none enabled by
@@ -89,6 +118,75 @@ public final class ExtraKeysConfig {
         prefs = context.getApplicationContext()
                 .getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
+
+    // ===================== Model =====================
+
+    /**
+     * One key placement in a profile row: its identity {@link #id} plus the
+     * per-placement flex-grid {@link #width} and optional {@link #secondaryId}
+     * (both decorate a resolved {@link ExtraKey}; neither is part of the id).
+     */
+    static final class KeySpec {
+        final String id;
+        final float width;         // 1.0 / 1.5 / 2.0
+        final String secondaryId;  // nullable
+
+        KeySpec(String id, float width, String secondaryId) {
+            this.id = id;
+            this.width = width;
+            this.secondaryId = secondaryId;
+        }
+
+        KeySpec(String id) {
+            this(id, WIDTH_1, null);
+        }
+
+        KeySpec withWidth(float w) {
+            return new KeySpec(id, clampWidth(w), secondaryId);
+        }
+
+        KeySpec withSecondary(String secId) {
+            return new KeySpec(id, width, secId);
+        }
+
+        JSONObject toJson() throws JSONException {
+            JSONObject o = new JSONObject();
+            o.put("k", id);
+            if (width != WIDTH_1) o.put("w", (double) width);
+            if (secondaryId != null && !secondaryId.isEmpty()) o.put("s", secondaryId);
+            return o;
+        }
+    }
+
+    /** A named toolbar layout: an ordered list of rows of {@link KeySpec}s. */
+    static final class Profile {
+        String name;
+        List<List<KeySpec>> rows;
+
+        Profile(String name, List<List<KeySpec>> rows) {
+            this.name = name;
+            this.rows = rows;
+        }
+
+        Profile copy() {
+            List<List<KeySpec>> r = new ArrayList<>(rows.size());
+            for (List<KeySpec> row : rows) r.add(new ArrayList<>(row));
+            return new Profile(name, r);
+        }
+    }
+
+    /** The whole persisted state: the profiles and the active index. */
+    private static final class Store {
+        final List<Profile> profiles;
+        int active;
+
+        Store(List<Profile> profiles, int active) {
+            this.profiles = profiles;
+            this.active = active;
+        }
+    }
+
+    // ===================== Catalog (static) =====================
 
     /**
      * Every built-in key, keyed by id, in catalog (display) order: the plain
@@ -158,6 +256,7 @@ public final class ExtraKeysConfig {
 
     /** Resolves an id to its key (catalog entry, custom literal, or combo); null if unknown. */
     static ExtraKey resolve(Context c, String id) {
+        if (id == null) return null;
         ExtraKey k = catalog(c).get(id);
         if (k != null) return k;
         if (id.startsWith(COMBO_PREFIX)) return resolveCombo(c, id);
@@ -243,100 +342,297 @@ public final class ExtraKeysConfig {
         sb.append(label);
     }
 
-    /**
-     * The persisted toolbar layout as rows of ids, or {@link #DEFAULT_ROWS} if
-     * never set. Reads both the current nested format (a JSON array of arrays)
-     * and the legacy flat format (a JSON array of ids → a single row), so old
-     * saved configs keep working. Empty rows are dropped and the result is
-     * capped at {@link #MAX_ROWS}.
-     */
-    public List<List<String>> rows() {
+    /** Snaps an arbitrary width to the nearest of the three supported multipliers. */
+    static float clampWidth(float w) {
+        if (w >= 1.75f) return WIDTH_2;
+        if (w >= 1.25f) return WIDTH_1_5;
+        return WIDTH_1;
+    }
+
+    // ===================== Load / save =====================
+
+    /** Reads and normalizes the persisted state, or the defaults if never set / malformed. */
+    private Store load() {
         String raw = prefs.getString(KEY_ORDER, null);
-        if (raw == null) return copyRows(DEFAULT_ROWS);
+        if (raw == null) return defaultStore();
         try {
-            JSONArray arr = new JSONArray(raw);
-            List<List<String>> out = new ArrayList<>();
-            if (arr.length() > 0 && arr.opt(0) instanceof JSONArray) {
-                for (int i = 0; i < arr.length() && out.size() < MAX_ROWS; i++) {
-                    JSONArray r = arr.optJSONArray(i);
-                    if (r == null) continue;
-                    List<String> row = new ArrayList<>(r.length());
-                    for (int j = 0; j < r.length(); j++) row.add(r.getString(j));
-                    if (!row.isEmpty()) out.add(row);
-                }
-            } else {  // legacy flat format: one row of ids
-                List<String> row = new ArrayList<>(arr.length());
-                for (int i = 0; i < arr.length(); i++) row.add(arr.getString(i));
-                if (!row.isEmpty()) out.add(row);
+            Object parsed = new JSONTokener(raw).nextValue();
+            Store s;
+            if (parsed instanceof JSONObject) {
+                s = parseV2((JSONObject) parsed);
+            } else if (parsed instanceof JSONArray) {
+                s = parseLegacy((JSONArray) parsed);
+            } else {
+                return defaultStore();
             }
-            return out;
+            return normalize(s);
         } catch (JSONException malformed) {
-            return copyRows(DEFAULT_ROWS);
+            return defaultStore();
         }
     }
 
-    /** Persists the layout as a JSON array of arrays, dropping empty rows and capping at {@link #MAX_ROWS}. */
-    public void setRows(List<List<String>> rows) {
-        JSONArray arr = new JSONArray();
-        for (List<String> row : rows) {
-            if (row.isEmpty() || arr.length() >= MAX_ROWS) continue;
-            JSONArray r = new JSONArray();
-            for (String id : row) r.put(id);
-            arr.put(r);
+    /** Persists a store as the v2 JSON object (empty rows dropped, rows capped). */
+    private void save(Store s) {
+        try {
+            JSONObject root = new JSONObject();
+            root.put("v", 2);
+            root.put("active", s.active);
+            JSONArray profs = new JSONArray();
+            for (Profile p : s.profiles) {
+                JSONObject po = new JSONObject();
+                po.put("name", p.name);
+                JSONArray rowsArr = new JSONArray();
+                for (List<KeySpec> row : p.rows) {
+                    if (row.isEmpty() || rowsArr.length() >= MAX_ROWS) continue;
+                    JSONArray r = new JSONArray();
+                    for (KeySpec k : row) r.put(k.toJson());
+                    rowsArr.put(r);
+                }
+                po.put("rows", rowsArr);
+                profs.put(po);
+            }
+            root.put("profiles", profs);
+            prefs.edit().putString(KEY_ORDER, root.toString()).apply();
+        } catch (JSONException impossible) {
+            // Only thrown for null keys, which we never use.
         }
-        prefs.edit().putString(KEY_ORDER, arr.toString()).apply();
+    }
+
+    private static Store defaultStore() {
+        List<List<KeySpec>> rows = new ArrayList<>();
+        for (List<String> row : DEFAULT_ROWS) {
+            List<KeySpec> r = new ArrayList<>(row.size());
+            for (String id : row) r.add(new KeySpec(id));
+            rows.add(r);
+        }
+        List<Profile> profiles = new ArrayList<>();
+        profiles.add(new Profile(DEFAULT_PROFILE_NAME, rows));
+        return new Store(profiles, 0);
+    }
+
+    private static Store parseV2(JSONObject root) throws JSONException {
+        List<Profile> profiles = new ArrayList<>();
+        JSONArray profs = root.optJSONArray("profiles");
+        if (profs != null) {
+            for (int i = 0; i < profs.length() && profiles.size() < MAX_PROFILES; i++) {
+                JSONObject po = profs.optJSONObject(i);
+                if (po == null) continue;
+                String name = po.optString("name", DEFAULT_PROFILE_NAME);
+                List<List<KeySpec>> rows = new ArrayList<>();
+                JSONArray rowsArr = po.optJSONArray("rows");
+                if (rowsArr != null) {
+                    for (int r = 0; r < rowsArr.length(); r++) {
+                        JSONArray rowArr = rowsArr.optJSONArray(r);
+                        if (rowArr == null) continue;
+                        List<KeySpec> row = new ArrayList<>(rowArr.length());
+                        for (int j = 0; j < rowArr.length(); j++) {
+                            KeySpec k = parseKeySpec(rowArr.opt(j));
+                            if (k != null) row.add(k);
+                        }
+                        rows.add(row);
+                    }
+                }
+                profiles.add(new Profile(name, rows));
+            }
+        }
+        return new Store(profiles, root.optInt("active", 0));
+    }
+
+    /** v1 (array of arrays) or v0 (flat array) → a single Default profile. */
+    private static Store parseLegacy(JSONArray arr) throws JSONException {
+        List<List<KeySpec>> rows = new ArrayList<>();
+        if (arr.length() > 0 && arr.opt(0) instanceof JSONArray) {  // v1
+            for (int i = 0; i < arr.length(); i++) {
+                JSONArray r = arr.optJSONArray(i);
+                if (r == null) continue;
+                List<KeySpec> row = new ArrayList<>(r.length());
+                for (int j = 0; j < r.length(); j++) row.add(new KeySpec(r.getString(j)));
+                rows.add(row);
+            }
+        } else {  // v0: one flat row
+            List<KeySpec> row = new ArrayList<>(arr.length());
+            for (int i = 0; i < arr.length(); i++) row.add(new KeySpec(arr.getString(i)));
+            rows.add(row);
+        }
+        List<Profile> profiles = new ArrayList<>();
+        profiles.add(new Profile(DEFAULT_PROFILE_NAME, rows));
+        return new Store(profiles, 0);
+    }
+
+    /** Parses one key placement: a {@code {k,w,s}} object or a bare id string. */
+    private static KeySpec parseKeySpec(Object o) {
+        if (o instanceof String) {
+            String id = (String) o;
+            return id.isEmpty() ? null : new KeySpec(id);
+        }
+        if (o instanceof JSONObject) {
+            JSONObject jo = (JSONObject) o;
+            String id = jo.optString("k", null);
+            if (id == null || id.isEmpty()) return null;
+            float w = clampWidth((float) jo.optDouble("w", WIDTH_1));
+            String s = jo.optString("s", null);
+            if (s != null && s.isEmpty()) s = null;
+            return new KeySpec(id, w, s);
+        }
+        return null;
     }
 
     /**
-     * The persisted enabled ids flattened across rows, or the defaults if never
-     * set. Kept for callers that only need the flat set (e.g. the settings key
-     * count); the toolbar itself uses {@link #rows()} / {@link #enabledRows}.
+     * Guarantees a usable store: at least one profile, the active index in
+     * range, empty rows dropped and rows capped at {@link #MAX_ROWS}, widths
+     * snapped to a supported multiplier.
      */
-    public List<String> order() {
-        List<String> out = new ArrayList<>();
-        for (List<String> row : rows()) out.addAll(row);
+    private static Store normalize(Store s) {
+        if (s.profiles.isEmpty()) return defaultStore();
+        for (Profile p : s.profiles) {
+            List<List<KeySpec>> rows = new ArrayList<>();
+            for (List<KeySpec> row : p.rows) {
+                if (row.isEmpty() || rows.size() >= MAX_ROWS) continue;
+                List<KeySpec> clamped = new ArrayList<>(row.size());
+                for (KeySpec k : row) clamped.add(k.withWidth(k.width));  // snaps width
+                rows.add(clamped);
+            }
+            p.rows = rows;
+            if (p.name == null || p.name.trim().isEmpty()) p.name = DEFAULT_PROFILE_NAME;
+        }
+        if (s.active < 0 || s.active >= s.profiles.size()) s.active = 0;
+        return s;
+    }
+
+    // ===================== Profiles =====================
+
+    /** The profiles in order (fresh copies; mutate through the setters). */
+    List<Profile> profiles() {
+        return load().profiles;
+    }
+
+    int profileCount() {
+        return load().profiles.size();
+    }
+
+    int activeIndex() {
+        return load().active;
+    }
+
+    void setActiveIndex(int i) {
+        Store s = load();
+        if (i < 0 || i >= s.profiles.size() || i == s.active) return;
+        s.active = i;
+        save(s);
+    }
+
+    String activeProfileName() {
+        Store s = load();
+        return s.profiles.get(s.active).name;
+    }
+
+    /** The active profile's rows as {@link KeySpec}s (copies for the editor). */
+    List<List<KeySpec>> activeRows() {
+        Store s = load();
+        List<List<KeySpec>> out = new ArrayList<>();
+        for (List<KeySpec> row : s.profiles.get(s.active).rows) out.add(new ArrayList<>(row));
         return out;
     }
 
-    public void setOrder(List<String> ids) {
-        JSONArray arr = new JSONArray();
-        for (String id : ids) arr.put(id);
-        prefs.edit().putString(KEY_ORDER, arr.toString()).apply();
+    /** Replaces the active profile's rows (empty rows dropped, capped at {@link #MAX_ROWS}). */
+    void setActiveRows(List<List<KeySpec>> rows) {
+        Store s = load();
+        s.profiles.get(s.active).rows = rows;
+        save(s);  // save() itself drops empty rows and caps
     }
 
-    /** Drops the saved layout so {@link #rows()} returns the defaults again. */
-    public void reset() {
-        prefs.edit().remove(KEY_ORDER).apply();
+    /** Appends a new profile seeded with the default layout; returns its index (or the cap). */
+    int addProfile(String name) {
+        Store s = load();
+        if (s.profiles.size() >= MAX_PROFILES) return s.active;
+        s.profiles.add(defaultStore().profiles.get(0));
+        int idx = s.profiles.size() - 1;
+        s.profiles.get(idx).name = uniqueName(s, name, -1);
+        s.active = idx;
+        save(s);
+        return idx;
     }
 
-    /** The enabled keys per row, resolving ids and dropping any that no longer resolve (and empty rows). */
+    /** Deep-copies profile {@code i} as a new profile after it; returns the new index. */
+    int duplicateProfile(int i) {
+        Store s = load();
+        if (i < 0 || i >= s.profiles.size() || s.profiles.size() >= MAX_PROFILES) return s.active;
+        Profile copy = s.profiles.get(i).copy();
+        copy.name = uniqueName(s, copy.name, -1);
+        s.profiles.add(i + 1, copy);
+        s.active = i + 1;
+        save(s);
+        return s.active;
+    }
+
+    void renameProfile(int i, String name) {
+        Store s = load();
+        if (i < 0 || i >= s.profiles.size()) return;
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) return;
+        s.profiles.get(i).name = uniqueName(s, trimmed, i);
+        save(s);
+    }
+
+    /** Removes profile {@code i}; a no-op when only one profile remains. */
+    void removeProfile(int i) {
+        Store s = load();
+        if (i < 0 || i >= s.profiles.size() || s.profiles.size() <= 1) return;
+        s.profiles.remove(i);
+        if (s.active >= s.profiles.size()) s.active = s.profiles.size() - 1;
+        else if (s.active > i) s.active--;
+        save(s);
+    }
+
+    /** Ensures {@code base} is distinct from every other profile name, suffixing " 2", " 3", … */
+    private static String uniqueName(Store s, String base, int skip) {
+        Set<String> taken = new HashSet<>();
+        for (int i = 0; i < s.profiles.size(); i++) {
+            if (i != skip) taken.add(s.profiles.get(i).name);
+        }
+        if (!taken.contains(base)) return base;
+        for (int n = 2; ; n++) {
+            String candidate = base + " " + n;
+            if (!taken.contains(candidate)) return candidate;
+        }
+    }
+
+    // ===================== Rendering =====================
+
+    /** The active profile's enabled keys per row, resolved and decorated with width/secondary. */
     public List<List<ExtraKey>> enabledRows(Context c) {
+        return enabledRows(c, activeIndex());
+    }
+
+    /**
+     * Profile {@code profileIndex}'s enabled keys per row: ids resolved (dropping
+     * any that no longer resolve, and empty rows), each decorated with its
+     * placement width and secondary.
+     */
+    List<List<ExtraKey>> enabledRows(Context c, int profileIndex) {
+        Store s = load();
+        if (profileIndex < 0 || profileIndex >= s.profiles.size()) return new ArrayList<>();
         List<List<ExtraKey>> out = new ArrayList<>();
-        for (List<String> row : rows()) {
+        for (List<KeySpec> row : s.profiles.get(profileIndex).rows) {
             List<ExtraKey> resolved = new ArrayList<>(row.size());
-            for (String id : row) {
-                ExtraKey k = resolve(c, id);
-                if (k != null) resolved.add(k);
+            for (KeySpec k : row) {
+                ExtraKey base = resolve(c, k.id);
+                if (base == null) continue;
+                resolved.add(base.withWidth(clampWidth(k.width)).withSecondary(k.secondaryId));
             }
             if (!resolved.isEmpty()) out.add(resolved);
         }
         return out;
     }
 
-    /** The enabled keys flattened across rows, skipping any id that no longer resolves. */
+    /** The active profile's enabled keys flattened across rows. */
     public List<ExtraKey> enabledKeys(Context c) {
         List<ExtraKey> out = new ArrayList<>();
         for (List<ExtraKey> row : enabledRows(c)) out.addAll(row);
         return out;
     }
 
-    private static List<List<String>> copyRows(List<List<String>> src) {
-        List<List<String>> out = new ArrayList<>(src.size());
-        for (List<String> row : src) out.add(new ArrayList<>(row));
-        return out;
-    }
-
-    /** Catalog keys not currently enabled — the "add" palette. */
+    /** Catalog keys not in the active profile — the "add" palette. */
     public List<ExtraKey> availableBuiltins(Context c) {
         Set<String> enabled = new HashSet<>(order());
         List<ExtraKey> out = new ArrayList<>();
@@ -344,5 +640,56 @@ public final class ExtraKeysConfig {
             if (!enabled.contains(k.id)) out.add(k);
         }
         return out;
+    }
+
+    // ===================== Compat surface (id-string / single-profile) =====================
+    // Kept so the pre-revamp editor, SettingsActivity and the config tests keep
+    // working; each operates on the active profile only.
+
+    /** The active profile's rows as id strings (widths/secondaries dropped). */
+    public List<List<String>> rows() {
+        Store s = load();
+        List<List<String>> out = new ArrayList<>();
+        for (List<KeySpec> row : s.profiles.get(s.active).rows) {
+            List<String> r = new ArrayList<>(row.size());
+            for (KeySpec k : row) r.add(k.id);
+            if (!r.isEmpty()) out.add(r);
+        }
+        return out;
+    }
+
+    /** Replaces the active profile's rows from id strings (all width 1, no secondary). */
+    public void setRows(List<List<String>> rows) {
+        List<List<KeySpec>> specs = new ArrayList<>();
+        for (List<String> row : rows) {
+            List<KeySpec> r = new ArrayList<>(row.size());
+            for (String id : row) r.add(new KeySpec(id));
+            specs.add(r);
+        }
+        setActiveRows(specs);
+    }
+
+    /** The active profile's enabled ids flattened across rows, or the defaults if never set. */
+    public List<String> order() {
+        List<String> out = new ArrayList<>();
+        for (List<String> row : rows()) out.addAll(row);
+        return out;
+    }
+
+    /** Sets the active profile to a single row of {@code ids}. */
+    public void setOrder(List<String> ids) {
+        setRows(Collections.singletonList(new ArrayList<>(ids)));
+    }
+
+    /** Drops all saved state so the store returns the defaults (single Default profile). */
+    public void reset() {
+        prefs.edit().remove(KEY_ORDER).apply();
+    }
+
+    // ===================== Testing hooks =====================
+
+    /** Visible for testing: seed a raw persisted value to exercise migration. */
+    void seedRawForTest(String raw) {
+        prefs.edit().putString(KEY_ORDER, raw).apply();
     }
 }

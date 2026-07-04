@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Full-screen extra-keys toolbar editor, reached from Settings. A fixed top
-     bar with a title and actions, then a scrolling body. ExtraKeysActivity
-     fills preview_rows / enabled_list / available_grid at runtime. -->
+<!-- Full-screen extra-keys editor, reached from Settings. A fixed top bar, then
+     a scrolling body: a profile bar (switch/add layouts) and the live WYSIWYG
+     keyboard grid. ExtraKeysActivity fills profile_bar / grid at runtime. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
@@ -86,40 +86,37 @@
                 android:paddingRight="16dp"
                 android:paddingBottom="32dp">
 
-                <!-- Live preview of the toolbar as configured: one strip per row. -->
+                <!-- Named layouts: switch, add, rename/duplicate/delete. -->
                 <TextView
                     style="@style/SectionHeader"
-                    android:text="@string/extra_keys_section_preview" />
+                    android:text="@string/extra_keys_section_profiles" />
 
-                <LinearLayout
-                    android:id="@+id/preview_rows"
+                <HorizontalScrollView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:scrollbars="none"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp">
 
-                <!-- Enabled keys: reorder by dragging the handle, remove with ✕. -->
+                    <LinearLayout
+                        android:id="@+id/profile_bar"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal" />
+
+                </HorizontalScrollView>
+
+                <!-- The live keyboard: tap a key to edit, long-press to drag. -->
                 <TextView
                     style="@style/SectionHeader"
-                    android:text="@string/extra_keys_section_enabled" />
-
-                <TextView
-                    android:id="@+id/enabled_empty"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/extra_keys_empty"
-                    android:textColor="@color/text_tertiary"
-                    android:textSize="14sp"
-                    android:paddingLeft="4dp"
-                    android:paddingRight="4dp"
-                    android:paddingTop="8dp"
-                    android:paddingBottom="8dp"
-                    android:visibility="gone" />
+                    android:text="@string/extra_keys_section_grid" />
 
                 <LinearLayout
-                    android:id="@+id/enabled_list"
+                    android:id="@+id/grid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical" />
+                    android:orientation="vertical"
+                    android:paddingTop="4dp" />
 
                 <TextView
                     android:id="@+id/extra_keys_add_row"
@@ -136,46 +133,14 @@
                     android:clickable="true"
                     android:focusable="true" />
 
-                <!-- Available keys to add, plus a custom-text entry point. -->
                 <TextView
-                    style="@style/SectionHeader"
-                    android:text="@string/extra_keys_section_available" />
-
-                <GridLayout
-                    android:id="@+id/available_grid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:columnCount="4"
-                    android:paddingTop="4dp" />
-
-                <TextView
-                    android:id="@+id/extra_keys_add_custom"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/extra_keys_add_custom"
-                    android:textColor="@color/accent"
-                    android:textSize="15sp"
-                    android:gravity="center"
-                    android:paddingTop="18dp"
-                    android:paddingBottom="18dp"
-                    android:layout_marginTop="12dp"
-                    android:background="?android:attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true" />
-
-                <TextView
-                    android:id="@+id/extra_keys_add_combo"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/extra_keys_add_combo"
-                    android:textColor="@color/accent"
-                    android:textSize="15sp"
-                    android:gravity="center"
-                    android:paddingTop="18dp"
-                    android:paddingBottom="18dp"
-                    android:background="?android:attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true" />
+                    android:text="@string/extra_keys_grid_hint"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="13sp"
+                    android:paddingTop="12dp"
+                    android:lineSpacingExtra="2dp" />
 
             </LinearLayout>
 

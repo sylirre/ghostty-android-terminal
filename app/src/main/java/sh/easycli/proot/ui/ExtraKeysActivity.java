@@ -2,14 +2,14 @@ package sh.easycli.proot.ui;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
+import android.view.DragEvent;
 import android.view.Gravity;
-import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -18,7 +18,6 @@ import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.GridLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -26,51 +25,60 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.function.Consumer;
 
 import sh.easycli.proot.R;
 import sh.easycli.proot.term.TerminalNative;
 
 /**
- * Full-screen editor for the extra-keys toolbar, reached from Settings. Lets the
- * user choose which keys appear, group them into rows, reorder them (and the row
- * dividers between them) by dragging a handle, remove keys, and add custom text
- * keys.
+ * Full-screen WYSIWYG editor for the extra-keys toolbar, reached from Settings.
  *
- * Model mirrors {@link ThemeActivity}: a mutable working list ({@code items}) is
- * loaded from {@link ExtraKeysConfig} and persisted immediately on every change,
- * so {@link MainActivity} reflects edits when it reloads the toolbar in
- * {@code onResume}. There is no Save/dirty step.
+ * The screen has two parts: a <b>profile bar</b> for switching / adding / editing
+ * named layouts, and the <b>live grid</b> — the active profile rendered exactly
+ * as the toolbar renders it ({@link KeyCapView} caps at their flex widths). You
+ * edit the keyboard directly:
+ * <ul>
+ *   <li>tap a key → an edit dialog (change key, width, swipe-up secondary, remove);</li>
+ *   <li>long-press a key → drag it to another slot / row (platform drag-and-drop);</li>
+ *   <li>a trailing <b>+</b> cell on each row, and an <b>Add row</b> action, insert keys.</li>
+ * </ul>
+ *
+ * Model mirrors {@link ThemeActivity}: a mutable working copy of the active
+ * profile's rows is loaded from {@link ExtraKeysConfig} and persisted immediately
+ * on every change, so {@link MainActivity} reflects edits when it reloads the
+ * toolbar in {@code onResume}. There is no Save/dirty step.
  */
 public final class ExtraKeysActivity extends Activity {
 
     private ExtraKeysConfig config;
 
-    /**
-     * The working layout as a flat list, where {@link #ROW_BREAK} marks a
-     * boundary between toolbar rows and every other entry is a key id. This lets
-     * the existing single-list {@link DragController} compose rows: keys and the
-     * dividers between them are dragged in one list. Split at the breaks on save.
-     */
-    private final List<String> items = new ArrayList<>();
+    /** Working copy of the active profile's rows; persisted after each edit. */
+    private final List<List<ExtraKeysConfig.KeySpec>> rows = new ArrayList<>();
 
-    /**
-     * Sentinel item marking a row boundary. A NUL can never be a real key id
-     * (catalog ids, {@code lit:…} and {@code combo:…} are all printable).
-     */
-    private static final String ROW_BREAK = "\u0000";
-
-    private ScrollView pageScroll;
-    private LinearLayout previewRows;
-    private LinearLayout enabledList;
-    private TextView enabledEmpty;
-    private GridLayout availableGrid;
+    private LinearLayout profileBar;
+    private LinearLayout grid;
     private View addRowButton;
 
-    private final DragController drag = new DragController();
+    /** Real (draggable) caps in the current grid, with their model coordinates. */
+    private final List<CapRef> caps = new ArrayList<>();
+
+    /** Source coordinates of the in-flight drag, or null. */
+    private int[] dragFrom;
+    /** Row container currently highlighted as the drop target, or null. */
+    private View highlightRow;
+
+    private static final class CapRef {
+        final KeyCapView view;
+        final int row;
+        final int index;
+        CapRef(KeyCapView view, int row, int index) {
+            this.view = view;
+            this.row = row;
+            this.index = index;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -94,143 +102,461 @@ public final class ExtraKeysActivity extends Activity {
         });
 
         config = new ExtraKeysConfig(this);
-        pageScroll = findViewById(R.id.page_scroll);
-        previewRows = findViewById(R.id.preview_rows);
-        enabledList = findViewById(R.id.enabled_list);
-        enabledEmpty = findViewById(R.id.enabled_empty);
-        availableGrid = findViewById(R.id.available_grid);
+        profileBar = findViewById(R.id.profile_bar);
+        grid = findViewById(R.id.grid);
         addRowButton = findViewById(R.id.extra_keys_add_row);
 
         findViewById(R.id.extra_keys_done).setOnClickListener(v -> finish());
-        findViewById(R.id.extra_keys_reset).setOnClickListener(v -> resetToDefaults());
-        findViewById(R.id.extra_keys_add_custom).setOnClickListener(v -> promptCustom());
-        findViewById(R.id.extra_keys_add_combo).setOnClickListener(v -> promptCombo());
+        findViewById(R.id.extra_keys_reset).setOnClickListener(v -> resetActiveProfile());
         addRowButton.setOnClickListener(v -> addRow());
+        grid.setOnDragListener(this::onGridDrag);
 
-        loadItems();
+        loadRows();
         render();
     }
 
-    /** Loads the saved rows into the flat working list, dropping unresolved ids and empty rows. */
-    private void loadItems() {
-        items.clear();
-        for (List<String> row : config.rows()) {
-            List<String> resolved = new ArrayList<>();
-            for (String id : row) {
-                if (ExtraKeysConfig.resolve(this, id) != null) resolved.add(id);
-            }
-            if (resolved.isEmpty()) continue;
-            if (!items.isEmpty()) items.add(ROW_BREAK);
-            items.addAll(resolved);
+    // --- Model ---
+
+    private void loadRows() {
+        rows.clear();
+        rows.addAll(config.activeRows());
+    }
+
+    private void persist() {
+        config.setActiveRows(rows);
+    }
+
+    private void cleanupEmptyRows() {
+        for (int r = rows.size() - 1; r >= 0; r--) {
+            if (rows.get(r).isEmpty()) rows.remove(r);
         }
     }
 
-    private void persistAndRender() {
-        normalizeItems();
-        config.setRows(toRows());
+    private void resetActiveProfile() {
+        rows.clear();
+        for (List<String> row : ExtraKeysConfig.DEFAULT_ROWS) {
+            List<ExtraKeysConfig.KeySpec> r = new ArrayList<>(row.size());
+            for (String id : row) r.add(new ExtraKeysConfig.KeySpec(id));
+            rows.add(r);
+        }
+        persist();
         render();
-    }
-
-    private void resetToDefaults() {
-        config.reset();
-        loadItems();
-        render();
-    }
-
-    /** Splits the working list into rows at each {@link #ROW_BREAK}, dropping empty rows. */
-    private List<List<String>> toRows() {
-        List<List<String>> rows = new ArrayList<>();
-        List<String> cur = new ArrayList<>();
-        for (String item : items) {
-            if (ROW_BREAK.equals(item)) {
-                if (!cur.isEmpty()) { rows.add(cur); cur = new ArrayList<>(); }
-            } else {
-                cur.add(item);
-            }
-        }
-        if (!cur.isEmpty()) rows.add(cur);
-        return rows;
-    }
-
-    /**
-     * Tidies the working list after an edit or drag: drops leading breaks and
-     * collapses runs of breaks, so no empty rows form in the middle. A single
-     * trailing break is kept — that's an intentional empty new row the user can
-     * drag keys into (it just isn't persisted until it has a key).
-     */
-    private void normalizeItems() {
-        List<String> out = new ArrayList<>(items.size());
-        boolean prevBreak = true;  // treat the start as a break to drop leading ones
-        for (String item : items) {
-            if (ROW_BREAK.equals(item)) {
-                if (prevBreak) continue;
-                out.add(item);
-                prevBreak = true;
-            } else {
-                out.add(item);
-                prevBreak = false;
-            }
-        }
-        items.clear();
-        items.addAll(out);
-    }
-
-    /** Rows currently in the editor, counting a pending empty trailing row toward the cap. */
-    private int editorRowCount() {
-        int rows = toRows().size();
-        if (!items.isEmpty() && ROW_BREAK.equals(items.get(items.size() - 1))) rows++;
-        return rows;
-    }
-
-    // --- Mutations ---
-
-    private void addId(String id) {
-        if (items.contains(id)) return;
-        items.add(id);
-        persistAndRender();
     }
 
     private void addRow() {
-        if (items.isEmpty() || editorRowCount() >= ExtraKeysConfig.MAX_ROWS) return;
-        if (ROW_BREAK.equals(items.get(items.size() - 1))) return;  // already a pending row
-        items.add(ROW_BREAK);
-        persistAndRender();
+        if (rows.size() >= ExtraKeysConfig.MAX_ROWS) return;
+        pickKey(false, id -> {
+            List<ExtraKeysConfig.KeySpec> row = new ArrayList<>();
+            row.add(new ExtraKeysConfig.KeySpec(id));
+            rows.add(row);
+            persist();
+            render();
+        });
     }
 
-    private void removeAt(int index) {
-        if (index < 0 || index >= items.size()) return;
-        items.remove(index);
-        persistAndRender();
+    private void addKeyToRow(int r, String id) {
+        if (r < 0 || r >= rows.size()) return;
+        rows.get(r).add(new ExtraKeysConfig.KeySpec(id));
+        persist();
+        render();
     }
 
-    private void promptCustom() {
+    private void setWidth(int r, int i, float width) {
+        rows.get(r).set(i, rows.get(r).get(i).withWidth(width));
+        persist();
+        render();
+    }
+
+    private void setSecondary(int r, int i, String secondaryId) {
+        rows.get(r).set(i, rows.get(r).get(i).withSecondary(secondaryId));
+        persist();
+        render();
+    }
+
+    private void changeKey(int r, int i, String newId) {
+        ExtraKeysConfig.KeySpec old = rows.get(r).get(i);
+        rows.get(r).set(i, new ExtraKeysConfig.KeySpec(newId, old.width, old.secondaryId));
+        persist();
+        render();
+    }
+
+    private void removeKey(int r, int i) {
+        rows.get(r).remove(i);
+        cleanupEmptyRows();
+        persist();
+        render();
+    }
+
+    // --- Rendering ---
+
+    private void render() {
+        renderProfiles();
+        renderGrid();
+        updateAddRowState();
+    }
+
+    private void renderProfiles() {
+        profileBar.removeAllViews();
+        List<ExtraKeysConfig.Profile> profiles = config.profiles();
+        int active = config.activeIndex();
+        for (int i = 0; i < profiles.size(); i++) {
+            final int index = i;
+            TextView chip = profileChip(profiles.get(i).name, i == active);
+            chip.setOnClickListener(v -> switchProfile(index));
+            chip.setOnLongClickListener(v -> { showProfileMenu(index); return true; });
+            profileBar.addView(chip);
+        }
+        if (profiles.size() < ExtraKeysConfig.MAX_PROFILES) {
+            TextView add = profileChip(getString(R.string.extra_keys_profile_add), false);
+            add.setTextColor(Chrome.color(this, R.color.accent));
+            add.setOnClickListener(v -> promptAddProfile());
+            profileBar.addView(add);
+        }
+    }
+
+    private TextView profileChip(String label, boolean active) {
+        TextView chip = new TextView(this);
+        chip.setText(label);
+        chip.setTextColor(active ? Chrome.color(this, R.color.on_accent)
+                : Chrome.color(this, R.color.text_primary));
+        chip.setTextSize(14);
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(16), dp(9), dp(16), dp(9));
+        chip.setBackground(active
+                ? Chrome.rounded(this, R.color.accent, Chrome.dimen(this, R.dimen.radius_pill), 0)
+                : Chrome.rounded(this, R.color.surface_2, Chrome.dimen(this, R.dimen.radius_pill),
+                        R.color.border));
+        chip.setClickable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMarginEnd(dp(8));
+        chip.setLayoutParams(lp);
+        return chip;
+    }
+
+    private void renderGrid() {
+        grid.removeAllViews();
+        caps.clear();
+        highlightRow = null;
+        for (int r = 0; r < rows.size(); r++) {
+            LinearLayout rowView = new LinearLayout(this);
+            rowView.setOrientation(LinearLayout.HORIZONTAL);
+            List<ExtraKeysConfig.KeySpec> row = rows.get(r);
+            for (int i = 0; i < row.size(); i++) {
+                KeyCapView cap = makeCap(row.get(i), r, i);
+                caps.add(new CapRef(cap, r, i));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, row.get(i).width);
+                int m = dp(2);
+                lp.setMargins(m, m, m, m);
+                rowView.addView(cap, lp);
+            }
+            rowView.addView(addCell(r), addCellParams());
+            grid.addView(rowView, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        }
+    }
+
+    private KeyCapView makeCap(ExtraKeysConfig.KeySpec spec, int r, int i) {
+        KeyCapView cap = new KeyCapView(this);
+        ExtraKey key = ExtraKeysConfig.resolve(this, spec.id);
+        cap.setText(key != null ? key.label : spec.id);
+        cap.setMaxLines(1);
+        cap.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        cap.setTextColor(Color.WHITE);
+        cap.setGravity(Gravity.CENTER);
+        cap.setPadding(dp(3), dp(12), dp(3), dp(12));
+        cap.setBackground(Chrome.rounded(this, R.color.surface_2,
+                Chrome.dimen(this, R.dimen.key_radius), R.color.border));
+        cap.setClickable(true);
+        Glyphs.applyTo(cap);
+        if (spec.secondaryId != null) {
+            ExtraKey sec = ExtraKeysConfig.resolve(this, spec.secondaryId);
+            if (sec != null) cap.setSecondaryHint(sec.label);
+        }
+        cap.setOnClickListener(v -> editKey(r, i));
+        cap.setOnLongClickListener(v -> startDrag(cap, r, i));
+        return cap;
+    }
+
+    private TextView addCell(int r) {
+        TextView cell = new TextView(this);
+        cell.setText(R.string.extra_keys_add_key_label);
+        cell.setTextColor(Chrome.color(this, R.color.accent));
+        cell.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        cell.setTextSize(18);
+        cell.setGravity(Gravity.CENTER);
+        cell.setPadding(dp(6), dp(12), dp(6), dp(12));
+        cell.setBackground(Chrome.rounded(this, R.color.surface_1,
+                Chrome.dimen(this, R.dimen.key_radius), R.color.border));
+        cell.setClickable(true);
+        cell.setOnClickListener(v -> pickKey(false, id -> addKeyToRow(r, id)));
+        return cell;
+    }
+
+    private LinearLayout.LayoutParams addCellParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                dp(34), LinearLayout.LayoutParams.MATCH_PARENT);
+        int m = dp(2);
+        lp.setMargins(m, m, m, m);
+        return lp;
+    }
+
+    private void updateAddRowState() {
+        boolean canAdd = rows.size() < ExtraKeysConfig.MAX_ROWS;
+        addRowButton.setEnabled(canAdd);
+        addRowButton.setAlpha(canAdd ? 1f : 0.4f);
+    }
+
+    // --- Profiles ---
+
+    private void switchProfile(int index) {
+        config.setActiveIndex(index);
+        loadRows();
+        render();
+    }
+
+    private void promptAddProfile() {
+        promptName(getString(R.string.extra_keys_profile_add_title), "", name -> {
+            config.addProfile(name);
+            loadRows();
+            render();
+        });
+    }
+
+    private void showProfileMenu(int index) {
+        CharSequence[] items = {
+                getString(R.string.extra_keys_profile_menu_rename),
+                getString(R.string.extra_keys_profile_menu_duplicate),
+                getString(R.string.extra_keys_profile_menu_delete),
+        };
+        new AlertDialog.Builder(this)
+                .setItems(items, (d, which) -> {
+                    if (which == 0) promptRenameProfile(index);
+                    else if (which == 1) { config.duplicateProfile(index); loadRows(); render(); }
+                    else confirmDeleteProfile(index);
+                })
+                .show();
+    }
+
+    private void promptRenameProfile(int index) {
+        String current = config.profiles().get(index).name;
+        promptName(getString(R.string.extra_keys_profile_rename_title), current, name -> {
+            config.renameProfile(index, name);
+            render();
+        });
+    }
+
+    private void confirmDeleteProfile(int index) {
+        if (config.profileCount() <= 1) return;  // last profile can't be removed
+        String name = config.profiles().get(index).name;
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.extra_keys_profile_delete_title)
+                .setMessage(getString(R.string.extra_keys_profile_delete_message, name))
+                .setPositiveButton(R.string.extra_keys_profile_menu_delete, (d, w) -> {
+                    config.removeProfile(index);
+                    loadRows();
+                    render();
+                })
+                .setNegativeButton(R.string.theme_color_cancel, null)
+                .show();
+    }
+
+    private void promptName(String title, String initial, Consumer<String> onName) {
         EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT);
         input.setSingleLine(true);
-        input.setHint(R.string.extra_keys_add_custom_hint);
-
+        input.setHint(R.string.extra_keys_profile_name_hint);
+        input.setText(initial);
         LinearLayout container = new LinearLayout(this);
         int p = dp(20);
         container.setPadding(p, p / 2, p, 0);
         container.addView(input, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(container)
+                .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) { toast(R.string.extra_keys_profile_name_empty); return; }
+                    onName.accept(name);
+                })
+                .setNegativeButton(R.string.theme_color_cancel, null)
+                .show();
+    }
 
+    // --- Edit a key ---
+
+    private void editKey(int r, int i) {
+        if (r < 0 || r >= rows.size() || i < 0 || i >= rows.get(r).size()) return;
+
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int p = dp(20);
+        container.setPadding(p, p / 2, p, 0);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(wrapScroll(container))
+                .setNeutralButton(R.string.extra_keys_edit_change, null)
+                .setNegativeButton(R.string.extra_keys_edit_remove, null)
+                .setPositiveButton(R.string.extra_keys_done, null)
+                .create();
+
+        // Repopulates the dialog from the current model so width/secondary edits
+        // are reflected live (render() only rebuilds the grid, not this dialog).
+        final int fr = r, fi = i;
+        Runnable[] refresh = new Runnable[1];
+        refresh[0] = () -> {
+            if (fr >= rows.size() || fi >= rows.get(fr).size()) { dialog.dismiss(); return; }
+            ExtraKeysConfig.KeySpec spec = rows.get(fr).get(fi);
+            ExtraKey key = ExtraKeysConfig.resolve(this, spec.id);
+            dialog.setTitle(spannedTitle(key != null ? key.label : spec.id));
+            container.removeAllViews();
+            container.addView(sectionLabel(getString(R.string.extra_keys_edit_width)));
+            container.addView(widthControl(fr, fi, spec.width, refresh[0]));
+            container.addView(sectionLabel(getString(R.string.extra_keys_edit_secondary)));
+            container.addView(secondaryControl(fr, fi, spec.secondaryId, refresh[0]));
+        };
+        refresh[0].run();
+
+        dialog.show();
+        // Change/Remove mutate then close; wired after show to bypass auto-dismiss.
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            dialog.dismiss();
+            pickKey(false, id -> changeKey(fr, fi, id));
+        });
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+            dialog.dismiss();
+            removeKey(fr, fi);
+        });
+    }
+
+    private View widthControl(int r, int i, float current, Runnable onChanged) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        float[] widths = {ExtraKeysConfig.WIDTH_1, ExtraKeysConfig.WIDTH_1_5, ExtraKeysConfig.WIDTH_2};
+        String[] labels = {"1×", "1.5×", "2×"};
+        for (int w = 0; w < widths.length; w++) {
+            final float width = widths[w];
+            boolean sel = Math.abs(current - width) < 0.01f;
+            TextView seg = new TextView(this);
+            seg.setText(labels[w]);
+            seg.setGravity(Gravity.CENTER);
+            seg.setTextColor(sel ? Chrome.color(this, R.color.on_accent)
+                    : Chrome.color(this, R.color.text_primary));
+            seg.setPadding(dp(12), dp(10), dp(12), dp(10));
+            seg.setBackground(sel
+                    ? Chrome.rounded(this, R.color.accent, Chrome.dimen(this, R.dimen.radius_sm), 0)
+                    : Chrome.rounded(this, R.color.surface_2, Chrome.dimen(this, R.dimen.radius_sm),
+                            R.color.border));
+            seg.setClickable(true);
+            seg.setOnClickListener(v -> { setWidth(r, i, width); onChanged.run(); });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            lp.setMarginEnd(w < widths.length - 1 ? dp(8) : 0);
+            row.addView(seg, lp);
+        }
+        return row;
+    }
+
+    private View secondaryControl(int r, int i, String secondaryId, Runnable onChanged) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView value = new TextView(this);
+        ExtraKey sec = secondaryId != null ? ExtraKeysConfig.resolve(this, secondaryId) : null;
+        value.setText(sec != null ? sec.label : getString(R.string.extra_keys_edit_secondary_none));
+        value.setTextColor(Chrome.color(this, sec != null ? R.color.text_primary : R.color.text_tertiary));
+        Glyphs.applyTo(value);
+        row.addView(value, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView set = linkButton(getString(R.string.extra_keys_edit_set));
+        set.setOnClickListener(v -> pickKey(true, id -> { setSecondary(r, i, id); onChanged.run(); }));
+        row.addView(set);
+
+        if (sec != null) {
+            TextView clear = linkButton(getString(R.string.extra_keys_edit_clear));
+            clear.setTextColor(Chrome.color(this, R.color.text_secondary));
+            clear.setOnClickListener(v -> { setSecondary(r, i, null); onChanged.run(); });
+            row.addView(clear);
+        }
+        return row;
+    }
+
+    // --- Key picker ---
+
+    /**
+     * A chooser of every catalog key (optionally excluding sticky modifiers, for
+     * a secondary) plus custom-text / modifier-combo entry points. Invokes
+     * {@code onPicked} with the chosen id.
+     */
+    private void pickKey(boolean excludeModifiers, Consumer<String> onPicked) {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        int p = dp(12);
+        container.setPadding(p, p, p, p);
+
+        GridLayout g = new GridLayout(this);
+        g.setColumnCount(4);
+        final AlertDialog[] holder = new AlertDialog[1];
+        for (ExtraKey k : ExtraKeysConfig.catalog(this).values()) {
+            if (excludeModifiers && k.kind == ExtraKey.Kind.MODIFIER) continue;
+            g.addView(keyChip(k, () -> { holder[0].dismiss(); onPicked.accept(k.id); }));
+        }
+        container.addView(g);
+
+        container.addView(pickerAction(getString(R.string.extra_keys_add_custom),
+                () -> { holder[0].dismiss(); promptCustom(onPicked); }));
+        container.addView(pickerAction(getString(R.string.extra_keys_add_combo),
+                () -> { holder[0].dismiss(); promptCombo(onPicked); }));
+
+        holder[0] = new AlertDialog.Builder(this)
+                .setTitle(R.string.extra_keys_pick_title)
+                .setView(wrapScroll(container))
+                .setNegativeButton(R.string.theme_color_cancel, null)
+                .create();
+        holder[0].show();
+    }
+
+    private TextView keyChip(ExtraKey key, Runnable onClick) {
+        TextView chip = new TextView(this);
+        chip.setText(key.label);
+        chip.setTextColor(Chrome.color(this, R.color.text_primary));
+        chip.setGravity(Gravity.CENTER);
+        chip.setPadding(dp(8), dp(12), dp(8), dp(12));
+        chip.setBackground(getDrawable(R.drawable.bg_chip));
+        chip.setClickable(true);
+        chip.setOnClickListener(v -> onClick.run());
+        Glyphs.applyTo(chip);
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        lp.width = 0;
+        lp.height = GridLayout.LayoutParams.WRAP_CONTENT;
+        lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+        lp.setGravity(Gravity.FILL_HORIZONTAL);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        chip.setLayoutParams(lp);
+        return chip;
+    }
+
+    private void promptCustom(Consumer<String> onPicked) {
+        EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        input.setSingleLine(true);
+        input.setHint(R.string.extra_keys_add_custom_hint);
+        LinearLayout container = new LinearLayout(this);
+        int p = dp(20);
+        container.setPadding(p, p / 2, p, 0);
+        container.addView(input, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         new AlertDialog.Builder(this)
                 .setTitle(R.string.extra_keys_add_custom_title)
                 .setView(container)
                 .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
                     String text = expandEscapes(input.getText().toString());
-                    if (text.isEmpty()) {
-                        toast(R.string.extra_keys_custom_empty);
-                        return;
-                    }
-                    String id = ExtraKeysConfig.literalId(text);
-                    if (items.contains(id)) {
-                        toast(R.string.extra_keys_custom_exists);
-                        return;
-                    }
-                    addId(id);
+                    if (text.isEmpty()) { toast(R.string.extra_keys_custom_empty); return; }
+                    onPicked.accept(ExtraKeysConfig.literalId(text));
                 })
                 .setNegativeButton(R.string.theme_color_cancel, null)
                 .show();
@@ -238,11 +564,10 @@ public final class ExtraKeysActivity extends Activity {
 
     /**
      * Builds a single-tap modifier combo (Ctrl-C, Ctrl-→, …): CTRL/ALT/SHIFT
-     * toggles plus a base picker — either a typed character or a special key
-     * from the spinner. Produces a {@code combo:} id via
-     * {@link ExtraKeysConfig#comboId}.
+     * toggles plus a base picker — either a typed character or a special key from
+     * the spinner. Produces a {@code combo:} id via {@link ExtraKeysConfig#comboId}.
      */
-    private void promptCombo() {
+    private void promptCombo(Consumer<String> onPicked) {
         CheckBox ctrl = comboToggle(R.string.key_ctrl);
         CheckBox alt = comboToggle(R.string.key_alt);
         CheckBox shift = comboToggle(R.string.key_shift);
@@ -256,7 +581,6 @@ public final class ExtraKeysActivity extends Activity {
         baseLabel.setText(R.string.extra_keys_combo_base_label);
         baseLabel.setPadding(0, dp(14), 0, dp(4));
 
-        // Base picker: index 0 is "type a character", the rest are special keys.
         final List<String> labels = new ArrayList<>();
         final List<String> tokens = new ArrayList<>();  // parallel to labels[1..]
         labels.add(getString(R.string.extra_keys_combo_base_char));
@@ -277,8 +601,6 @@ public final class ExtraKeysActivity extends Activity {
         for (int i = 1; i <= 12; i++) addSpecial(labels, tokens, "F" + i, "f" + i);
 
         Spinner spinner = new Spinner(this);
-        // Render the arrow labels ("← Left", …) with vector icons too, in both
-        // the closed spinner view and the dropdown.
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
                 android.R.layout.simple_spinner_item, labels) {
             @Override
@@ -303,11 +625,11 @@ public final class ExtraKeysActivity extends Activity {
         charInput.setHint(R.string.extra_keys_combo_char_hint);
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                charInput.setEnabled(pos == 0);  // only meaningful for "Character"
+            public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
+                charInput.setEnabled(pos == 0);
             }
             @Override
-            public void onNothingSelected(AdapterView<?> p) { }
+            public void onNothingSelected(AdapterView<?> parent) { }
         });
 
         LinearLayout container = new LinearLayout(this);
@@ -326,10 +648,7 @@ public final class ExtraKeysActivity extends Activity {
                     int mods = (ctrl.isChecked() ? TerminalNative.MOD_CTRL : 0)
                             | (alt.isChecked() ? TerminalNative.MOD_ALT : 0)
                             | (shift.isChecked() ? TerminalNative.MOD_SHIFT : 0);
-                    if (mods == 0) {
-                        toast(R.string.extra_keys_combo_no_mod);
-                        return;
-                    }
+                    if (mods == 0) { toast(R.string.extra_keys_combo_no_mod); return; }
                     int pos = spinner.getSelectedItemPosition();
                     String base;
                     if (pos <= 0) {
@@ -338,16 +657,11 @@ public final class ExtraKeysActivity extends Activity {
                             toast(R.string.extra_keys_combo_no_char);
                             return;
                         }
-                        base = t.toLowerCase(Locale.ROOT);  // canonical: Ctrl-C == Ctrl-c
+                        base = t.toLowerCase(Locale.ROOT);
                     } else {
                         base = tokens.get(pos - 1);
                     }
-                    String id = ExtraKeysConfig.comboId(mods, base);
-                    if (items.contains(id)) {
-                        toast(R.string.extra_keys_custom_exists);
-                        return;
-                    }
-                    addId(id);
+                    onPicked.accept(ExtraKeysConfig.comboId(mods, base));
                 })
                 .setNegativeButton(R.string.theme_color_cancel, null)
                 .show();
@@ -358,8 +672,7 @@ public final class ExtraKeysActivity extends Activity {
         box.setText(labelRes);
         box.setTextColor(Chrome.color(this, R.color.text_primary));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.rightMargin = dp(12);
         box.setLayoutParams(lp);
         return box;
@@ -371,130 +684,150 @@ public final class ExtraKeysActivity extends Activity {
         tokens.add(token);
     }
 
-    // --- Rendering ---
+    // --- Drag & drop ---
 
-    private void render() {
-        buildPreview();
-        buildEnabledList();
-        buildAvailableGrid();
-        updateAddRowState();
+    /** Long-press: lift the cap into a platform drag and hide the source slot. */
+    private boolean startDrag(KeyCapView cap, int r, int i) {
+        dragFrom = new int[]{r, i};
+        ClipData data = ClipData.newPlainText("", "");
+        View.DragShadowBuilder shadow = new View.DragShadowBuilder(cap);
+        boolean started = cap.startDragAndDrop(data, shadow, null, 0);
+        if (started) cap.setVisibility(View.INVISIBLE);
+        return started;
     }
 
-    /** Live preview of the toolbar: one horizontal (scrollable) strip per row. */
-    private void buildPreview() {
-        previewRows.removeAllViews();
-        List<List<String>> rows = toRows();
-        for (int r = 0; r < rows.size(); r++) {
-            HorizontalScrollView scroll = new HorizontalScrollView(this);
-            scroll.setHorizontalScrollBarEnabled(false);
-            scroll.setBackground(Chrome.rounded(this, R.color.surface_1,
-                    Chrome.dimen(this, R.dimen.radius_md), R.color.border));
-            int stripPad = dp(6);
-            scroll.setPadding(stripPad, stripPad, stripPad, stripPad);
-            LinearLayout strip = new LinearLayout(this);
-            strip.setOrientation(LinearLayout.HORIZONTAL);
-            for (String id : rows.get(r)) {
-                ExtraKey key = ExtraKeysConfig.resolve(this, id);
-                if (key == null) continue;
-                TextView chip = new TextView(this);
-                chip.setText(key.label);
-                chip.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-                chip.setTextColor(Color.WHITE);
-                chip.setGravity(Gravity.CENTER);
-                chip.setPadding(dp(14), dp(10), dp(14), dp(10));
-                chip.setBackground(Chrome.rounded(this, R.color.surface_3,
-                        Chrome.dimen(this, R.dimen.key_radius), R.color.border));
-                Glyphs.applyTo(chip);
-                LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                chipLp.setMarginEnd(dp(4));
-                strip.addView(chip, chipLp);
-            }
-            scroll.addView(strip, new HorizontalScrollView.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = dp(r > 0 ? 6 : 4);  // gap so stacked rows read apart
-            previewRows.addView(scroll, lp);
+    /** Grid-level drag listener: tracks the drop target and commits the move. */
+    private boolean onGridDrag(View v, DragEvent event) {
+        switch (event.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                return dragFrom != null;
+            case DragEvent.ACTION_DRAG_LOCATION:
+                highlight(rowAt(event.getY()));
+                return true;
+            case DragEvent.ACTION_DROP:
+                commitDrop(event.getX(), event.getY());
+                return true;
+            case DragEvent.ACTION_DRAG_ENDED:
+                dragFrom = null;
+                clearHighlight();
+                render();  // restores the hidden source cap and clears state
+                return true;
+            default:
+                return true;
         }
     }
 
-    /**
-     * Builds the draggable editor list: a key row per key id and a divider row
-     * per {@link #ROW_BREAK}. Both kinds carry the same handle/remove ids so the
-     * drag controller and glyph swap treat them uniformly.
-     */
-    private void buildEnabledList() {
-        enabledList.removeAllViews();
-        enabledEmpty.setVisibility(hasAnyKey() ? View.GONE : View.VISIBLE);
-        LayoutInflater inf = LayoutInflater.from(this);
-        for (int i = 0; i < items.size(); i++) {
-            final int index = i;
-            String item = items.get(i);
-            int layout = ROW_BREAK.equals(item)
-                    ? R.layout.extra_keys_row_break : R.layout.extra_keys_edit_row;
-            View rowView = inf.inflate(layout, enabledList, false);
-            if (!ROW_BREAK.equals(item)) {
-                TextView rowLabel = rowView.findViewById(R.id.row_label);
-                rowLabel.setText(labelFor(ExtraKeysConfig.resolve(this, item)));
-                Glyphs.applyTo(rowLabel);
-            }
-            Glyphs.applyTo(rowView.findViewById(R.id.row_handle));  // ☰ → icon
-            Glyphs.applyTo(rowView.findViewById(R.id.row_remove));  // ✕ → icon
-            rowView.findViewById(R.id.row_remove).setOnClickListener(v -> removeAt(index));
-            drag.attach(rowView.findViewById(R.id.row_handle), rowView);
-            enabledList.addView(rowView);
+    /** Row container index under grid-space y, or the nearest end row. */
+    private int rowAt(float y) {
+        int n = grid.getChildCount();
+        if (n == 0) return -1;
+        for (int r = 0; r < n; r++) {
+            View child = grid.getChildAt(r);
+            if (y >= child.getTop() && y <= child.getBottom()) return r;
+        }
+        return y < grid.getChildAt(0).getTop() ? 0 : n - 1;
+    }
+
+    private void commitDrop(float x, float y) {
+        if (dragFrom == null) return;
+        int tr = rowAt(y);
+        if (tr < 0 || tr >= rows.size()) return;
+        int before = insertIndex(tr, x);
+        int fr = dragFrom[0], fi = dragFrom[1];
+        if (fr < 0 || fr >= rows.size() || fi < 0 || fi >= rows.get(fr).size()) return;
+
+        ExtraKeysConfig.KeySpec spec = rows.get(fr).remove(fi);
+        if (tr == fr && before > fi) before--;
+        List<ExtraKeysConfig.KeySpec> target = rows.get(tr);
+        if (before < 0) before = 0;
+        if (before > target.size()) before = target.size();
+        target.add(before, spec);
+        cleanupEmptyRows();
+        persist();
+        // ACTION_DRAG_ENDED renders; but render now so a dropped-in-place move
+        // still refreshes even if ENDED is delivered before layout settles.
+        dragFrom = null;
+        render();
+    }
+
+    /** Model index (in row {@code tr}) to insert before, from grid-space x. */
+    private int insertIndex(int tr, float x) {
+        View rowView = grid.getChildAt(tr);
+        int rowLeft = rowView.getLeft();
+        int before = -1;
+        for (CapRef c : caps) {
+            if (c.row != tr) continue;
+            if (dragFrom != null && c.row == dragFrom[0] && c.index == dragFrom[1]) continue;
+            float center = rowLeft + c.view.getLeft() + c.view.getWidth() / 2f;
+            if (x < center) { before = c.index; break; }
+        }
+        return before >= 0 ? before : rows.get(tr).size();
+    }
+
+    private void highlight(int r) {
+        View target = (r >= 0 && r < grid.getChildCount()) ? grid.getChildAt(r) : null;
+        if (target == highlightRow) return;
+        clearHighlight();
+        if (target != null) {
+            target.setBackground(Chrome.rounded(this, R.color.surface_1,
+                    Chrome.dimen(this, R.dimen.radius_md), R.color.accent));
+            highlightRow = target;
         }
     }
 
-    private void buildAvailableGrid() {
-        availableGrid.removeAllViews();
-        Set<String> enabled = new HashSet<>();
-        for (String item : items) if (!ROW_BREAK.equals(item)) enabled.add(item);
-        for (ExtraKey key : ExtraKeysConfig.catalog(this).values()) {
-            if (enabled.contains(key.id)) continue;
-            addAvailableChip(key);
+    private void clearHighlight() {
+        if (highlightRow != null) {
+            highlightRow.setBackground(null);
+            highlightRow = null;
         }
     }
 
-    private boolean hasAnyKey() {
-        for (String item : items) if (!ROW_BREAK.equals(item)) return true;
-        return false;
+    // --- Small helpers ---
+
+    private TextView sectionLabel(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(Chrome.color(this, R.color.text_secondary));
+        t.setTextSize(13);
+        t.setPadding(0, dp(14), 0, dp(6));
+        return t;
     }
 
-    /** Greys out "Add row" at the row cap or when a pending empty row already exists. */
-    private void updateAddRowState() {
-        boolean pendingRow = !items.isEmpty() && ROW_BREAK.equals(items.get(items.size() - 1));
-        boolean canAdd = hasAnyKey() && !pendingRow
-                && editorRowCount() < ExtraKeysConfig.MAX_ROWS;
-        addRowButton.setEnabled(canAdd);
-        addRowButton.setAlpha(canAdd ? 1f : 0.4f);
+    private TextView linkButton(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(Chrome.color(this, R.color.accent));
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(14), dp(8), dp(6), dp(8));
+        t.setClickable(true);
+        t.setBackground(getDrawable(android.R.drawable.list_selector_background));
+        return t;
     }
 
-    private void addAvailableChip(ExtraKey key) {
-        TextView chip = new TextView(this);
-        chip.setText(getString(R.string.extra_keys_add_chip, key.label));
-        chip.setTextColor(Chrome.color(this, R.color.text_primary));
-        chip.setGravity(Gravity.CENTER);
-        chip.setPadding(dp(8), dp(12), dp(8), dp(12));
-        chip.setBackground(getDrawable(R.drawable.bg_chip));
-        chip.setClickable(true);
-        chip.setOnClickListener(v -> addId(key.id));
-        Glyphs.applyTo(chip);
-
-        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-        lp.width = 0;
-        lp.height = GridLayout.LayoutParams.WRAP_CONTENT;
-        lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-        lp.setGravity(Gravity.FILL_HORIZONTAL);
-        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
-        chip.setLayoutParams(lp);
-        availableGrid.addView(chip);
+    private TextView pickerAction(String text, Runnable onClick) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextColor(Chrome.color(this, R.color.accent));
+        t.setTextSize(15);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(8), dp(16), dp(8), dp(16));
+        t.setClickable(true);
+        t.setBackground(getDrawable(android.R.drawable.list_selector_background));
+        t.setOnClickListener(v -> onClick.run());
+        return t;
     }
 
-    /** Display label; custom text keys show their literal verbatim. */
-    private String labelFor(ExtraKey key) {
-        return key != null ? key.label : "";
+    private ScrollView wrapScroll(View content) {
+        ScrollView s = new ScrollView(this);
+        s.addView(content);
+        return s;
+    }
+
+    /** Runs the title through Glyphs so a symbol key (arrow, ↵) shows its vector. */
+    private CharSequence spannedTitle(String title) {
+        TextView probe = new TextView(this);
+        return Glyphs.apply(this, title, probe.getTextSize(),
+                Chrome.color(this, R.color.text_primary));
     }
 
     private void toast(int resId) {
@@ -519,141 +852,5 @@ public final class ExtraKeysActivity extends Activity {
             }
         }
         return sb.toString();
-    }
-
-    /**
-     * Hand-rolled drag-to-reorder for the enabled-keys list (no RecyclerView in
-     * this framework-only app). Touching a row's handle picks it up; the row
-     * follows the finger via translation while the rows it passes shift to open
-     * a gap; releasing commits the new order.
-     *
-     * Children are never re-parented mid-drag (only translated), so indices stay
-     * stable; the dragged row is raised by elevation rather than
-     * {@code bringToFront()}, which would reorder the child list. The page
-     * ScrollView is told not to intercept, and auto-scrolls when the finger
-     * nears an edge.
-     */
-    private final class DragController {
-        private View dragRow;
-        private int origIndex;
-        private int target;
-        private int rowHeight;
-        private int count;
-        private float downRawY;
-        private int scrollStartY;
-        private float lastRawY;
-        private int autoDir;       // -1 up, +1 down, 0 idle
-        private boolean active;
-
-        private final Runnable autoScroll = new Runnable() {
-            @Override
-            public void run() {
-                if (!active || autoDir == 0) return;
-                int before = pageScroll.getScrollY();
-                pageScroll.scrollBy(0, dp(10) * autoDir);
-                if (pageScroll.getScrollY() == before) {  // hit a scroll bound
-                    autoDir = 0;
-                    return;
-                }
-                update(lastRawY);
-                pageScroll.postOnAnimation(this);
-            }
-        };
-
-        void attach(View handle, View rowView) {
-            // The handle is a dedicated grip with no click action, so consuming
-            // touch here (returning true) starts the drag immediately.
-            handle.setOnTouchListener((v, e) -> onTouch(rowView, e));
-        }
-
-        private boolean onTouch(View rowView, MotionEvent e) {
-            switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    begin(rowView, e);
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    if (active) {
-                        lastRawY = e.getRawY();
-                        update(e.getRawY());
-                        maybeAutoScroll(e.getRawY());
-                    }
-                    return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (active) end();
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        private void begin(View rowView, MotionEvent e) {
-            dragRow = rowView;
-            origIndex = enabledList.indexOfChild(rowView);
-            target = origIndex;
-            count = enabledList.getChildCount();
-            // Pitch includes the inter-row gap so neighbours shift by a full slot.
-            ViewGroup.MarginLayoutParams mlp =
-                    (ViewGroup.MarginLayoutParams) rowView.getLayoutParams();
-            rowHeight = rowView.getHeight() + mlp.topMargin + mlp.bottomMargin;
-            if (rowHeight <= 0) rowHeight = dp(52);
-            downRawY = e.getRawY();
-            lastRawY = downRawY;
-            scrollStartY = pageScroll.getScrollY();
-            autoDir = 0;
-            active = true;
-            dragRow.setAlpha(0.95f);
-            dragRow.setElevation(dp(8));
-            dragRow.setBackground(Chrome.rounded(ExtraKeysActivity.this, R.color.surface_4,
-                    Chrome.dimen(ExtraKeysActivity.this, R.dimen.radius_md), R.color.accent));
-            pageScroll.requestDisallowInterceptTouchEvent(true);
-        }
-
-        /** Follows the finger and shifts neighbours to open a gap at the target. */
-        private void update(float rawY) {
-            if (!active) return;
-            float eff = (rawY - downRawY) + (pageScroll.getScrollY() - scrollStartY);
-            dragRow.setTranslationY(eff);
-            int t = origIndex + Math.round(eff / rowHeight);
-            if (t < 0) t = 0;
-            if (t > count - 1) t = count - 1;
-            target = t;
-            for (int i = 0; i < count; i++) {
-                View child = enabledList.getChildAt(i);
-                if (child == dragRow) continue;
-                float ty = 0;
-                if (origIndex < target && i > origIndex && i <= target) ty = -rowHeight;
-                else if (origIndex > target && i >= target && i < origIndex) ty = rowHeight;
-                child.setTranslationY(ty);
-            }
-        }
-
-        private void maybeAutoScroll(float rawY) {
-            int[] loc = new int[2];
-            pageScroll.getLocationOnScreen(loc);
-            float y = rawY - loc[1];
-            int edge = dp(56);
-            int dir = 0;
-            if (y < edge) dir = -1;
-            else if (y > pageScroll.getHeight() - edge) dir = +1;
-            if (dir != autoDir) {
-                autoDir = dir;
-                if (dir != 0) pageScroll.postOnAnimation(autoScroll);
-            }
-        }
-
-        private void end() {
-            active = false;
-            autoDir = 0;
-            // render() rebuilds the rows fresh, clearing every translation and the
-            // dragged row's elevation/alpha, so no manual visual reset is needed.
-            if (target != origIndex && target >= 0 && target < items.size()) {
-                items.add(target, items.remove(origIndex));
-                persistAndRender();
-            } else {
-                render();
-            }
-            dragRow = null;
-        }
     }
 }

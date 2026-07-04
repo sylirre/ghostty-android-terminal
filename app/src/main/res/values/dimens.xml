@@ -25,12 +25,16 @@
     <!-- Square top-bar icon buttons (new-tab, search, settings). -->
     <dimen name="icon_button">44dp</dimen>
 
-    <!-- Extra-keys keycap metrics. -->
-    <dimen name="key_min_width">44dp</dimen>
-    <dimen name="key_pad_h">12dp</dimen>
+    <!-- Extra-keys keycap metrics. Caps flex to fill each row (weight-based), so
+         there is no fixed min width; padding centers the label in the cap. -->
+    <dimen name="key_pad_h">6dp</dimen>
     <dimen name="key_pad_v">12dp</dimen>
     <dimen name="key_gap">4dp</dimen>
     <dimen name="key_radius">10dp</dimen>
+    <!-- Inset of the swipe-up secondary hint from a cap's top-right corner. -->
+    <dimen name="key_hint_inset">4dp</dimen>
+    <!-- Leading profile-switch column width (when the switcher is enabled). -->
+    <dimen name="key_switch_width">40dp</dimen>
 
     <!-- Session tab metrics. -->
     <dimen name="tab_pad_h">14dp</dimen>

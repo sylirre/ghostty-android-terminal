@@ -122,6 +122,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         extraKeys.setConfig(extraKeysConfig);
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
+        extraKeys.setShowSwitch(settings.showExtraKeysSwitch());
         applyKeepScreenOn(settings.keepScreenOn());
         applyImmersiveMode(settings.immersiveMode());
         terminal.setRichKeyboard(settings.richKeyboard());
@@ -271,6 +272,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setSmoothScroll(settings.smoothScroll());
         terminal.setMouseTracking(settings.mouseTracking());
         applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
+        extraKeys.setShowSwitch(settings.showExtraKeysSwitch());
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
         extraKeys.setHideWhenKeyboardHidden(settings.hideExtraKeysWhenKeyboardHidden());
     }

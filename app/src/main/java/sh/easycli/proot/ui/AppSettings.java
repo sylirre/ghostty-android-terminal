@@ -31,6 +31,7 @@ public final class AppSettings {
     private static final String KEY_TEXT_MARGIN_LEFT = "text_margin_left";
     private static final String KEY_TEXT_MARGIN_RIGHT = "text_margin_right";
     private static final String KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN = "hide_extra_keys_when_kb_hidden";
+    private static final String KEY_EXTRA_KEYS_SWITCH = "extra_keys_switch";
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
@@ -248,6 +249,20 @@ public final class AppSettings {
 
     public void setHideExtraKeysWhenKeyboardHidden(boolean hide) {
         prefs.edit().putBoolean(KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN, hide).apply();
+    }
+
+    /**
+     * When true, the extra-keys toolbar shows a leading profile-switch column
+     * (once more than one profile exists) that cycles the active layout on tap
+     * and opens a chooser on long-press. Off by default so single-profile users
+     * see no change.
+     */
+    public boolean showExtraKeysSwitch() {
+        return prefs.getBoolean(KEY_EXTRA_KEYS_SWITCH, false);
+    }
+
+    public void setShowExtraKeysSwitch(boolean show) {
+        prefs.edit().putBoolean(KEY_EXTRA_KEYS_SWITCH, show).apply();
     }
 
     /**

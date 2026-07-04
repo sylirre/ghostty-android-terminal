@@ -225,11 +225,11 @@ public class TerminalUiTest {
     @Test
     public void extraKeysTypeIntoShell() {
         waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
-        // The "/" and "─" keys sit near the right end of the toolbar row.
-        // scrollTo() brings each into view via its FillRow (HorizontalScrollView)
-        // ancestor when the row scrolls, and is a no-op when it fits the width.
-        onView(withText("/")).perform(scrollTo(), click());
-        onView(withText("─")).perform(scrollTo(), click()); // sends "-"
+        // The toolbar is now a full-width flex grid with no horizontal scroller,
+        // so every key is on screen and scrollTo() (which requires a scrolling
+        // ancestor) must not be used here — a plain click reaches each cap.
+        onView(withText("/")).perform(click());
+        onView(withText("─")).perform(click()); // sends "-"
         // Run the typed "/-" instead of asserting on the edit line: mksh
         // may cosmetically wipe the line on a late IME resize (SIGWINCH),
         // but the command error output ("/-: ... not found") persists.
