@@ -64,13 +64,14 @@ public final class ExtraKeysConfig {
     static final String COMBO_PREFIX = "combo:";
 
     /**
-     * The default toolbar — the original hardcoded order. Kept byte-for-byte so
-     * a fresh install (and the UI tests asserting ESC/CTRL/"/"/"─") behave as
-     * before.
+     * The default toolbar order — navigation and editing keys, with the arrows
+     * laid out as an inverted-T cluster once split into {@link #DEFAULT_ROWS}.
+     * This is the flattened form: the two rows below concatenate to exactly this
+     * list, so {@code order()} and legacy flat-format migration stay coherent.
      */
     static final List<String> DEFAULT_IDS = Collections.unmodifiableList(Arrays.asList(
-            "esc", "ctrl", "alt", "tab", "up", "down", "left", "right",
-            "home", "end", "pgup", "pgdn", "dash", "slash", "pipe"));
+            "esc", "ins", "del", "pgup", "home", "up", "end",
+            "tab", "ctrl", "alt", "pgdn", "left", "down", "right"));
 
     /**
      * The most rows a single profile will ever show. Each row eats vertical space
@@ -97,8 +98,8 @@ public final class ExtraKeysConfig {
      * {@code order()} contract are unchanged.
      */
     static final List<List<String>> DEFAULT_ROWS = Collections.unmodifiableList(Arrays.asList(
-            Arrays.asList("esc", "ctrl", "alt", "tab", "up", "down", "left", "right"),
-            Arrays.asList("home", "end", "pgup", "pgdn", "dash", "slash", "pipe")));
+            Arrays.asList("esc", "ins", "del", "pgup", "home", "up", "end"),
+            Arrays.asList("tab", "ctrl", "alt", "pgdn", "left", "down", "right")));
 
     /**
      * Modifier-combo presets offered in the "Add keys" palette (none enabled by

@@ -49,6 +49,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -224,6 +225,12 @@ public class TerminalUiTest {
 
     @Test
     public void extraKeysTypeIntoShell() {
+        // The stock default is all special keys (no printable caps), so put two
+        // literal keys on the toolbar and rebuild it — the process-wide session
+        // survives recreation, so the prompt is still there afterwards.
+        new ExtraKeysConfig(ApplicationProvider.getApplicationContext())
+                .setOrder(Arrays.asList("slash", "dash"));
+        scenario.recreate();
         waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
         // The toolbar is now a full-width flex grid with no horizontal scroller,
         // so every key is on screen and scrollTo() (which requires a scrolling
