@@ -241,6 +241,9 @@ public final class ExtraKeysActivity extends Activity {
         for (int r = 0; r < rows.size(); r++) {
             LinearLayout rowView = new LinearLayout(this);
             rowView.setOrientation(LinearLayout.HORIZONTAL);
+            // Center caps within the row so an autosized-down label (which measures
+            // shorter) sits centered rather than top-aligned with a gap beneath it.
+            rowView.setGravity(Gravity.CENTER_VERTICAL);
             List<ExtraKeysConfig.KeySpec> row = rows.get(r);
             for (int i = 0; i < row.size(); i++) {
                 KeyCapView cap = makeCap(row.get(i), r, i);
@@ -284,7 +287,9 @@ public final class ExtraKeysActivity extends Activity {
         cell.setText(R.string.extra_keys_add_key_label);
         cell.setTextColor(Chrome.color(this, R.color.accent));
         cell.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        cell.setTextSize(18);
+        // Match the caps' max text size so the add-cell is the same height as a
+        // keycap; a larger size would make this cell taller and unbalance the row.
+        cell.setTextSize(15);
         cell.setGravity(Gravity.CENTER);
         cell.setPadding(dp(6), dp(12), dp(6), dp(12));
         cell.setBackground(Chrome.rounded(this, R.color.surface_1,
@@ -295,8 +300,10 @@ public final class ExtraKeysActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams addCellParams() {
+        // WRAP_CONTENT (not MATCH_PARENT): the add-cell should sit at its own
+        // keycap height and be centered by the row, not stretch to fill it.
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                dp(34), LinearLayout.LayoutParams.MATCH_PARENT);
+                dp(34), LinearLayout.LayoutParams.WRAP_CONTENT);
         int m = dp(2);
         lp.setMargins(m, m, m, m);
         return lp;
