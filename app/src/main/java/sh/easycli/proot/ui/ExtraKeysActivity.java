@@ -71,10 +71,12 @@ public final class ExtraKeysActivity extends Activity {
     /** Real (draggable) caps in the current grid, with their model coordinates. */
     private final List<CapRef> caps = new ArrayList<>();
 
-    /** Source coordinates of the in-flight drag, or null. */
-    private int[] dragFrom;
-    /** Row container currently highlighted as the drop target, or null. */
-    private View highlightRow;
+    /** Key lifted out of the model for the in-flight drag, or null when idle. */
+    private ExtraKeysConfig.KeySpec draggingSpec;
+    /** {row, index} where the open gap is currently drawn during a drag, or null. */
+    private int[] gapAt;
+    /** {row, index} the dragged key was lifted from, for cancel/exit restore. */
+    private int[] dragOrigin;
 
     private static final class CapRef {
         final KeyCapView view;
@@ -287,12 +289,13 @@ public final class ExtraKeysActivity extends Activity {
     private void renderGrid() {
         grid.removeAllViews();
         caps.clear();
-        highlightRow = null;
         for (int r = 0; r < rows.size(); r++) {
             LinearLayout rowView = new LinearLayout(this);
             rowView.setOrientation(LinearLayout.HORIZONTAL);
             List<ExtraKeysConfig.KeySpec> row = rows.get(r);
+            boolean gapHere = gapAt != null && gapAt[0] == r;
             for (int i = 0; i < row.size(); i++) {
+                if (gapHere && gapAt[1] == i) rowView.addView(makeGap(), gapParams());
                 KeyCapView cap = makeCap(row.get(i), r, i);
                 caps.add(new CapRef(cap, r, i));
                 // MATCH_PARENT height: caps autosize their labels to different text
@@ -305,6 +308,7 @@ public final class ExtraKeysActivity extends Activity {
                 lp.setMargins(m, m, m, m);
                 rowView.addView(cap, lp);
             }
+            if (gapHere && gapAt[1] >= row.size()) rowView.addView(makeGap(), gapParams());
             rowView.addView(addCell(r), addCellParams());
             grid.addView(rowView, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -748,31 +752,42 @@ public final class ExtraKeysActivity extends Activity {
 
     // --- Drag & drop ---
 
-    /** Long-press: lift the cap into a platform drag and hide the source slot. */
+    /**
+     * Long-press: lift the key out of the model into a platform drag. The grid
+     * re-renders with an open gap where the key was; the gap then follows the
+     * finger (see {@link #moveGap}) so the drop destination is always visible.
+     */
     private boolean startDrag(KeyCapView cap, int r, int i) {
-        dragFrom = new int[]{r, i};
         ClipData data = ClipData.newPlainText("", "");
+        // Shadow is a bitmap snapshot taken now, so it survives the re-render
+        // below that tears the source cap down.
         View.DragShadowBuilder shadow = new View.DragShadowBuilder(cap);
         boolean started = cap.startDragAndDrop(data, shadow, null, 0);
-        if (started) cap.setVisibility(View.INVISIBLE);
+        if (started) {
+            draggingSpec = rows.get(r).remove(i);
+            dragOrigin = new int[]{r, i};
+            gapAt = new int[]{r, i};
+            renderGrid();
+        }
         return started;
     }
 
-    /** Grid-level drag listener: tracks the drop target and commits the move. */
+    /** Grid-level drag listener: opens the gap under the finger and commits the drop. */
     private boolean onGridDrag(View v, DragEvent event) {
         switch (event.getAction()) {
             case DragEvent.ACTION_DRAG_STARTED:
-                return dragFrom != null;
+                return draggingSpec != null;
             case DragEvent.ACTION_DRAG_LOCATION:
-                highlight(rowAt(event.getY()));
+                moveGap(event.getX(), event.getY());
+                return true;
+            case DragEvent.ACTION_DRAG_EXITED:
+                returnGapHome();  // finger left the grid: release = no change
                 return true;
             case DragEvent.ACTION_DROP:
-                commitDrop(event.getX(), event.getY());
+                commitDrop();
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
-                dragFrom = null;
-                clearHighlight();
-                render();  // restores the hidden source cap and clears state
+                cancelDrag();  // no-op if ACTION_DROP already consumed the key
                 return true;
             default:
                 return true;
@@ -790,25 +805,56 @@ public final class ExtraKeysActivity extends Activity {
         return y < grid.getChildAt(0).getTop() ? 0 : n - 1;
     }
 
-    private void commitDrop(float x, float y) {
-        if (dragFrom == null) return;
+    /** Recompute the drop slot from the pointer and re-open the gap there if it moved. */
+    private void moveGap(float x, float y) {
+        if (draggingSpec == null) return;
         int tr = rowAt(y);
         if (tr < 0 || tr >= rows.size()) return;
         int before = insertIndex(tr, x);
-        int fr = dragFrom[0], fi = dragFrom[1];
-        if (fr < 0 || fr >= rows.size() || fi < 0 || fi >= rows.get(fr).size()) return;
+        if (gapAt != null && gapAt[0] == tr && gapAt[1] == before) return;
+        gapAt = new int[]{tr, before};
+        renderGrid();
+    }
 
-        ExtraKeysConfig.KeySpec spec = rows.get(fr).remove(fi);
-        if (tr == fr && before > fi) before--;
-        List<ExtraKeysConfig.KeySpec> target = rows.get(tr);
-        if (before < 0) before = 0;
-        if (before > target.size()) before = target.size();
-        target.add(before, spec);
+    /** Finger left the grid: show the key back at its origin so releasing is a no-op. */
+    private void returnGapHome() {
+        if (draggingSpec == null || dragOrigin == null) return;
+        if (gapAt != null && gapAt[0] == dragOrigin[0] && gapAt[1] == dragOrigin[1]) return;
+        gapAt = new int[]{dragOrigin[0], dragOrigin[1]};
+        renderGrid();
+    }
+
+    /** Drop: insert the dragged key where the gap is shown, then persist. */
+    private void commitDrop() {
+        if (draggingSpec == null) return;
+        int r = (gapAt != null) ? gapAt[0] : dragOrigin[0];
+        int i = (gapAt != null) ? gapAt[1] : dragOrigin[1];
+        if (r < 0 || r >= rows.size()) { cancelDrag(); return; }
+        List<ExtraKeysConfig.KeySpec> target = rows.get(r);
+        if (i < 0) i = 0;
+        if (i > target.size()) i = target.size();
+        target.add(i, draggingSpec);
+        draggingSpec = null;
+        gapAt = null;
+        dragOrigin = null;
         cleanupEmptyRows();
         persist();
-        // ACTION_DRAG_ENDED renders; but render now so a dropped-in-place move
-        // still refreshes even if ENDED is delivered before layout settles.
-        dragFrom = null;
+        render();
+    }
+
+    /** Restore the lifted key to its origin (drop outside the grid, or aborted). */
+    private void cancelDrag() {
+        if (draggingSpec == null) return;  // ACTION_DROP already committed it
+        int r = dragOrigin[0], i = dragOrigin[1];
+        if (r >= 0 && r < rows.size()) {
+            List<ExtraKeysConfig.KeySpec> row = rows.get(r);
+            if (i < 0) i = 0;
+            if (i > row.size()) i = row.size();
+            row.add(i, draggingSpec);
+        }
+        draggingSpec = null;
+        gapAt = null;
+        dragOrigin = null;
         render();
     }
 
@@ -819,29 +865,42 @@ public final class ExtraKeysActivity extends Activity {
         int before = -1;
         for (CapRef c : caps) {
             if (c.row != tr) continue;
-            if (dragFrom != null && c.row == dragFrom[0] && c.index == dragFrom[1]) continue;
             float center = rowLeft + c.view.getLeft() + c.view.getWidth() / 2f;
             if (x < center) { before = c.index; break; }
         }
         return before >= 0 ? before : rows.get(tr).size();
     }
 
-    private void highlight(int r) {
-        View target = (r >= 0 && r < grid.getChildCount()) ? grid.getChildAt(r) : null;
-        if (target == highlightRow) return;
-        clearHighlight();
-        if (target != null) {
-            target.setBackground(Chrome.rounded(this, R.color.surface_1,
-                    Chrome.dimen(this, R.dimen.radius_md), R.color.accent));
-            highlightRow = target;
-        }
+    /**
+     * An empty recessed slot marking where the dragged key will land. Built as a
+     * text-bearing cell (like {@link #addCell}) rather than a bare View so it
+     * self-measures to the same height as a keycap — a content-less MATCH_PARENT
+     * child would not anchor the row height and the row would balloon vertically.
+     */
+    private View makeGap() {
+        TextView gap = new TextView(this);
+        gap.setText(" ");
+        gap.setMaxLines(1);
+        gap.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        // 15sp matches the caps' max auto-size text (see addCell) so the slot is
+        // exactly a keycap tall.
+        gap.setTextSize(15);
+        gap.setGravity(Gravity.CENTER);
+        int vpad = dp(settings.extraKeysVerticalPadding());
+        gap.setPadding(dp(3), vpad, dp(3), vpad);
+        gap.setBackground(Chrome.rounded(this, R.color.surface_1,
+                Chrome.dimen(this, R.dimen.key_radius), R.color.accent));
+        return gap;
     }
 
-    private void clearHighlight() {
-        if (highlightRow != null) {
-            highlightRow.setBackground(null);
-            highlightRow = null;
-        }
+    /** Layout params for the gap: same footprint (weight/margins) as the dragged key. */
+    private LinearLayout.LayoutParams gapParams() {
+        float w = draggingSpec != null ? draggingSpec.width : ExtraKeysConfig.WIDTH_1;
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, w);
+        int m = dp(2);
+        lp.setMargins(m, m, m, m);
+        return lp;
     }
 
     // --- Small helpers ---
