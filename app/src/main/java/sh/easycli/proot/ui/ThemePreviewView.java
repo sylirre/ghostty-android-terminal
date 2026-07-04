@@ -30,6 +30,11 @@ public final class ThemePreviewView extends View {
     /** Must match the number of rows in the {@code lines} array in {@link #onDraw}. */
     private static final int LINE_COUNT = 5;
 
+    /** Shared with {@link #onMeasure} so it can't drift from what {@link #onDraw} paints. */
+    private static final float PAD_DP = 10f;
+    private static final float STRIP_GAP_DP = 6f;
+    private static final float STRIP_HEIGHT_DP = 18f;
+
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fillPaint = new Paint();
     private final Paint bgImagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -153,10 +158,16 @@ public final class ThemePreviewView extends View {
         if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) {
             height = MeasureSpec.getSize(heightMeasureSpec);
         } else {
+            textPaint.setTypeface(regularTypeface);
             Paint.FontMetrics fm = textPaint.getFontMetrics();
             float lineHeight = (fm.descent - fm.ascent) * 1.15f;
-            float pad = dp(10);
-            height = Math.round(pad + lineHeight * LINE_COUNT + dp(6) + dp(18) + pad);
+            float pad = dp(PAD_DP);
+            // Mirrors onDraw's baseline math: the first line starts at
+            // pad - fm.ascent, not at pad, since ascent is measured upward
+            // from the baseline.
+            float contentBottom = pad - fm.ascent + lineHeight * LINE_COUNT
+                    + dp(STRIP_GAP_DP) + dp(STRIP_HEIGHT_DP);
+            height = Math.round(contentBottom + pad);
         }
         setMeasuredDimension(width, height);
     }
@@ -189,7 +200,7 @@ public final class ThemePreviewView extends View {
         textPaint.setTextSkewX(0);
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float lineHeight = (fm.descent - fm.ascent) * 1.15f;
-        float pad = dp(10);
+        float pad = dp(PAD_DP);
         float charW = textPaint.measureText("M");
         float y = pad - fm.ascent;
 
@@ -210,8 +221,8 @@ public final class ThemePreviewView extends View {
 
         // ANSI palette strip: 16 swatches across the width.
         applyStyle(fg, false, false);
-        y += dp(6);
-        float stripH = dp(18);
+        y += dp(STRIP_GAP_DP);
+        float stripH = dp(STRIP_HEIGHT_DP);
         float available = getWidth() - 2 * pad;
         float sw = available / 16f;
         for (int i = 0; i < 16; i++) {
