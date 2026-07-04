@@ -228,8 +228,8 @@ public final class ExtraKeysActivity extends Activity {
         chip.setGravity(Gravity.CENTER);
         chip.setPadding(dp(16), dp(9), dp(16), dp(9));
         chip.setBackground(active
-                ? Chrome.rounded(this, R.color.accent, Chrome.dimen(this, R.dimen.radius_pill), 0)
-                : Chrome.rounded(this, R.color.surface_2, Chrome.dimen(this, R.dimen.radius_pill),
+                ? Chrome.ripple(this, R.color.accent, Chrome.dimen(this, R.dimen.radius_pill), 0)
+                : Chrome.ripple(this, R.color.surface_2, Chrome.dimen(this, R.dimen.radius_pill),
                         R.color.border));
         chip.setClickable(true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -301,7 +301,7 @@ public final class ExtraKeysActivity extends Activity {
         // editor renders caps at the same height as the live toolbar (WYSIWYG).
         int vpad = dp(settings.extraKeysVerticalPadding());
         cap.setPadding(dp(3), vpad, dp(3), vpad);
-        cap.setBackground(Chrome.rounded(this, R.color.surface_2,
+        cap.setBackground(Chrome.ripple(this, R.color.surface_2,
                 Chrome.dimen(this, R.dimen.key_radius), R.color.border));
         cap.setClickable(true);
         Glyphs.applyTo(cap);
@@ -325,7 +325,7 @@ public final class ExtraKeysActivity extends Activity {
         cell.setGravity(Gravity.CENTER);
         int vpad = dp(settings.extraKeysVerticalPadding());
         cell.setPadding(dp(6), vpad, dp(6), vpad);
-        cell.setBackground(Chrome.rounded(this, R.color.surface_1,
+        cell.setBackground(Chrome.ripple(this, R.color.surface_1,
                 Chrome.dimen(this, R.dimen.key_radius), R.color.border));
         cell.setClickable(true);
         cell.setOnClickListener(v -> pickKey(false, id -> addKeyToRow(r, id)));
@@ -486,8 +486,8 @@ public final class ExtraKeysActivity extends Activity {
                     : Chrome.color(this, R.color.text_primary));
             seg.setPadding(dp(12), dp(10), dp(12), dp(10));
             seg.setBackground(sel
-                    ? Chrome.rounded(this, R.color.accent, Chrome.dimen(this, R.dimen.radius_sm), 0)
-                    : Chrome.rounded(this, R.color.surface_2, Chrome.dimen(this, R.dimen.radius_sm),
+                    ? Chrome.ripple(this, R.color.accent, Chrome.dimen(this, R.dimen.radius_sm), 0)
+                    : Chrome.ripple(this, R.color.surface_2, Chrome.dimen(this, R.dimen.radius_sm),
                             R.color.border));
             seg.setClickable(true);
             seg.setOnClickListener(v -> { setWidth(r, i, width); onChanged.run(); });
