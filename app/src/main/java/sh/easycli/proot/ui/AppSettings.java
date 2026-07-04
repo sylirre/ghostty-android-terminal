@@ -32,6 +32,7 @@ public final class AppSettings {
     private static final String KEY_TEXT_MARGIN_RIGHT = "text_margin_right";
     private static final String KEY_HIDE_EXTRA_KEYS_WHEN_KB_HIDDEN = "hide_extra_keys_when_kb_hidden";
     private static final String KEY_EXTRA_KEYS_SWITCH = "extra_keys_switch";
+    private static final String KEY_EXTRA_KEYS_ROW_PADDING = "extra_keys_row_padding";
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
@@ -52,6 +53,9 @@ public final class AppSettings {
 
     /** Default wallpaper strength (percent) when an image is first chosen. */
     private static final int DEFAULT_BG_IMAGE_OPACITY = 35;
+
+    /** Default extra-keys cap vertical padding (dp); matches {@code R.dimen.key_pad_v}. */
+    private static final int DEFAULT_EXTRA_KEYS_ROW_PADDING = 12;
 
     public static final int BELL_OFF = 0;
     public static final int BELL_HAPTIC = 1;
@@ -263,6 +267,21 @@ public final class AppSettings {
 
     public void setShowExtraKeysSwitch(boolean show) {
         prefs.edit().putBoolean(KEY_EXTRA_KEYS_SWITCH, show).apply();
+    }
+
+    /**
+     * Vertical padding (dp) inside each extra-keys cap — the knob behind the
+     * toolbar's row height. Larger values give taller rows and bigger tap
+     * targets; the rows stay wrap-content so the autosized label never clips.
+     * Defaults to {@link #DEFAULT_EXTRA_KEYS_ROW_PADDING}, reproducing the
+     * historical layout.
+     */
+    public int extraKeysVerticalPadding() {
+        return prefs.getInt(KEY_EXTRA_KEYS_ROW_PADDING, DEFAULT_EXTRA_KEYS_ROW_PADDING);
+    }
+
+    public void setExtraKeysVerticalPadding(int dp) {
+        prefs.edit().putInt(KEY_EXTRA_KEYS_ROW_PADDING, Math.max(0, dp)).apply();
     }
 
     /**

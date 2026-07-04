@@ -151,6 +151,14 @@ public final class SettingsActivity extends Activity {
                 settings::showExtraKeysSwitch,
                 settings::setShowExtraKeysSwitch)
                 .enabledWhen(settings::extraKeysEnabled));
+        keyboard.add(new Setting.Choice(
+                getString(R.string.setting_extra_keys_row_height_title),
+                getString(R.string.setting_extra_keys_row_height_summary),
+                getResources().getIntArray(R.array.extra_keys_row_height_values),
+                getResources().getStringArray(R.array.extra_keys_row_height_labels),
+                settings::extraKeysVerticalPadding,
+                settings::setExtraKeysVerticalPadding)
+                .enabledWhen(settings::extraKeysEnabled));
         keyboard.add(new Setting.Action(
                 getString(R.string.setting_extra_keys_title),
                 getString(R.string.setting_extra_keys_summary),

@@ -53,6 +53,7 @@ import sh.easycli.proot.term.TerminalNative;
 public final class ExtraKeysActivity extends Activity {
 
     private ExtraKeysConfig config;
+    private AppSettings settings;
 
     /** Working copy of the active profile's rows; persisted after each edit. */
     private final List<List<ExtraKeysConfig.KeySpec>> rows = new ArrayList<>();
@@ -102,6 +103,7 @@ public final class ExtraKeysActivity extends Activity {
         });
 
         config = new ExtraKeysConfig(this);
+        settings = new AppSettings(this);
         profileBar = findViewById(R.id.profile_bar);
         grid = findViewById(R.id.grid);
         addRowButton = findViewById(R.id.extra_keys_add_row);
@@ -269,7 +271,10 @@ public final class ExtraKeysActivity extends Activity {
         cap.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         cap.setTextColor(Color.WHITE);
         cap.setGravity(Gravity.CENTER);
-        cap.setPadding(dp(3), dp(12), dp(3), dp(12));
+        // Vertical padding tracks the toolbar's configured row height so the
+        // editor renders caps at the same height as the live toolbar (WYSIWYG).
+        int vpad = dp(settings.extraKeysVerticalPadding());
+        cap.setPadding(dp(3), vpad, dp(3), vpad);
         cap.setBackground(Chrome.rounded(this, R.color.surface_2,
                 Chrome.dimen(this, R.dimen.key_radius), R.color.border));
         cap.setClickable(true);
@@ -292,7 +297,8 @@ public final class ExtraKeysActivity extends Activity {
         // keycap; a larger size would make this cell taller and unbalance the row.
         cell.setTextSize(15);
         cell.setGravity(Gravity.CENTER);
-        cell.setPadding(dp(6), dp(12), dp(6), dp(12));
+        int vpad = dp(settings.extraKeysVerticalPadding());
+        cell.setPadding(dp(6), vpad, dp(6), vpad);
         cell.setBackground(Chrome.rounded(this, R.color.surface_1,
                 Chrome.dimen(this, R.dimen.key_radius), R.color.border));
         cell.setClickable(true);

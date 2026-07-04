@@ -76,6 +76,10 @@ public class ExtraKeysView extends LinearLayout {
     // Upward travel (px) that turns a press into a swipe-up secondary emit.
     private final int swipeThresholdPx;
 
+    // Vertical padding (px) inside each keycap; the toolbar's row-height knob.
+    // Defaults to key_pad_v and is overridden by setKeyVerticalPaddingDp().
+    private int keyPaddingV;
+
     private static final class ModButton {
         final KeyCapView view;
         final int modifier;
@@ -93,6 +97,7 @@ public class ExtraKeysView extends LinearLayout {
         setPadding(pad, pad, pad, pad);
         swipeThresholdPx = Math.max(ViewConfiguration.get(context).getScaledTouchSlop() * 2,
                 Chrome.dp(context, R.dimen.space_5));
+        keyPaddingV = Chrome.dp(context, R.dimen.key_pad_v);
         sticky.onChanged = this::updateToggles;
     }
 
@@ -133,6 +138,18 @@ public class ExtraKeysView extends LinearLayout {
     public void setShowSwitch(boolean show) {
         if (showSwitch == show) return;
         showSwitch = show;
+        reload();
+    }
+
+    /**
+     * Sets the vertical padding inside each keycap — the toolbar's row-height
+     * knob. Rows stay wrap-content, so a larger value grows the row and tap
+     * target while the autosized label never clips. Rebuilds on change.
+     */
+    public void setKeyVerticalPaddingDp(int dp) {
+        int px = Math.round(dp * getResources().getDisplayMetrics().density);
+        if (keyPaddingV == px) return;
+        keyPaddingV = px;
         reload();
     }
 
@@ -245,9 +262,9 @@ public class ExtraKeysView extends LinearLayout {
         view.setTextColor(Color.WHITE);
         view.setGravity(Gravity.CENTER);
         view.setPadding(Chrome.dp(getContext(), R.dimen.key_pad_h),
-                Chrome.dp(getContext(), R.dimen.key_pad_v),
+                keyPaddingV,
                 Chrome.dp(getContext(), R.dimen.key_pad_h),
-                Chrome.dp(getContext(), R.dimen.key_pad_v));
+                keyPaddingV);
         view.setBackground(keyBg());
         view.setClickable(true);
         // Render arrows and other symbol glyphs as vectors, not font glyphs, so
