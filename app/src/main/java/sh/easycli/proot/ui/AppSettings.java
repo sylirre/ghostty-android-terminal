@@ -55,7 +55,7 @@ public final class AppSettings {
     private static final int DEFAULT_BG_IMAGE_OPACITY = 35;
 
     /** Default extra-keys cap vertical padding (dp); matches {@code R.dimen.key_pad_v}. */
-    private static final int DEFAULT_EXTRA_KEYS_ROW_PADDING = 12;
+    private static final int DEFAULT_EXTRA_KEYS_ROW_PADDING = 8;
 
     public static final int BELL_OFF = 0;
     public static final int BELL_HAPTIC = 1;
@@ -273,8 +273,7 @@ public final class AppSettings {
      * Vertical padding (dp) inside each extra-keys cap — the knob behind the
      * toolbar's row height. Larger values give taller rows and bigger tap
      * targets; the rows stay wrap-content so the autosized label never clips.
-     * Defaults to {@link #DEFAULT_EXTRA_KEYS_ROW_PADDING}, reproducing the
-     * historical layout.
+     * Defaults to {@link #DEFAULT_EXTRA_KEYS_ROW_PADDING}.
      */
     public int extraKeysVerticalPadding() {
         return prefs.getInt(KEY_EXTRA_KEYS_ROW_PADDING, DEFAULT_EXTRA_KEYS_ROW_PADDING);

@@ -28,7 +28,7 @@
     <!-- Extra-keys keycap metrics. Caps flex to fill each row (weight-based), so
          there is no fixed min width; padding centers the label in the cap. -->
     <dimen name="key_pad_h">6dp</dimen>
-    <dimen name="key_pad_v">12dp</dimen>
+    <dimen name="key_pad_v">8dp</dimen>
     <dimen name="key_gap">4dp</dimen>
     <dimen name="key_radius">10dp</dimen>
     <!-- Inset of the swipe-up secondary hint from a cap's top-right corner. -->
