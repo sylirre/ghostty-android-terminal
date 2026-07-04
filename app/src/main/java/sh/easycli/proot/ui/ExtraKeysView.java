@@ -287,8 +287,11 @@ public class ExtraKeysView extends LinearLayout {
                 break;
         }
         // Caps flex to fill the row: width 0 + weight = the key's width multiplier.
+        // MATCH_PARENT height so every cap stretches to the row's tallest cap;
+        // otherwise a label autosized to a smaller text size measures shorter and
+        // top-aligns, leaving its keycap ragged against its neighbours.
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, key.width);
+                0, LinearLayout.LayoutParams.MATCH_PARENT, key.width);
         int m = Chrome.dp(getContext(), R.dimen.key_gap) / 2;
         lp.setMargins(m, m, m, m);
         row.addView(view, lp);

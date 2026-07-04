@@ -241,15 +241,16 @@ public final class ExtraKeysActivity extends Activity {
         for (int r = 0; r < rows.size(); r++) {
             LinearLayout rowView = new LinearLayout(this);
             rowView.setOrientation(LinearLayout.HORIZONTAL);
-            // Center caps within the row so an autosized-down label (which measures
-            // shorter) sits centered rather than top-aligned with a gap beneath it.
-            rowView.setGravity(Gravity.CENTER_VERTICAL);
             List<ExtraKeysConfig.KeySpec> row = rows.get(r);
             for (int i = 0; i < row.size(); i++) {
                 KeyCapView cap = makeCap(row.get(i), r, i);
                 caps.add(new CapRef(cap, r, i));
+                // MATCH_PARENT height: caps autosize their labels to different text
+                // sizes, so LinearLayout stretches every cap in the row to the
+                // tallest one — uniform keycap boxes instead of top-aligned ragged
+                // ones. Mirrors ExtraKeysView.addKey so the editor is WYSIWYG.
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                        0, LinearLayout.LayoutParams.WRAP_CONTENT, row.get(i).width);
+                        0, LinearLayout.LayoutParams.MATCH_PARENT, row.get(i).width);
                 int m = dp(2);
                 lp.setMargins(m, m, m, m);
                 rowView.addView(cap, lp);
@@ -300,10 +301,10 @@ public final class ExtraKeysActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams addCellParams() {
-        // WRAP_CONTENT (not MATCH_PARENT): the add-cell should sit at its own
-        // keycap height and be centered by the row, not stretch to fill it.
+        // MATCH_PARENT height so the add-cell stretches to the row's keycap height
+        // just like the caps; its 15sp label keeps it from being the tallest child.
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                dp(34), LinearLayout.LayoutParams.WRAP_CONTENT);
+                dp(34), LinearLayout.LayoutParams.MATCH_PARENT);
         int m = dp(2);
         lp.setMargins(m, m, m, m);
         return lp;
