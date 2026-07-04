@@ -22,8 +22,8 @@ Features:
 
 <img src="docs/screenshot.png" alt="App demo">
 
-*Currently lacks storage permissions and some other important features as app
-is very fresh.*
+*App is in active development state. Features may be added, removed or
+drastically changed within minor version update.*
 
 Some features will NOT be implemented:
 
