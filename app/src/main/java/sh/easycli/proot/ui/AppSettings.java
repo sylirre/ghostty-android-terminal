@@ -283,6 +283,11 @@ public final class AppSettings {
         prefs.edit().putInt(KEY_EXTRA_KEYS_ROW_PADDING, Math.max(0, dp)).apply();
     }
 
+    /** Restore the extra-keys row height to {@link #DEFAULT_EXTRA_KEYS_ROW_PADDING}. */
+    public void resetExtraKeysVerticalPadding() {
+        prefs.edit().remove(KEY_EXTRA_KEYS_ROW_PADDING).apply();
+    }
+
     /**
      * When true, DEC mode 2027 (grapheme-cluster mode) is force-enabled on every
      * session, so the engine merges multi-codepoint clusters — combining marks,

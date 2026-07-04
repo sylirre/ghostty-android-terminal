@@ -151,6 +151,7 @@ public final class ExtraKeysActivity extends Activity {
             rows.add(r);
         }
         persist();
+        settings.resetExtraKeysVerticalPadding();  // restore default row height
         render();
     }
 
