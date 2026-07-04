@@ -2,6 +2,7 @@ package sh.easycli.proot.ui;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -9,7 +10,9 @@ import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewConfiguration;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 
 import java.util.ArrayList;
@@ -201,14 +204,15 @@ public class ExtraKeysView extends LinearLayout {
     }
 
     /** The leading profile-switch cap: tap cycles the active profile, long-press chooses. */
-    private KeyCapView buildSwitchColumn() {
-        KeyCapView v = new KeyCapView(getContext());
-        v.setText(switchLabel());
-        v.setMaxLines(1);
-        v.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        v.setTextColor(Chrome.color(getContext(), R.color.accent));
-        v.setGravity(Gravity.CENTER);
+    private View buildSwitchColumn() {
+        ImageView v = new ImageView(getContext());
+        v.setImageResource(R.drawable.ic_glyph_layers);
+        v.setImageTintList(ColorStateList.valueOf(Chrome.color(getContext(), R.color.accent)));
+        v.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int pad = Chrome.dp(getContext(), R.dimen.key_pad_h);
+        v.setPadding(pad, pad, pad, pad);
         v.setBackground(keyBg());
+        v.setContentDescription(getContext().getString(R.string.extra_keys_switch_chooser_title));
         v.setClickable(true);
         v.setOnClickListener(x -> {
             int n = config.profileCount();
@@ -219,14 +223,6 @@ public class ExtraKeysView extends LinearLayout {
         });
         v.setOnLongClickListener(x -> { showProfileChooser(); return true; });
         return v;
-    }
-
-    /** The active profile's initial, upper-cased, for the switch cap. */
-    private String switchLabel() {
-        String name = config.activeProfileName();
-        if (name == null || name.isEmpty()) return "•";
-        int cp = name.codePointAt(0);
-        return new String(Character.toChars(Character.toUpperCase(cp)));
     }
 
     /** A single-choice dialog of profile names; picking one switches to it. */
