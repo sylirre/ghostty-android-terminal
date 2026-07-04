@@ -27,6 +27,9 @@ public final class ThemePreviewView extends View {
     /** Blink half-period (ms); the cursor toggles on/off at this cadence. */
     private static final long BLINK_MS = 530;
 
+    /** Must match the number of rows in the {@code lines} array in {@link #onDraw}. */
+    private static final int LINE_COUNT = 5;
+
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fillPaint = new Paint();
     private final Paint bgImagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -141,6 +144,21 @@ public final class ThemePreviewView extends View {
             this.bold = bold;
             this.italic = italic;
         }
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int width = MeasureSpec.getSize(widthMeasureSpec);
+        int height;
+        if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.EXACTLY) {
+            height = MeasureSpec.getSize(heightMeasureSpec);
+        } else {
+            Paint.FontMetrics fm = textPaint.getFontMetrics();
+            float lineHeight = (fm.descent - fm.ascent) * 1.15f;
+            float pad = dp(10);
+            height = Math.round(pad + lineHeight * LINE_COUNT + dp(6) + dp(18) + pad);
+        }
+        setMeasuredDimension(width, height);
     }
 
     @Override
