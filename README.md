@@ -1,7 +1,9 @@
 # Terminal
 
-Terminal emulator for Android backed by the
-[Ghostty](https://github.com/ghostty-org/ghostty) VT engine.
+Probably the first ever [Ghostty-based](https://github.com/ghostty-org/ghostty)
+terminal emulator app for Android OS. Developed with heavy use of AI agentic
+coding (Claude Code, ChatGPT Codex), independently from
+[Termux](https://termux.dev) and similar apps.
 
 Features:
 
