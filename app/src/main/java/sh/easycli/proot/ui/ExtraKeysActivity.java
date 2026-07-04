@@ -59,6 +59,7 @@ public final class ExtraKeysActivity extends Activity {
     private final List<List<ExtraKeysConfig.KeySpec>> rows = new ArrayList<>();
 
     private LinearLayout profileBar;
+    private LinearLayout rowHeightBar;
     private LinearLayout grid;
     private View addRowButton;
 
@@ -105,6 +106,7 @@ public final class ExtraKeysActivity extends Activity {
         config = new ExtraKeysConfig(this);
         settings = new AppSettings(this);
         profileBar = findViewById(R.id.profile_bar);
+        rowHeightBar = findViewById(R.id.row_height_bar);
         grid = findViewById(R.id.grid);
         addRowButton = findViewById(R.id.extra_keys_add_row);
 
@@ -193,6 +195,7 @@ public final class ExtraKeysActivity extends Activity {
 
     private void render() {
         renderProfiles();
+        renderRowHeight();
         renderGrid();
         updateAddRowState();
     }
@@ -203,20 +206,20 @@ public final class ExtraKeysActivity extends Activity {
         int active = config.activeIndex();
         for (int i = 0; i < profiles.size(); i++) {
             final int index = i;
-            TextView chip = profileChip(profiles.get(i).name, i == active);
+            TextView chip = pillChip(profiles.get(i).name, i == active);
             chip.setOnClickListener(v -> switchProfile(index));
             chip.setOnLongClickListener(v -> { showProfileMenu(index); return true; });
             profileBar.addView(chip);
         }
         if (profiles.size() < ExtraKeysConfig.MAX_PROFILES) {
-            TextView add = profileChip(getString(R.string.extra_keys_profile_add), false);
+            TextView add = pillChip(getString(R.string.extra_keys_profile_add), false);
             add.setTextColor(Chrome.color(this, R.color.accent));
             add.setOnClickListener(v -> promptAddProfile());
             profileBar.addView(add);
         }
     }
 
-    private TextView profileChip(String label, boolean active) {
+    private TextView pillChip(String label, boolean active) {
         TextView chip = new TextView(this);
         chip.setText(label);
         chip.setTextColor(active ? Chrome.color(this, R.color.on_accent)
@@ -234,6 +237,29 @@ public final class ExtraKeysActivity extends Activity {
         lp.setMarginEnd(dp(8));
         chip.setLayoutParams(lp);
         return chip;
+    }
+
+    /**
+     * Row-height picker: a single-select pill per size. The value is the caps'
+     * vertical padding (dp); changing it re-renders the grid, so the keyboard
+     * below previews the chosen height live. Stored globally in {@link
+     * AppSettings} and applied to the live toolbar by {@link MainActivity}.
+     */
+    private void renderRowHeight() {
+        rowHeightBar.removeAllViews();
+        int[] values = getResources().getIntArray(R.array.extra_keys_row_height_values);
+        String[] labels = getResources().getStringArray(R.array.extra_keys_row_height_labels);
+        int current = settings.extraKeysVerticalPadding();
+        for (int i = 0; i < values.length; i++) {
+            final int value = values[i];
+            TextView chip = pillChip(labels[i], value == current);
+            chip.setOnClickListener(v -> {
+                if (settings.extraKeysVerticalPadding() == value) return;
+                settings.setExtraKeysVerticalPadding(value);
+                render();  // re-highlight the pill and re-render the grid at the new height
+            });
+            rowHeightBar.addView(chip);
+        }
     }
 
     private void renderGrid() {

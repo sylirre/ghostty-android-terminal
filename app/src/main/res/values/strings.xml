@@ -284,20 +284,6 @@
     <string name="setting_extra_keys_summary">Choose, reorder and add the keys shown in the toolbar above the keyboard.</string>
     <string name="setting_extra_keys_switch_title">Layout switch button</string>
     <string name="setting_extra_keys_switch_summary">Show a button on the toolbar to switch between saved keyboard layouts. Appears once you have more than one.</string>
-    <string name="setting_extra_keys_row_height_title">Row height</string>
-    <string name="setting_extra_keys_row_height_summary">Height of the keys in the extra-keys toolbar. Taller rows give bigger tap targets.</string>
-    <string-array name="extra_keys_row_height_labels">
-        <item>Compact</item>
-        <item>Standard</item>
-        <item>Comfortable</item>
-        <item>Large</item>
-    </string-array>
-    <integer-array name="extra_keys_row_height_values">
-        <item>6</item>
-        <item>12</item>
-        <item>18</item>
-        <item>24</item>
-    </integer-array>
     <plurals name="extra_keys_count">
         <item quantity="one">%d key</item>
         <item quantity="other">%d keys</item>
@@ -310,7 +296,20 @@
     <string name="extra_keys_done">Done</string>
     <string name="extra_keys_reset">Reset</string>
     <string name="extra_keys_section_profiles">Layouts</string>
+    <string name="extra_keys_section_row_height">Row height</string>
     <string name="extra_keys_section_grid">Keyboard</string>
+    <string-array name="extra_keys_row_height_labels">
+        <item>Compact</item>
+        <item>Standard</item>
+        <item>Comfortable</item>
+        <item>Large</item>
+    </string-array>
+    <integer-array name="extra_keys_row_height_values">
+        <item>6</item>
+        <item>12</item>
+        <item>18</item>
+        <item>24</item>
+    </integer-array>
     <string name="extra_keys_grid_hint">Tap a key to edit it. Long-press and drag to move it. Swipe up on a key to send its secondary.</string>
     <string name="extra_keys_add_key_label">+</string>
     <string name="extra_keys_profile_add">+ Layout</string>
