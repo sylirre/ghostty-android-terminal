@@ -77,7 +77,7 @@ public final class ExtraKeysConfig {
      * The most rows a single profile will ever show. Each row eats vertical space
      * above the keyboard, so this stays small; the editor caps additions here.
      */
-    static final int MAX_ROWS = 3;
+    static final int MAX_ROWS = 4;
 
     /** Upper bound on the number of named profiles. */
     static final int MAX_PROFILES = 8;
