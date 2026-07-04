@@ -298,18 +298,7 @@
     <string name="extra_keys_section_profiles">Layouts</string>
     <string name="extra_keys_section_row_height">Row height</string>
     <string name="extra_keys_section_grid">Keyboard</string>
-    <string-array name="extra_keys_row_height_labels">
-        <item>Compact</item>
-        <item>Standard</item>
-        <item>Comfortable</item>
-        <item>Large</item>
-    </string-array>
-    <integer-array name="extra_keys_row_height_values">
-        <item>6</item>
-        <item>12</item>
-        <item>18</item>
-        <item>24</item>
-    </integer-array>
+    <string name="extra_keys_row_height_value">%1$d dp</string>
     <string name="extra_keys_grid_hint">Tap a key to edit it. Long-press and drag to move it. Swipe up on a key to send its secondary.</string>
     <string name="extra_keys_add_key_label">+</string>
     <string name="extra_keys_profile_add">+ Layout</string>

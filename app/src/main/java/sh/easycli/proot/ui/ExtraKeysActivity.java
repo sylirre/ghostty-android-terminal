@@ -20,6 +20,7 @@ import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -62,6 +63,10 @@ public final class ExtraKeysActivity extends Activity {
     private LinearLayout rowHeightBar;
     private LinearLayout grid;
     private View addRowButton;
+
+    /** Bounds of the row-height slider (vertical padding per cap, dp). */
+    private static final int ROW_HEIGHT_MIN_DP = 2;
+    private static final int ROW_HEIGHT_MAX_DP = 28;
 
     /** Real (draggable) caps in the current grid, with their model coordinates. */
     private final List<CapRef> caps = new ArrayList<>();
@@ -240,26 +245,43 @@ public final class ExtraKeysActivity extends Activity {
     }
 
     /**
-     * Row-height picker: a single-select pill per size. The value is the caps'
-     * vertical padding (dp); changing it re-renders the grid, so the keyboard
-     * below previews the chosen height live. Stored globally in {@link
-     * AppSettings} and applied to the live toolbar by {@link MainActivity}.
+     * Row-height slider: a {@link SeekBar} over the caps' vertical padding (dp)
+     * with a live "NN dp" readout. Dragging re-renders only the grid — not the
+     * whole screen, which would rebuild the SeekBar out from under the drag — so
+     * the keyboard below previews the chosen height live. Stored globally in
+     * {@link AppSettings} and applied to the live toolbar by {@link MainActivity}.
      */
     private void renderRowHeight() {
         rowHeightBar.removeAllViews();
-        int[] values = getResources().getIntArray(R.array.extra_keys_row_height_values);
-        String[] labels = getResources().getStringArray(R.array.extra_keys_row_height_labels);
-        int current = settings.extraKeysVerticalPadding();
-        for (int i = 0; i < values.length; i++) {
-            final int value = values[i];
-            TextView chip = pillChip(labels[i], value == current);
-            chip.setOnClickListener(v -> {
-                if (settings.extraKeysVerticalPadding() == value) return;
-                settings.setExtraKeysVerticalPadding(value);
-                render();  // re-highlight the pill and re-render the grid at the new height
-            });
-            rowHeightBar.addView(chip);
-        }
+        int current = Math.max(ROW_HEIGHT_MIN_DP,
+                Math.min(ROW_HEIGHT_MAX_DP, settings.extraKeysVerticalPadding()));
+
+        TextView value = new TextView(this);
+        value.setText(getString(R.string.extra_keys_row_height_value, current));
+        value.setTextColor(Chrome.color(this, R.color.text_secondary));
+        value.setGravity(Gravity.END);
+        value.setMinWidth(dp(48));
+
+        SeekBar bar = new SeekBar(this);
+        bar.setMin(ROW_HEIGHT_MIN_DP);
+        bar.setMax(ROW_HEIGHT_MAX_DP);
+        bar.setProgress(current);
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
+                value.setText(getString(R.string.extra_keys_row_height_value, progress));
+                if (settings.extraKeysVerticalPadding() == progress) return;
+                settings.setExtraKeysVerticalPadding(progress);
+                renderGrid();  // preview the new height without rebuilding the slider
+            }
+            @Override public void onStartTrackingTouch(SeekBar s) {}
+            @Override public void onStopTrackingTouch(SeekBar s) {}
+        });
+
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        rowHeightBar.addView(bar, barLp);
+        rowHeightBar.addView(value);
     }
 
     private void renderGrid() {
