@@ -388,12 +388,15 @@ public final class AppSettings {
     }
 
     /**
-     * Guest-absolute path of the shell the emulator runs as the login shell
-     * (e.g. {@code /bin/bash}, {@code /bin/zsh}). Defaults to
-     * {@code /bin/bash}. Takes effect for sessions created afterwards.
+     * The command the emulator runs as the login shell: a guest-absolute shell
+     * path with optional whitespace-separated arguments (e.g. {@code /bin/bash -l},
+     * {@code /bin/zsh -l}). Populated from the configured user's {@code /etc/passwd}
+     * shell when the identity is set; an empty value derives it at spawn time,
+     * falling back to {@code /bin/bash -l} or {@code /bin/sh -l}. Defaults to
+     * {@code /bin/bash -l}. Takes effect for sessions created afterwards.
      */
     public String userlandLoginShell() {
-        return prefs.getString(KEY_USERLAND_LOGIN_SHELL, "/bin/bash");
+        return prefs.getString(KEY_USERLAND_LOGIN_SHELL, "/bin/bash -l");
     }
 
     public void setUserlandLoginShell(String shell) {

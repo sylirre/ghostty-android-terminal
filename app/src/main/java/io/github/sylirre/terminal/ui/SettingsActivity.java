@@ -215,11 +215,6 @@ public final class SettingsActivity extends Activity {
         // every host ABI, so these always apply.
         List<Setting> userland = new ArrayList<>();
         userland.add(new Setting.Action(
-                getString(R.string.setting_userland_shell_title),
-                getString(R.string.setting_userland_shell_summary),
-                settings::userlandLoginShell,
-                this::showLoginShellDialog));
-        userland.add(new Setting.Action(
                 getString(R.string.setting_userland_identity_title),
                 getString(R.string.setting_userland_identity_summary),
                 settings::userlandIdentity,
@@ -229,6 +224,11 @@ public final class SettingsActivity extends Activity {
                 getString(R.string.setting_userland_home_summary),
                 settings::userlandHome,
                 this::showHomeDialog));
+        userland.add(new Setting.Action(
+                getString(R.string.setting_userland_shell_title),
+                getString(R.string.setting_userland_shell_summary),
+                settings::userlandLoginShell,
+                this::showLoginShellDialog));
         userland.add(new Setting.Action(
                 getString(R.string.setting_userland_workdir_title),
                 getString(R.string.setting_userland_workdir_summary),
@@ -352,8 +352,8 @@ public final class SettingsActivity extends Activity {
     private void showLoginShellDialog() {
         showTextSettingDialog(R.string.setting_userland_shell_title,
                 R.string.setting_userland_shell_hint, settings.userlandLoginShell(),
-                shell -> {
-                    if (!shell.isEmpty()) settings.setUserlandLoginShell(shell);
+                cmd -> {
+                    if (isValidShellCommand(cmd)) settings.setUserlandLoginShell(cmd);
                 });
     }
 
@@ -362,12 +362,15 @@ public final class SettingsActivity extends Activity {
                 R.string.setting_userland_identity_hint, settings.userlandIdentity(),
                 id -> {
                     settings.setUserlandIdentity(id);
-                    // Populate the home setting from the configured user's passwd
-                    // entry (the "home is set when identity is configured" rule).
+                    // Populate the home and login-shell settings from the
+                    // configured user's passwd entry (they track the identity).
                     if (UserlandRootfs.isInstalled(this)) {
-                        String home = UserlandIdentity.homeForIdentity(
-                                UserlandRootfs.dir(this), id);
+                        File root = UserlandRootfs.dir(this);
+                        String home = UserlandIdentity.homeForIdentity(root, id);
                         settings.setUserlandHome(home != null ? home : "/");
+                        String shell = UserlandRootfs.deriveLoginShell(root, id);
+                        settings.setUserlandLoginShell(
+                                shell != null ? shell : "/bin/bash -l");
                     }
                 });
     }
@@ -435,6 +438,29 @@ public final class SettingsActivity extends Activity {
                         Toast.LENGTH_LONG).show();
                 return false;
             }
+        }
+        return true;
+    }
+
+    /**
+     * Accepts an empty value (means "derive at spawn") or a command whose first
+     * whitespace-separated token is an absolute path that, when the rootfs is
+     * installed, exists inside it. Rejects a relative or missing shell with a
+     * Toast; arguments after the path are not checked.
+     */
+    private boolean isValidShellCommand(String cmd) {
+        if (cmd.isEmpty()) return true;
+        String path = cmd.split("\\s+")[0];
+        if (!path.startsWith("/")) {
+            Toast.makeText(this, R.string.setting_userland_path_not_absolute,
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+        if (UserlandRootfs.isInstalled(this)
+                && !new File(UserlandRootfs.dir(this), path.substring(1)).exists()) {
+            Toast.makeText(this, R.string.setting_userland_path_missing,
+                    Toast.LENGTH_LONG).show();
+            return false;
         }
         return true;
     }

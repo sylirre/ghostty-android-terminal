@@ -68,7 +68,7 @@ public class UserlandSessionTest {
         // of the run, no-ops afterwards (the rootfs directory already exists).
         UserlandRootfs.install(ctx, null);
         session = new TerminalSession(80, 24, 8, 16, 10_000,
-                UserlandRootfs.command(ctx, "/bin/bash"), listener);
+                UserlandRootfs.command(ctx, "/bin/bash -l"), listener);
         waitForOnScreen("~#"); // root login prompt: "root@host:~#"
     }
 
@@ -142,18 +142,24 @@ public class UserlandSessionTest {
         session.close();
         assertTrue("usable right after install", UserlandRootfs.isUsable(ctx));
 
-        // Hide bash by renaming it aside (usrmerge: the real file is under
-        // usr/bin; bin/bash resolves to it). Renaming, not deleting, lets us
-        // restore the shared rootfs for the other tests without a reinstall.
+        // Hide both bash and sh by renaming them aside (usrmerge: the real
+        // files live under usr/bin; bin/... resolves to them). sh is now a valid
+        // fallback shell, so a truly doomed rootfs must lack both. Renaming, not
+        // deleting, lets us restore the shared rootfs for the other tests
+        // without a reinstall.
         File root = UserlandRootfs.dir(ctx);
         File bash = new File(root, "usr/bin/bash");
         if (!bash.exists()) bash = new File(root, "bin/bash");
-        File hidden = new File(bash.getParentFile(), "bash.hidden");
-        assertTrue("renamed bash aside", bash.renameTo(hidden));
+        File bashHidden = new File(bash.getParentFile(), "bash.hidden");
+        File sh = new File(root, "usr/bin/sh");
+        if (!sh.exists()) sh = new File(root, "bin/sh");
+        File shHidden = new File(sh.getParentFile(), "sh.hidden");
+        assertTrue("renamed bash aside", bash.renameTo(bashHidden));
+        assertTrue("renamed sh aside", sh.renameTo(shHidden));
         try {
-            assertFalse("missing /bin/bash is detected", UserlandRootfs.isUsable(ctx));
+            assertFalse("missing shell is detected", UserlandRootfs.isUsable(ctx));
             try {
-                UserlandRootfs.command(ctx, "/bin/bash");
+                UserlandRootfs.command(ctx, "/bin/bash -l");
                 fail("command() must reject an incomplete rootfs");
             } catch (IOException expected) {
                 // expected: spawning here would only die instantly.
@@ -161,10 +167,11 @@ public class UserlandSessionTest {
 
             // install() must short-circuit on the existing rootfs dir, not rebuild.
             UserlandRootfs.install(ctx, null);
-            assertTrue("install() did not wipe the rootfs", hidden.exists());
+            assertTrue("install() did not wipe the rootfs", bashHidden.exists());
             assertFalse("install() did not rebuild", UserlandRootfs.isUsable(ctx));
         } finally {
-            assertTrue("restored bash", hidden.renameTo(bash));
+            assertTrue("restored bash", bashHidden.renameTo(bash));
+            assertTrue("restored sh", shHidden.renameTo(sh));
         }
         assertTrue("usable again after restore", UserlandRootfs.isUsable(ctx));
     }

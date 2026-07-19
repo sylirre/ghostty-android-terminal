@@ -82,12 +82,15 @@ public final class UserlandRootfs {
         return isInstalled(ctx) && hasShell(dir(ctx));
     }
 
-    /** True when the login shell ({@code /bin/bash}) resolves inside root. */
+    /** True when a login shell ({@code /bin/bash} or {@code /bin/sh}) resolves inside root. */
     private static boolean hasShell(File root) {
         // exists() follows the usrmerge bin -> usr/bin symlink; check both
-        // layouts so a non-usrmerge rootfs is recognized too.
+        // layouts so a non-usrmerge rootfs is recognized too. Either bash or sh
+        // is enough — command() derives/falls back to whichever is present.
         return new File(root, "bin/bash").exists()
-                || new File(root, "usr/bin/bash").exists();
+                || new File(root, "usr/bin/bash").exists()
+                || new File(root, "bin/sh").exists()
+                || new File(root, "usr/bin/sh").exists();
     }
 
     /**
@@ -221,15 +224,14 @@ public final class UserlandRootfs {
             throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Userland rootfs not installed");
         File root = dir(ctx);
-        if (!hasShell(root)) {
-            // FIXME: non-bash shells are good to go too.
-            throw new IOException("Userland rootfs is incomplete: /bin/bash is "
-                    + "missing (was it deleted outside the app?)");
-        }
-        String shell = opts.loginShell;
-        String shellRel = shell.startsWith("/") ? shell.substring(1) : shell;
-        if (!new File(root, shellRel).exists()) {
-            throw new IOException("Login shell " + shell + " not found in rootfs");
+        // Login shell: the configured command (path + optional args) when its
+        // executable exists in the rootfs, else derived from the identity's
+        // passwd shell, else /bin/bash or /bin/sh. Null only when the rootfs has
+        // no usable shell at all — a session there would die instantly.
+        String shellCmd = resolveLoginShell(root, opts.loginShell, opts.identity);
+        if (shellCmd == null) {
+            throw new IOException("Userland rootfs is incomplete: no login shell "
+                    + "(/bin/bash or /bin/sh) found (deleted outside the app?)");
         }
         List<String> argv = new ArrayList<>();
         argv.add("arm64chroot");
@@ -275,10 +277,11 @@ public final class UserlandRootfs {
         argv.add("LANG=C.UTF-8");
         argv.add("-E");
         argv.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-        // Positional rootfs, then the guest login shell, run directly.
+        // Positional rootfs, then the guest login command (shell + its args),
+        // run directly. The login flag now rides in the configured value (e.g.
+        // -l), so there is no separate --login here.
         argv.add(root.getAbsolutePath());
-        argv.add(shell);
-        argv.add("--login");
+        for (String tok : shellCmd.trim().split("\\s+")) argv.add(tok);
         // Host env for the fork()ed child. TMPDIR gives arm64chroot's
         // --shared-proc proctab a writable backing dir: Android has no /dev/shm
         // or XDG_RUNTIME_DIR, so without it the shared /proc registry has
@@ -322,6 +325,44 @@ public final class UserlandRootfs {
         File target = resolve(root, p); // null on a ".." escape
         if (target == null || !target.isDirectory()) return null;
         return p;
+    }
+
+    /**
+     * The login-shell command line to store when the identity is configured, and
+     * the spawn-time fallback when the setting is empty or invalid: the
+     * configured user's {@code /etc/passwd} shell with {@code -l} when it exists,
+     * else {@code "/bin/bash -l"}, else {@code "/bin/sh -l"}, else {@code null}
+     * when the rootfs has no usable shell.
+     */
+    public static String deriveLoginShell(File root, String identity) {
+        String passwdShell = UserlandIdentity.shellForIdentity(root, identity);
+        if (shellExists(root, passwdShell)) return passwdShell + " -l";
+        if (shellExists(root, "/bin/bash")) return "/bin/bash -l";
+        if (shellExists(root, "/bin/sh")) return "/bin/sh -l";
+        return null;
+    }
+
+    /**
+     * The login command for a session: the configured {@code setting} (path plus
+     * optional whitespace-separated args) when its executable exists in the
+     * rootfs, otherwise the value derived from the identity
+     * ({@link #deriveLoginShell}). Null only when nothing usable is present.
+     */
+    private static String resolveLoginShell(File root, String setting, String identity) {
+        if (setting != null) {
+            String s = setting.trim();
+            if (!s.isEmpty() && shellExists(root, s.split("\\s+")[0])) return s;
+        }
+        return deriveLoginShell(root, identity);
+    }
+
+    /** True when {@code path} is an absolute path that exists inside the rootfs. */
+    private static boolean shellExists(File root, String path) {
+        if (path == null) return false;
+        String p = path.trim();
+        if (p.isEmpty() || !p.startsWith("/")) return false;
+        File f = resolve(root, p);
+        return f != null && f.exists();
     }
 
     // --- tar extraction ---

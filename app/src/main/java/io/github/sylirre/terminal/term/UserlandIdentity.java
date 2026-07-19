@@ -114,6 +114,26 @@ public final class UserlandIdentity {
     }
 
     /**
+     * The absolute login shell of the user named by {@code identity} (its
+     * {@code /etc/passwd} shell field), or {@code null} when the user has no
+     * passwd entry or a non-absolute shell. The caller decides the fallback and
+     * whether to add login arguments.
+     */
+    public static String shellForIdentity(File rootfs, String identity) {
+        long uid;
+        try {
+            uid = Long.parseLong(resolveFakeId(rootfs, identity).split(":")[0]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        Passwd pw = findPasswd(rootfs, null, uid);
+        if (pw != null && pw.shell != null && pw.shell.startsWith("/")) {
+            return pw.shell;
+        }
+        return null;
+    }
+
+    /**
      * The name to advertise as the guest {@code USER}, kept in sync with the
      * identity: the {@code /etc/passwd} name for the resolved uid when one
      * exists, otherwise the uid as a decimal string (so USER stays consistent
@@ -138,12 +158,14 @@ public final class UserlandIdentity {
         final long uid;
         final long gid;
         final String home;
+        final String shell;
 
-        Passwd(String name, long uid, long gid, String home) {
+        Passwd(String name, long uid, long gid, String home, String shell) {
             this.name = name;
             this.uid = uid;
             this.gid = gid;
             this.home = home;
+            this.shell = shell;
         }
     }
 
@@ -168,7 +190,7 @@ public final class UserlandIdentity {
     private static Passwd parsePasswd(String[] f) {
         try {
             return new Passwd(f[0], Long.parseLong(f[2].trim()),
-                    Long.parseLong(f[3].trim()), f[5]);
+                    Long.parseLong(f[3].trim()), f[5], f.length > 6 ? f[6] : null);
         } catch (NumberFormatException e) {
             return null;
         }
