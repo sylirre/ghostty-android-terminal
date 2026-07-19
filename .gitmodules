@@ -1,0 +1,3 @@
+[submodule "native/arm64chroot"]
+	path = native/arm64chroot
+	url = https://github.com/sylirre/arm64emu-user

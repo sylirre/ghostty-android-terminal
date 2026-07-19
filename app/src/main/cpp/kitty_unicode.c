@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright 2026 Sylirre */
+/* Derived from Ghostty's src/terminal/kitty/graphics_unicode.zig (MIT). */
 #include "kitty_unicode.h"
 
 #include <math.h>

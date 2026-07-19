@@ -21,7 +21,7 @@
             android:paddingRight="4dp"
             android:background="@color/surface_1">
 
-            <sh.easycli.proot.ui.TabStripView
+            <io.github.sylirre.terminal.ui.TabStripView
                 android:id="@+id/tabs"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -66,27 +66,27 @@
             android:background="@color/divider" />
 
         <!-- Find bar; hidden until the search button is tapped. -->
-        <sh.easycli.proot.ui.SearchBarView
+        <io.github.sylirre.terminal.ui.SearchBarView
             android:id="@+id/search_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:visibility="gone" />
 
-        <sh.easycli.proot.ui.TerminalView
+        <io.github.sylirre.terminal.ui.TerminalView
             android:id="@+id/terminal"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
             android:scrollbars="vertical" />
 
-        <sh.easycli.proot.ui.ExtraKeysView
+        <io.github.sylirre.terminal.ui.ExtraKeysView
             android:id="@+id/extra_keys"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
     </LinearLayout>
 
-    <!-- One-time Debian rootfs extraction status; gone otherwise. -->
+    <!-- One-time userland rootfs extraction status; gone otherwise. -->
     <TextView
         android:id="@+id/install_status"
         android:layout_width="wrap_content"

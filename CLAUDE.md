@@ -5,10 +5,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Android terminal emulator backed by Ghostty's VT engine (`libghostty-vt`).
-Runs a Debian userland under PRoot (rootfs bundled as an optional,
-gitignored APK asset from `DebianRootfs/`) and/or `/system/bin/sh` with
-`PATH=/system/bin`; session tabs; extra-keys toolbar above the soft
-keyboard. minSdk 29, targetSdk 36, ABIs arm64-v8a + x86_64.
+Runs a Linux userland under `arm64chroot` — a bundled from-scratch AArch64
+Linux user-space emulator (qemu-user-style ISA emulation + proot-style rootfs
+containment, optional `--jit`) — so the aarch64 rootfs runs on both arm64-v8a
+(JIT arm64→arm64) and x86_64 (JIT arm64→x86_64) hosts. Rootfs bundled as an
+optional, gitignored APK asset from `DebianRootfs/`. Also `/system/bin/sh` with
+`PATH=/system/bin`; session tabs; extra-keys toolbar above the soft keyboard.
+minSdk 29, targetSdk 36, ABIs arm64-v8a + x86_64.
 
 Docs: [docs/architecture.md](docs/architecture.md) (design, data flow, key
 decisions), [docs/native-build.md](docs/native-build.md) (Ghostty
@@ -30,7 +33,7 @@ export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 
 # Single class or test:
 ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=sh.easycli.proot.EmulatorVtTest#lineWrap
+  -Pandroid.testInstrumentationRunnerArguments.class=io.github.sylirre.terminal.EmulatorVtTest#lineWrap
 
 scripts/setup-emulator.sh                     # one-time AVD creation (API 34 x86_64)
 scripts/run-emulator.sh                       # boot it headless; needs /dev/kvm
@@ -54,23 +57,22 @@ scripts/fetch-ghostty.sh && ZIG=/path/to/zig-0.15 scripts/build-ghostty-vt.sh
 Three layers; native code is limited to what Java cannot do.
 
 ```
-Java  app/src/main/java/sh/easycli/proot/
+Java  app/src/main/java/io/github/sylirre/terminal/
   term/  TerminalNative (JNI surface + shared constants)
          TerminalEmulator (owns the native handle, all calls synchronized)
          TerminalSession (PTY + shell pid + reader thread)
-         SessionCommand (execve command or PRoot argv + env + tab label)
-         DebianRootfs (rootfs asset → tar.xz install → PRoot command line)
+         SessionCommand (execve command or arm64chroot argv + env + tab label)
+         UserlandRootfs (rootfs asset → tar.xz install → arm64chroot command line)
          SessionManager (process singleton: sessions survive Activity recreation)
          ScreenSnapshot (flat viewport arrays for rendering)
   ui/    TerminalView (Canvas grid renderer + TYPE_NULL InputConnection)
          ExtraKeysView, TabStripView, MainActivity
 JNI   app/src/main/cpp/   → libterm.so (CMake, NDK)
-  pty_jni.c       openpt/fork + execve(sh) or proot_main(), TIOCSWINSZ, waitpid/kill
+  pty_jni.c       openpt/fork + execve(sh) or arm64chroot_main(), TIOCSWINSZ, waitpid/kill
   terminal_jni.c  libghostty-vt bindings, snapshot flattening, key encoding
-C     native/proot/       → PRoot (Termux fork) linked into libterm.so,
-                            plus the libproot-loader.so executable
-      native/talloc/      → talloc (PRoot dependency); local mods in
-                            native/proot/ANDROID.md
+C     native/arm64chroot/ → arm64chroot (AArch64 user-space emulator) linked
+                            into libterm.so; vendored from a sibling project,
+                            `main` renamed under ANDROID_JNI. No loader.
 Zig   native/ghostty-vt/  → libghostty-vt.a prebuilt per ABI + vendored headers
 ```
 
@@ -116,17 +118,18 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   full-screen/raw-key apps via `meta[14]` mode flags (alt-screen, DECCKM)
   and resets on any special key, Enter, or mode change — it's a best-effort
   mirror, not a source of truth (docs/architecture.md, "Keyboard").
-- **Nothing proot-shaped is ever exec'd.** W^X (targetSdk ≥ 29) forbids
-  exec under app data, so PRoot is linked into libterm.so and entered via
-  `proot_main()` in the fork()ed PTY child; only its loader — a static
-  executable packaged as `libproot-loader.so` so it lands in
-  nativeLibraryDir — is execve'd (path via `PROOT_LOADER`). Consequences:
-  `useLegacyPackaging true` must stay; `--sysvipc` must stay unused (its
-  helper re-execs /proc/self/exe = the Android runtime); PRoot exits via
-  `_exit()` (see native/proot/ANDROID.md).
-- **The loader links with `--image-base`, not upstream's `-Ttext`.** The
-  NDK adds `--no-rosegment`; combined with `-Ttext` lld emits a file
-  spanning the ~128 GiB to the loader address (this filled a disk once).
+- **Nothing is ever exec'd for the userland session.** W^X (targetSdk ≥ 29)
+  forbids exec under app data, and arm64chroot is a pure emulator — guest
+  `execve` is an in-process reload, so no host binary is ever exec'd. It is
+  linked into libterm.so and entered via `arm64chroot_main()` in the fork()ed
+  PTY child (`pty_jni.c`), which `_exit()`s its return. There is no loader and
+  no `PROOT_*` environment; the old loader packaging (`useLegacyPackaging`) is
+  gone. `--jit` is W^X-aware: its code cache tries RWX anon, falls back to a
+  `memfd` dual-map under SELinux `execmem`, then to the interpreter — safe to
+  leave on.
+- **arm64chroot's `--jit` is W^X-aware.** Its code cache tries RWX anon,
+  falls back to a `memfd` dual-map under SELinux `execmem`, then to the
+  interpreter — so `--jit` is safe to leave on across devices.
 
 ### Behavior constraints discovered the hard way
 
@@ -138,14 +141,16 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   bionic supports only from API 29.
 - `TERM=xterm-256color` (not `xterm-ghostty`): Android has no terminfo.
 - **Apps can't hard-link or create device nodes**: the rootfs installer
-  copies tar hard-link entries and skips device nodes; at runtime PRoot
-  runs with `--link2symlink` and binds the host /dev, /proc, /sys.
+  copies tar hard-link entries and skips device nodes; at runtime arm64chroot
+  runs with `--link2symlink` (hard links via tracked `.l2s.*` symlinks),
+  synthesizes a guest-correct `/proc`, and whitelists the host `/dev`, so only
+  `/sys` needs binding in (`--bind /sys:/sys`; `/dev` and `/proc` do not).
 
 ## Test conventions
 
 - Suites: `EmulatorVtTest` (deterministic VT/encoder through JNI, no
-  shell), `ShellSessionTest` (real `sh` over a PTY), `DebianSessionTest`
-  (bash under PRoot; skips itself when no rootfs asset is bundled),
+  shell), `ShellSessionTest` (real `sh` over a PTY), `UserlandSessionTest`
+  (bash under arm64chroot; skips itself when no rootfs asset is bundled),
   `TerminalUiTest` (ActivityScenario + Espresso; launches with
   `MainActivity.EXTRA_FORCE_SHELL` so it always tests plain sh).
 - Shell output is asynchronous: poll with `TestUtil.waitFor`, never fixed
@@ -154,7 +159,7 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   bytes in source files.
 - Toolbar keys at the right end of the strip must be scrolled into view
   before Espresso can click them (see `extraKeysTypeIntoShell`).
-- Assert on the app-id path suffix (`sh.easycli.proot/files`), not on
+- Assert on the app-id path suffix (`io.github.sylirre.terminal/files`), not on
   `getFilesDir()` verbatim — the kernel resolves cwd through the
   `/data/data` symlink.
 
@@ -163,6 +168,6 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 `.github/workflows/ci.yml`: a build job uploads the debug APK artifact; an
 emulator job (KVM, animations off) runs the full instrumented suite and
 uploads test reports on failure. Zig is not needed in CI — the Ghostty
-prebuilts are committed. The Debian rootfs tarballs are NOT in the repo,
-so CI builds without Debian assets and `DebianSessionTest` is skipped;
+prebuilts are committed. The userland rootfs tarballs are NOT in the repo,
+so CI builds without userland assets and `DebianSessionTest` is skipped;
 run it locally with the tarballs in `DebianRootfs/` (docs/testing.md).

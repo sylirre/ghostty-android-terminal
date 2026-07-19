@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright 2026 Sylirre */
 /*
  * JNI bindings to libghostty-vt for TerminalEmulator.
  *
@@ -143,7 +145,7 @@ static const GhosttyTerminalSizeFn size_fn = on_size;
 static const GhosttySysDecodePngFn decode_png_fn = term_decode_png;
 
 JNIEXPORT jlong JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalNew(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalNew(
     JNIEnv *env, jclass clazz, jint cols, jint rows, jint scrollbackLines) {
     (void)env; (void)clazz;
     TermCtx *c = calloc(1, sizeof(TermCtx));
@@ -221,7 +223,7 @@ fail:
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalFree(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalFree(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -259,7 +261,7 @@ static GhosttyColorRgb unpack_rgb(jint argb) {
  * override. Runs under the TerminalEmulator lock like every other call.
  */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSetColors(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSetColors(
     JNIEnv *env, jclass clazz, jlong h, jint fg, jint bg, jint cursor,
     jintArray jpalette) {
     (void)clazz;
@@ -289,7 +291,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSetColors(
  * lock like every other call.
  */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSetCursorStyle(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSetCursorStyle(
     JNIEnv *env, jclass clazz, jlong h, jint style, jboolean blink) {
     (void)env;
     (void)clazz;
@@ -306,7 +308,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSetCursorStyle(
  * written back to the PTY (e.g. DA/DSR responses), or null if none.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalFeed(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalFeed(
     JNIEnv *env, jclass clazz, jlong h, jbyteArray data, jint len) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -357,7 +359,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalFeed(
 
 /* Returns and clears accumulated EVENT_* bits. */
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalEvents(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalEvents(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -367,7 +369,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalEvents(
 }
 
 JNIEXPORT jstring JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalTitle(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalTitle(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -387,7 +389,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalTitle(
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalResize(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalResize(
     JNIEnv *env, jclass clazz, jlong h, jint cols, jint rows, jint cell_w,
     jint cell_h) {
     (void)env; (void)clazz;
@@ -402,7 +404,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalResize(
 
 /* mode: 0 = top, 1 = bottom, 2 = by delta rows (negative is up). */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalScroll(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalScroll(
     JNIEnv *env, jclass clazz, jlong h, jint mode, jint delta) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -420,7 +422,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalScroll(
 
 /* out: [0]=total rows, [1]=viewport offset, [2]=viewport length. */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalScrollbar(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalScrollbar(
     JNIEnv *env, jclass clazz, jlong h, jintArray jout) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -435,7 +437,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalScrollbar(
  * and Indic conjuncts (consonant-virama-consonant) — into one cell, which the
  * renderer shapes as a unit; terminalFeed re-asserts it after a RIS reset. */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSetGraphemeClustering(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSetGraphemeClustering(
     JNIEnv *env, jclass clazz, jlong h, jboolean enable) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -505,7 +507,7 @@ static jint pack_rgb(GhosttyColorRgb c) {
  * only meta is written; the caller must re-allocate and retry.
  */
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSnapshot(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
     JNIEnv *env, jclass clazz, jlong h, jintArray jcp, jintArray jfg,
     jintArray jbg, jintArray jattrs, jintArray jmeta, jintArray jgraphemes) {
     (void)clazz;
@@ -1001,7 +1003,7 @@ static jint run_emit(JNIEnv *env, jintArray jout, jint cap, jint idx,
  * and emits one record per run with the matching image fragment.
  */
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalGraphics(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalGraphics(
     JNIEnv *env, jclass clazz, jlong h, jintArray jout) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1155,7 +1157,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalGraphics(
  * and PNG-decoded by libghostty-vt, so the format is gray/gray+alpha/rgb/rgba.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalImage(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalImage(
     JNIEnv *env, jclass clazz, jlong h, jint image_id, jintArray jwh) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1271,7 +1273,7 @@ static GhosttyKey map_keycode(jint code) {
  * produces, or null. Returns null when the key encodes to nothing.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalEncodeKey(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalEncodeKey(
     JNIEnv *env, jclass clazz, jlong h, jint keycode, jint mods, jstring jutf8,
     jint unshifted_cp) {
     (void)clazz;
@@ -1326,7 +1328,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalEncodeKey(
  * bytes) and when MOTION wouldn't be reported in the current mode.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalEncodeMouse(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalEncodeMouse(
     JNIEnv *env, jclass clazz, jlong h, jint action, jint button, jfloat x,
     jfloat y, jboolean button_held) {
     (void)clazz;
@@ -1401,7 +1403,7 @@ static bool viewport_ref(TermCtx *c, jint x, jint y, GhosttyGridRef *out) {
  * only when the coordinates don't resolve.
  */
 JNIEXPORT jboolean JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSelectWord(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectWord(
     JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1429,7 +1431,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSelectWord(
  * flips the selection naturally.
  */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSelectionAnchor(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectionAnchor(
     JNIEnv *env, jclass clazz, jlong h, jint which) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1448,7 +1450,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSelectionAnchor(
 
 /* Moves the active selection's logical end to viewport cell (x, y). */
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSelectionDrag(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectionDrag(
     JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1463,7 +1465,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSelectionDrag(
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSelectionClear(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectionClear(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1477,7 +1479,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSelectionClear(
  * modified UTF-8 and would mangle non-BMP characters.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSelectionText(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectionText(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1505,7 +1507,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSelectionText(
  * is set, otherwise converts newlines to carriage returns.
  */
 JNIEXPORT jbyteArray JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalEncodePaste(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalEncodePaste(
     JNIEnv *env, jclass clazz, jlong h, jbyteArray data) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1857,7 +1859,7 @@ static void write_result(JNIEnv *env, jintArray jout, TermCtx *c) {
  * happen in this one locked call, so they can't race with PTY output.
  */
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSearchSet(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSearchSet(
     JNIEnv *env, jclass clazz, jlong h, jbyteArray jquery,
     jboolean caseSensitive, jintArray jout) {
     (void)clazz;
@@ -1893,7 +1895,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSearchSet(
  * navigation is cheap. Return value and out are as in terminalSearchSet.
  */
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSearchStep(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSearchStep(
     JNIEnv *env, jclass clazz, jlong h, jint dir, jintArray jout) {
     (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;
@@ -1918,7 +1920,7 @@ Java_sh_easycli_proot_term_TerminalNative_terminalSearchStep(
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_terminalSearchClear(
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSearchClear(
     JNIEnv *env, jclass clazz, jlong h) {
     (void)env; (void)clazz;
     TermCtx *c = (TermCtx *)(intptr_t)h;

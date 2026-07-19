@@ -1,26 +1,30 @@
-Terminal (sh.easycli.proot)
-Copyright (C) 2026 Sylirre
+Terminal (io.github.sylirre.terminal)
+Copyright 2026 Sylirre
 
-This program is free software: you can redistribute it and/or modify it
-under the terms of the GNU General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option)
-any later version. See the LICENSE file for the full text.
-
-The combined work is distributed under GPL-3.0-or-later because it
-statically links PRoot (GPL-2.0-or-later) and talloc (LGPL-3.0-or-later)
-into libterm.so. The "or later" clause of PRoot's license allows that code
-to be used under GPLv3, which is the version required to also combine the
-LGPLv3 talloc code.
+This program is licensed under the Apache License, Version 2.0. See the LICENSE
+file for the full text.
 
 This product bundles the following third-party components. Their original
 copyright notices and license texts are retained at the paths listed below
 and must be preserved in any redistribution.
 
 ================================================================================
+arm64chroot (AArch64 user-space emulator)
+
+First-party component that runs the Debian guest userland; an original
+implementation statically linked into libterm.so.
+
+Copyright 2026 Sylirre
+License: Apache-2.0 (SPDX: Apache-2.0)
+License text: native/arm64chroot/LICENSE
+Notices: native/arm64chroot/NOTICE
+
+================================================================================
 Ghostty (libghostty-vt)
 
 VT engine. Vendored source in third_party/ghostty/; the per-ABI prebuilt
 static archive (libghostty-vt.a) and headers live in native/ghostty-vt/.
+Portions of app/src/main/cpp/kitty_unicode.{c,h} are derived from Ghostty.
 
 Copyright (c) 2024 Mitchell Hashimoto, Ghostty contributors
 License: MIT (SPDX: MIT)
@@ -29,30 +33,25 @@ Pinned commit: 5659cef41f4f2f7a478d0800a11836fa17e64d66
 License text: third_party/ghostty/LICENSE
 
 ================================================================================
-PRoot (Termux fork)
+stb_image
 
-User-space chroot/bind via ptrace; linked into libterm.so and entered via
-proot_main(). Source in native/proot/.
+Single-header image decoder used by the Kitty graphics PNG path. Bundled in
+the APK at app/src/main/cpp/stb_image.h; its full license text is retained at
+the end of that file.
 
-Copyright holder: STMicroelectronics (Compilation Expertise Center)
-  and PRoot/Termux contributors
-License: GPL-2.0-or-later (SPDX: GPL-2.0-or-later)
-Upstream (fork): https://github.com/termux/proot at a7147b5 (v5.1.107.78)
-Original project: https://github.com/proot-me/PRoot
-License text: native/proot/COPYING
+Copyright (c) 2017 Sean Barrett
+License: MIT OR Public Domain (Unlicense) (SPDX: MIT OR Unlicense)
+Upstream: https://github.com/nothings/stb
 
 ================================================================================
-talloc
+Unicode Character Database
 
-Hierarchical memory allocator; a PRoot dependency, statically linked into
-libterm.so. Source in native/talloc/.
+app/src/main/cpp/case_fold.h holds case-folding data generated from the Unicode
+Character Database (Unicode 15.0.0) by scripts/gen-case-fold.py.
 
-Copyright (C) Andrew Tridgell 2004
-Copyright (C) Stefan Metzmacher 2006
-  (the Samba project)
-License: LGPL-3.0-or-later (SPDX: LGPL-3.0-or-later)
-Upstream: https://talloc.samba.org
-License text: native/talloc/LICENSE
+Copyright (c) 1991-present Unicode, Inc.
+License: Unicode License (permissive)
+Upstream: https://www.unicode.org/
 
 ================================================================================
 XZ for Java

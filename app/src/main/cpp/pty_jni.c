@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright 2026 Sylirre */
 /*
  * PTY creation and process control for TerminalSession.
  *
@@ -5,10 +7,12 @@
  * covers what Java can't: openpt/fork/exec, TIOCSWINSZ, waitpid, kill.
  *
  * Two spawn flavors share the PTY/fork setup: execve() for Android shells,
- * and proot_main() for Debian sessions. PRoot is linked into libterm.so and
- * entered directly in the fork()ed child because Android's W^X policy
- * (targetSdk >= 29) forbids execve() of anything under app data, so there
- * is no proot binary to exec (see native/proot/ANDROID.md).
+ * and arm64chroot_main() for userland sessions. arm64chroot (an AArch64
+ * user-space emulator) is linked into libterm.so and entered directly in the
+ * fork()ed child: Android's W^X policy (targetSdk >= 29) forbids execve() of
+ * anything under app data, and being a pure emulator it never execs a guest
+ * binary either (guest execve is an in-process reload), so there is no loader
+ * and nothing to exec (see native/arm64chroot).
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -23,8 +27,9 @@
 
 extern char **environ;
 
-/* PRoot's main(), renamed under PROOT_JNI (native/proot/src/cli/cli.c). */
-extern int proot_main(int argc, char *const argv[]);
+/* arm64chroot's main(), renamed under ANDROID_JNI (native/arm64chroot/
+ * src/main.c). Returns the guest exit code. */
+extern int arm64chroot_main(int argc, char **argv);
 
 static int throw_errno(JNIEnv *env, const char *what) {
     char msg[256];
@@ -49,7 +54,7 @@ static char **to_cstr_array(JNIEnv *env, jobjectArray arr) {
 
 /*
  * Opens a PTY and forks a child on it. If cmd is non-NULL the child
- * execve()s it; otherwise the child enters proot_main(argv) in-process.
+ * execve()s it; otherwise the child enters arm64chroot_main(argv) in-process.
  * Returns the master fd, or throws and returns -1.
  */
 static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
@@ -96,7 +101,8 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
         if (slave > STDERR_FILENO) close(slave);
         if (cwd) chdir(cwd);
         /* fork() copies the calling (ART) thread's signal mask and execve()
-         * does not reset it; both the shell and PRoot expect a clear one. */
+         * does not reset it; both the shell and the emulator expect a clear
+         * one (arm64chroot installs its own signal handlers). */
         sigset_t mask;
         sigemptyset(&mask);
         sigprocmask(SIG_SETMASK, &mask, NULL);
@@ -105,8 +111,12 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
         } else {
             int argc = 0;
             while (argv[argc] != NULL) argc++;
-            environ = envp; /* proot_main reads PROOT_* via getenv */
-            proot_main(argc, argv); /* never returns: _exit()s */
+            /* arm64chroot gives the guest a clean environment, inheriting only
+             * TERM/COLORTERM from this host environ; the rest of the guest env
+             * is set explicitly via -E flags in the argv (envp is just
+             * PATH=/system/bin). */
+            environ = envp;
+            _exit(arm64chroot_main(argc, argv)); /* returns the guest exit code */
         }
         _exit(127);
     }
@@ -124,7 +134,7 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
 }
 
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_ptyCreate(
+Java_io_github_sylirre_terminal_term_TerminalNative_ptyCreate(
     JNIEnv *env, jclass clazz, jstring jcmd, jobjectArray jargs,
     jobjectArray jenv, jstring jcwd, jint cols, jint rows, jint cell_w,
     jint cell_h, jintArray jpid) {
@@ -134,7 +144,7 @@ Java_sh_easycli_proot_term_TerminalNative_ptyCreate(
 }
 
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_ptyCreateProot(
+Java_io_github_sylirre_terminal_term_TerminalNative_ptyCreateEmulator(
     JNIEnv *env, jclass clazz, jobjectArray jargs, jobjectArray jenv,
     jstring jcwd, jint cols, jint rows, jint cell_w, jint cell_h,
     jintArray jpid) {
@@ -144,7 +154,7 @@ Java_sh_easycli_proot_term_TerminalNative_ptyCreateProot(
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_ptySetSize(
+Java_io_github_sylirre_terminal_term_TerminalNative_ptySetSize(
     JNIEnv *env, jclass clazz, jint fd, jint cols, jint rows, jint cell_w,
     jint cell_h) {
     (void)env; (void)clazz;
@@ -156,7 +166,7 @@ Java_sh_easycli_proot_term_TerminalNative_ptySetSize(
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_ptyHangupForeground(
+Java_io_github_sylirre_terminal_term_TerminalNative_ptyHangupForeground(
     JNIEnv *env, jclass clazz, jint fd, jint fallback_pid) {
     (void)env; (void)clazz;
 
@@ -181,7 +191,7 @@ Java_sh_easycli_proot_term_TerminalNative_ptyHangupForeground(
 
 /* Blocks until the child exits. Returns exit code, or -signal if killed. */
 JNIEXPORT jint JNICALL
-Java_sh_easycli_proot_term_TerminalNative_processWaitFor(
+Java_io_github_sylirre_terminal_term_TerminalNative_processWaitFor(
     JNIEnv *env, jclass clazz, jint pid) {
     (void)env; (void)clazz;
     int status;
@@ -194,7 +204,7 @@ Java_sh_easycli_proot_term_TerminalNative_processWaitFor(
 }
 
 JNIEXPORT void JNICALL
-Java_sh_easycli_proot_term_TerminalNative_processKill(
+Java_io_github_sylirre_terminal_term_TerminalNative_processKill(
     JNIEnv *env, jclass clazz, jint pid, jint sig) {
     (void)env; (void)clazz;
     kill((pid_t)pid, sig);

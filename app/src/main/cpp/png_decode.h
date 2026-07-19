@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright 2026 Sylirre */
 /*
  * PNG decoder shim for libghostty-vt's Kitty graphics protocol.
  *

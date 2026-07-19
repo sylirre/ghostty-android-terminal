@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Terminal</string>
+    <string name="app_name">A-SH</string>
 
     <!-- Settings button in the top bar -->
     <string name="settings_button_icon">⚙</string>
@@ -28,18 +28,18 @@
     <string name="settings_group_appearance">Appearance</string>
     <string name="settings_group_keyboard">Keyboard &amp; input</string>
     <string name="settings_group_terminal">Terminal</string>
-    <string name="settings_group_debian">Debian</string>
+    <string name="settings_group_userland">Userland</string>
 
     <!-- Settings: Keep screen on -->
     <string name="setting_keep_screen_on_title">Keep screen on</string>
-    <string name="setting_keep_screen_on_summary">Keep the display awake while the terminal is in the foreground.</string>
+    <string name="setting_keep_screen_on_summary">Do not let device to automatically turn off the display.</string>
 
     <!-- Settings: Immersive mode -->
     <string name="setting_immersive_mode_title">Immersive mode</string>
     <string name="setting_immersive_mode_summary">Hide the status and navigation bars while using the terminal. Swipe from an edge to reveal them temporarily.</string>
 
     <!-- Settings: Rich keyboard -->
-    <string name="setting_rich_keyboard_title">Rich keyboard input</string>
+    <string name="setting_rich_keyboard_title">Rich keyboard features</string>
     <string name="setting_rich_keyboard_summary">Enable suggestions, autocorrect and swipe typing at the shell prompt. Falls back to raw keys inside full-screen apps.</string>
 
     <!-- Settings: Grapheme clustering -->
@@ -48,22 +48,22 @@
 
     <!-- Settings: Smooth scrolling -->
     <string name="setting_smooth_scroll_title">Smooth scrolling</string>
-    <string name="setting_smooth_scroll_summary">Scroll the history pixel-by-pixel instead of one whole line at a time. Has no effect inside full-screen apps (vim, less) which have no scrollback.</string>
+    <string name="setting_smooth_scroll_summary">Scroll the history pixel-by-pixel instead of one whole line at a time. Has no effect inside full-screen apps (vim, less).</string>
 
     <!-- Settings: Mouse reporting -->
     <string name="setting_mouse_tracking_title">Mouse reporting</string>
     <string name="setting_mouse_tracking_summary">Send taps and swipes to programs that support the mouse: a tap is a left click, a swipe is wheel scroll (vertical and horizontal). Only active while a program enables mouse tracking.</string>
 
     <!-- Settings: Storage binding -->
-    <string name="setting_bind_storage_title">Bind external storage</string>
-    <string name="setting_bind_storage_summary">Bind Android shared storage into newly opened Debian sessions as /mnt/shared, with standard folders under /mnt.</string>
-    <string name="storage_binding_enabled">Storage binding enabled for new Debian sessions</string>
-    <string name="storage_permission_denied">Storage permission is required to bind shared storage.</string>
+    <string name="setting_bind_storage_title">Bind device storage</string>
+    <string name="setting_bind_storage_summary">Bind Android shared storage directories under /mnt. Applicable only to userland sessions.</string>
+    <string name="storage_binding_enabled">Storage binding enabled for new sessions</string>
+    <string name="storage_permission_denied">Storage permission is required.</string>
     <string name="storage_permission_settings_unavailable">Storage permission settings are not available on this device.</string>
 
     <!-- Settings: Session close behavior -->
     <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
-    <string name="setting_terminate_processes_summary">When closing a Debian tab, ask PRoot to kill all guest processes. Turn off before opening a tab to let detached daemons survive session hangup.</string>
+    <string name="setting_terminate_processes_summary">Processes in session that is being closed will receive the kill signal.</string>
 
     <!-- Settings: Terminal bell -->
     <string name="setting_terminal_bell_title">Terminal bell</string>
@@ -105,9 +105,9 @@
 
     <!-- Settings: Text margins -->
     <string name="setting_text_margin_left_title">Left text margin</string>
-    <string name="setting_text_margin_left_summary">Gap between the left screen edge and terminal text. Useful when the screen edge is hidden behind the device case.</string>
+    <string name="setting_text_margin_left_summary">Gap between the left screen edge and terminal text.</string>
     <string name="setting_text_margin_right_title">Right text margin</string>
-    <string name="setting_text_margin_right_summary">Gap between terminal text and the right screen edge. Useful when the screen edge is hidden behind the device case.</string>
+    <string name="setting_text_margin_right_summary">Gap between terminal text and the right screen edge.</string>
     <string-array name="text_margin_option_labels">
         <item>None</item>
         <item>4 dp</item>
@@ -127,7 +127,7 @@
 
     <!-- Settings: Terminal theme -->
     <string name="setting_theme_title">Terminal theme</string>
-    <string name="setting_theme_summary">Colors, wallpaper, cursor, and font files for the terminal.</string>
+    <string name="setting_theme_summary">Fonts, colors, cursor shape and wallpaper for the terminal.</string>
 
     <!-- Theme editor -->
     <string name="theme_activity_title">Terminal theme</string>
@@ -198,42 +198,42 @@
         <item>Br. White</item>
     </string-array>
 
-    <!-- Settings: Debian -->
-    <string name="setting_proot_shell_title">Debian login shell</string>
-    <string name="setting_proot_shell_summary">Guest path of the shell PRoot starts as the login shell. Takes effect for sessions opened afterwards.</string>
-    <string name="setting_proot_shell_hint">/bin/bash</string>
+    <!-- Settings: Userland -->
+    <string name="setting_userland_shell_title">Userland login shell</string>
+    <string name="setting_userland_shell_summary">Absolute path to shell executable in userland. Takes effect only for new sessions.</string>
+    <string name="setting_userland_shell_hint">/bin/bash</string>
 
-    <!-- Settings: Debian backup & restore -->
-    <string name="setting_backup_title">Back up Debian</string>
-    <string name="setting_backup_summary">Save the Debian rootfs — all files, symlinks, and permissions — to a .tar.gz file.</string>
-    <string name="setting_restore_title">Restore Debian</string>
-    <string name="setting_restore_summary">Replace the Debian rootfs from a backup file. Closes all open sessions.</string>
-    <string name="restore_confirm_title">Restore Debian rootfs?</string>
-    <string name="restore_confirm_message">This replaces the current Debian rootfs with the contents of a backup file and closes all open sessions. Anything in the current rootfs that is not in the backup is lost.</string>
+    <!-- Settings: Userland backup & restore -->
+    <string name="setting_backup_title">Back up Userland</string>
+    <string name="setting_backup_summary">Save the environment as archive (tar.gz).</string>
+    <string name="setting_restore_title">Restore Userland</string>
+    <string name="setting_restore_summary">Restore the environment from archive. Closes all open sessions.</string>
+    <string name="restore_confirm_title">Restore Userland?</string>
+    <string name="restore_confirm_message">This replaces current environment with the contents of a backup archive and closes all open sessions. Be careful to prevent accidental data loss.</string>
     <string name="restore_confirm_choose">Choose file…</string>
-    <string name="backup_in_progress">Backing up Debian…</string>
-    <string name="backup_progress">Backing up Debian… %1$d%% (%2$d / %3$d MB)</string>
-    <string name="restore_in_progress">Restoring Debian…</string>
-    <string name="restore_progress">Restoring Debian… %1$d%% (%2$d / %3$d MB)</string>
+    <string name="backup_in_progress">Backing up Userland…</string>
+    <string name="backup_progress">Backing up Userland… %1$d%% (%2$d / %3$d MB)</string>
+    <string name="restore_in_progress">Restoring Userland…</string>
+    <string name="restore_progress">Restoring Userland… %1$d%% (%2$d / %3$d MB)</string>
     <string name="progress_cancelling">Cancelling…</string>
     <string name="backup_done">Backup complete</string>
     <string name="backup_cancelled">Backup cancelled; the partial file may remain.</string>
     <string name="backup_failed">Backup failed: %s</string>
     <string name="restore_done">Restore complete</string>
-    <string name="restore_no_shell">Restore complete, but /bin/bash was not found — this may not be a working Debian rootfs.</string>
-    <string name="restore_cancelled">Restore cancelled; the rootfs is unchanged.</string>
+    <string name="restore_no_shell">Restore complete, but shell was not found.</string>
+    <string name="restore_cancelled">Restore cancelled; the environment is unchanged.</string>
     <string name="restore_failed">Restore failed: %s</string>
     <string name="backup_no_picker">No app available to pick a file location.</string>
 
-    <!-- Debian install progress overlay -->
-    <string name="installing_debian">Installing Debian…</string>
-    <string name="installing_debian_progress">Installing Debian… %d MB</string>
+    <!-- Userland install progress overlay -->
+    <string name="installing_userland">Extracting Userland…</string>
+    <string name="installing_userland_progress">Extracting Userland… %d MB</string>
 
     <!-- Toasts -->
     <string name="toast_shell_start_failed">Failed to start shell: %s</string>
-    <string name="toast_debian_install_failed">Debian install failed: %s</string>
-    <string name="toast_debian_unavailable">Debian unavailable (%s); starting the Android shell instead.</string>
-    <string name="toast_debian_session_failed">Debian session failed to start; starting the Android shell instead.</string>
+    <string name="toast_userland_install_failed">Userland install failed: %s</string>
+    <string name="toast_userland_unavailable">Userland unavailable (%s); starting the Android shell instead.</string>
+    <string name="toast_userland_session_failed">Userland session failed to start; starting the Android shell instead.</string>
 
     <!-- Transient grid-size HUD shown while pinch-zooming (columns × rows) -->
     <string name="grid_size_overlay">%1$d×%2$d</string>

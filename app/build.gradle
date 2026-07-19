@@ -8,12 +8,12 @@ def versionPatch = 0
 def versionBuild = 0
 
 android {
-    namespace "sh.easycli.proot"
+    namespace "io.github.sylirre.terminal"
     compileSdk 36
     ndkVersion "28.2.13676358"
 
     defaultConfig {
-        applicationId "sh.easycli.proot"
+        applicationId "io.github.sylirre.terminal"
         // 29+: the Zig-built libghostty-vt.a uses ELF TLS, which bionic
         // only supports since API 29.
         minSdk 29
@@ -36,16 +36,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-    }
-
-    packaging {
-        jniLibs {
-            // Extract native libs to nativeLibraryDir: the PRoot loader
-            // (an executable named lib*.so to ride this pipeline) must be
-            // a real on-disk file for execve(); W^X forbids exec anywhere
-            // under app data.
-            useLegacyPackaging true
-        }
     }
 
     androidResources {

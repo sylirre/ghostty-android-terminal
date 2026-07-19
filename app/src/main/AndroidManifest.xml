@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- apt/curl/… inside the Debian guest run as the app's uid. -->
+    <!-- apt/curl/… inside the userland run as the app's uid. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Keep the process alive (and shells running) while backgrounded. -->
@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- One-time prompt to exempt the app from Doze battery optimization. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Optional storage bind mounts for Debian-under-PRoot sessions. -->
+    <!-- Optional storage bind mounts for userland sessions. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />

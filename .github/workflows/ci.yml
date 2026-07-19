@@ -12,7 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: actions/setup-java@v4
         with:
@@ -42,7 +44,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          # outputFileName renames this to Terminal_v<version>.apk
+          # outputFileName renames this to A-SH_v<version>.apk
           # (app/build.gradle), so match by glob rather than a fixed name.
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
@@ -52,7 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: actions/setup-java@v4
         with:

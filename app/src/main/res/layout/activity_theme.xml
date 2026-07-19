@@ -65,7 +65,7 @@
                 android:padding="8dp"
                 android:background="@drawable/bg_card">
 
-                <sh.easycli.proot.ui.ThemePreviewView
+                <io.github.sylirre.terminal.ui.ThemePreviewView
                     android:id="@+id/theme_preview"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />

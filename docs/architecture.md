@@ -2,9 +2,10 @@
 
 Terminal is a terminal emulator for Android built on the
 [Ghostty](https://github.com/ghostty-org/ghostty) VT engine (`libghostty-vt`).
-It runs a full Debian userland under [PRoot](https://proot-me.github.io/)
-(when a rootfs is bundled) or the stock `/system/bin/sh`, supports multiple
-sessions in tabs, and shows a special-key toolbar above the touch keyboard.
+It runs a full Linux distribution userland under `arm64chroot` — a bundled
+from-scratch AArch64 Linux user-space emulator — (when a rootfs is bundled)
+or the stock `/system/bin/sh`, supports multiple sessions in tabs, and shows
+a special-key toolbar above the touch keyboard.
 
 ## Layering
 
@@ -13,23 +14,21 @@ sessions in tabs, and shows a special-key toolbar above the touch keyboard.
 │ Java (UI + session management)                          │
 │  MainActivity ─ TabStripView ─ TerminalView ─ ExtraKeys │
 │  SessionManager ─ TerminalSession ─ TerminalEmulator    │
-│  DebianRootfs (rootfs install + PRoot command line)     │
+│  UserlandRootfs (rootfs install + arm64chroot command)  │
 ├──────────────────────── JNI ────────────────────────────┤
 │ libterm.so (C, built by NDK/CMake)                      │
 │  pty_jni.c      — PTY create/resize, fork + exec sh     │
-│                   or fork + proot_main() for Debian     │
+│                   or fork + arm64chroot_main()          │
 │  terminal_jni.c — bindings to libghostty-vt             │
-│  PRoot + talloc — linked in as static libraries         │
+│  arm64chroot    — AArch64 emulator, linked in static    │
 ├─────────────────────────────────────────────────────────┤
 │ libghostty-vt.a (Zig, prebuilt per ABI)                 │
 │  VT parser, screen state, render state, key encoder     │
 └─────────────────────────────────────────────────────────┘
-   + libproot-loader.so — a tiny static *executable* in
-     jniLibs clothing, exec'd by PRoot tracees
 ```
 
 Native code is limited to what Java cannot do: PTY syscalls, the Ghostty
-C API, and PRoot's ptrace machinery. Everything else (rendering, tabs,
+C API, and arm64chroot's emulator. Everything else (rendering, tabs,
 input, key toolbar, rootfs install) is Java.
 
 ## Native layer
@@ -72,49 +71,51 @@ Threading: libghostty-vt is not thread-safe. Java serializes all native
 calls per session with a single lock (`TerminalEmulator` monitor); the PTY
 reader thread feeds bytes, the UI thread takes snapshots.
 
-### Debian under PRoot
+### Linux userland under arm64chroot
 
-PRoot fakes a chroot with `ptrace`: it intercepts every syscall of its
-tracees and rewrites paths so the Debian rootfs (extracted to
-`filesDir/debian`) appears as `/`. The integration has three pieces, all
-shaped by Android's W^X rule (targetSdk ≥ 29 cannot `execve()` anything
-under app data):
+`arm64chroot` is a from-scratch AArch64 Linux user-space emulator: it
+**emulates the guest instruction set** (an interpreter, or a translating
+`--jit`) and rewrites guest paths so the Debian or other rootfs (extracted to
+`filesDir/userland`) appears as `/`. Unlike the PRoot it replaces it uses **no
+`ptrace` and no privilege**, and because it emulates the ISA it runs the
+**aarch64** rootfs on both arm64-v8a (JIT arm64→arm64) and x86_64 (JIT
+arm64→x86_64) hosts. The integration:
 
-1. **PRoot is linked into `libterm.so`** (vendored Termux fork,
-   `native/proot/`; its `main()` becomes `proot_main()` under
-   `#ifdef PROOT_JNI`). There is no proot binary to exec — the fork()ed
-   PTY child calls `proot_main()` directly and becomes the tracer. Because
-   that child never execs, PRoot's exits are `_exit()` (not `exit()`) so
-   atexit handlers and DSO destructors inherited from the Android runtime
-   never run. See `native/proot/ANDROID.md`.
-2. **The loader rides the jniLibs pipeline.** Tracees must exec a real
-   loader executable (it maps the guest ELF into the tracee image), and the
-   only exec-allowed app location is `nativeLibraryDir`. So the loader is
-   built as a static executable *named* `libproot-loader.so`, packaged as
-   if it were a library (`useLegacyPackaging true` forces extraction to
-   disk), and handed to PRoot via the `PROOT_LOADER` environment variable.
-   The upstream default — embed the loader and extract it to a temp file at
-   runtime — would die on W^X.
-3. **The rootfs is an optional APK asset.** `DebianRootfs` extracts
-   `debian_trixie_<arch>_rootfs.tar.xz` (bundled from `DebianRootfs/` at
-   the repo root when present; never committed) on first launch with a
-   minimal tar reader over `org.tukaani:xz`. Hard-link entries are copied
-   (apps cannot `link(2)`); device nodes are skipped (PRoot binds the host
-   `/dev`, `/proc`, `/sys`). At runtime `--link2symlink` translates guest
-   hard links and `-0` fakes uid 0, which keeps dpkg/apt working.
+1. **arm64chroot is linked into `libterm.so`** (vendored from a sibling
+   project into `native/arm64chroot/`; its `main()` becomes
+   `arm64chroot_main()` under `#ifdef ANDROID_JNI`). The fork()ed PTY
+   child calls it directly and `_exit()`s its return, so atexit handlers and
+   DSO destructors inherited from the Android runtime never run.
+2. **Nothing is exec'd — there is no loader.** arm64chroot is a pure
+   emulator: a guest `execve` is an *in-process ELF reload*, not a host
+   `execve`, so no host binary is ever run. That sidesteps Android's W^X rule
+   (targetSdk ≥ 29 cannot `execve()` under app data) with no loader trick at
+   all — the old `libproot-loader.so` / `useLegacyPackaging` machinery is
+   gone. The `--jit` code cache is W^X-aware: RWX anon → `memfd` dual-map under
+   SELinux `execmem` → interpreter fallback.
+3. **The rootfs is an optional APK asset.** `UserlandRootfs` extracts
+   `debian_trixie_aarch64_rootfs.tar.xz` (bundled from `DebianRootfs/` at the
+   repo root when present; never committed) on first launch with a minimal tar
+   reader over `org.tukaani:xz`. It is always the aarch64 rootfs — the x86_64
+   host runs it emulated. Hard-link entries are copied (apps cannot `link(2)`);
+   device nodes are skipped. At runtime `--link2symlink` translates guest hard
+   links and `--fake-id` fakes uid 0, which keeps dpkg/apt working; arm64chroot
+   synthesizes a guest-correct `/proc` and whitelists the host `/dev`, so only
+   `/sys` is bound in explicitly (`--bind /sys:/sys`).
 4. **The rootfs can be backed up and restored** (Settings → Back up /
-   Restore Debian). `RootfsBackup` walks the live tree with `lstat`/`readlink`
+   Restore Userland). `RootfsBackup` walks the live tree with `lstat`/`readlink`
    and streams it to a user-chosen file (SAF) as a gzip-compressed,
    GNU-tar-dialect archive preserving file bytes, directory layout, symlink
    targets, and mode bits (sticky/setuid included). Guest hard links — which
-   `--link2symlink` stores as symlinks to `.proot.l2s.*` intermediates carrying
-   absolute host paths — are **inlined**: each is emitted as a plain regular
-   file holding the backing content (the proot-distro approach), and the raw
-   `.proot.l2s.*` entries are dropped, so the archive is self-contained and
-   portable rather than a web of absolute symlinks that dangle on `tar xzf`. A
-   pre-pass (`ensureReadable`) first grants the owner the minimum bits to read
+   arm64chroot's `--link2symlink` stores as same-directory symlinks to a
+   `.l2s.<ino>` backing file (plus a `.l2s.<ino>.<count>` marker) — are
+   **inlined**: each is emitted as a plain regular file holding the backing
+   content (the proot-distro approach), and the raw `.l2s.*` entries are dropped,
+   so the archive is self-contained and portable rather than a web of symlinks
+   that dangle on `tar xzf`.
+   A pre-pass (`ensureReadable`) first grants the owner the minimum bits to read
    every entry so a deliberately unreadable file/dir isn't silently lost. The
-   format is the exact subset `DebianRootfs.extractTar` already reads, so restore
+   format is the exact subset `UserlandRootfs.extractTar` already reads, so restore
    reuses that reader: it extracts into `debian.tmp` and only the final atomic
    rename (`publish`) swaps it onto `debian`, leaving the existing rootfs intact
    if a restore fails or is cancelled. Restore also accepts foreign rootfs
@@ -131,9 +132,9 @@ under app data):
    tree still work). A corrupt/non-tar file fails extraction and leaves the old
    rootfs intact, but a structurally valid archive is installed *as given* — if
    its login shell (`/bin/bash`) is missing it's kept and the user is warned
-   rather than blocked, so custom/non-Debian images still install. (The trusted
+   rather than blocked, so custom images still install. (The trusted
    bundled-asset install skips the per-entry guard and the strip.) Restore tears
-   down all sessions first (no live PRoot may hold the tree being replaced) and
+   down all sessions first (no live emulator may hold the tree being replaced) and
    skips the install-time `writeGuestDefaults` so the archive is reproduced
    verbatim. Both directions drive a determinate
    progress bar: backup against a pre-pass `measure` of the payload bytes
@@ -141,12 +142,14 @@ under app data):
    counted on the raw stream *below* any decompression (`consumed / size`) since
    the uncompressed total isn't known until the read finishes.
 
-The session command is `proot --kill-on-exit --link2symlink -0 -r <rootfs>
--w /root -b /dev -b /proc -b /sys /usr/bin/env -i HOME=/root … /bin/bash
---login`; `env -i` keeps host/PROOT variables out of the guest. PRoot's
-`--sysvipc` is deliberately not used: its shm helper re-execs
-`/proc/self/exe`, which is the Android runtime (not proot) in this
-no-exec model.
+The session command is `arm64chroot --jit --fake-id --link2symlink
+--work-dir /root --bind /sys:/sys -E HOME=/root … <rootfs> /bin/bash --login`.
+The guest starts with a clean environment (only TERM/COLORTERM are inherited
+from the host), so the userland login env is set explicitly with `-E` flags
+instead of an `env -i` wrapper, and the shell runs directly. `--work-dir /root`
+lands the login shell in `/root`; it is added only when that directory exists,
+so a restored rootfs without it falls back to the fork()ed child's cwd (mapped
+into the guest when it lies inside the rootfs, else `/`).
 
 ## Java layer
 
@@ -155,9 +158,9 @@ no-exec model.
 | `TerminalNative` | `static native` declarations, `System.loadLibrary` |
 | `TerminalEmulator` | Owns the native terminal handle; feed/resize/snapshot/encode under one lock |
 | `ScreenSnapshot` | Reusable flat-array copy of the viewport + cursor for rendering |
-| `SessionCommand` | What to spawn: execve command or PRoot argv, env, cwd, tab label |
-| `DebianRootfs` | Rootfs asset detection + tar.xz install + atomic publish + PRoot command construction |
-| `RootfsBackup` | Streams the rootfs to/from a gzip-tar file (Settings backup/restore), reusing `DebianRootfs`'s tar reader/publish |
+| `SessionCommand` | What to spawn: execve command or arm64chroot argv, env, cwd, tab label |
+| `UserlandRootfs` | Rootfs asset detection + tar.xz install + atomic publish + arm64chroot command construction |
+| `RootfsBackup` | Streams the rootfs to/from a gzip-tar file (Settings backup/restore), reusing `UserlandRootfs`'s tar reader/publish |
 | `TerminalSession` | PTY fd + shell pid + reader thread; writes input; reports exit |
 | `SessionManager` | Process-wide session list; survives Activity recreation |
 | `TerminalView` | Canvas grid renderer, IME connection, scroll + pinch-zoom gestures |
@@ -424,11 +427,11 @@ alive. Sessions end when the process is killed (no foreground service —
 a deliberate scope cut, documented in the README). Closing the last tab
 finishes the activity.
 
-When a Debian rootfs is installed, new tabs default to Debian and
+When a userland rootfs is installed, new tabs default to userland and
 long-pressing `+` opens an Android `/system/bin/sh` tab (and vice versa
 when it isn't). On first launch with a bundled-but-uninstalled rootfs,
 `MainActivity` extracts it on a background thread behind a progress
-overlay, then opens the first Debian tab. `MainActivity.EXTRA_FORCE_SHELL`
+overlay, then opens the first userland tab. `MainActivity.EXTRA_FORCE_SHELL`
 pins the default to the Android shell — a test seam so UI tests don't
 depend on whether a rootfs is bundled.
 
@@ -436,18 +439,18 @@ The rootfs directory itself is the install marker: `install` extracts into a
 staging dir (`debian.tmp`) and renames it onto `debian/` only once complete,
 so `debian/` exists atomically and never names a half-written rootfs (a crash
 mid-extract leaves only the staging dir, discarded next time). There is no
-separate marker file. The Debian session type is gated on
-`DebianRootfs.isUsable`, not just `isInstalled`: the rootfs lives under
+separate marker file. The userland session type is gated on
+`UserlandRootfs.isUsable`, not just `isInstalled`: the rootfs lives under
 `filesDir`, which a session's own `rm -rf` (or another app) can gut, leaving
 the directory but no shell. `isUsable` re-checks that `/bin/bash` actually
-resolves, and `command()` refuses to spawn PRoot otherwise. Reinstalling is
+resolves, and `command()` refuses to spawn the emulator otherwise. Reinstalling is
 gated on `isInstalled`, not `isUsable`: a rootfs that is present but broken is
 deliberately *not* wiped and rebuilt — it may hold the user's data — so the
 app falls back to the Android shell and leaves it alone. Two guards keep a broken rootfs from
-taking the app down with it: a Debian `IOException` at spawn falls back to
-`/system/bin/sh`, and a Debian session that exits before the user ever
+taking the app down with it: a userland `IOException` at spawn falls back to
+`/system/bin/sh`, and a userland session that exits before the user ever
 typed into it (`TerminalSession.userInteracted`) as the last tab — i.e.
-PRoot/bash never came up — reopens as a shell rather than `finish()`ing the
+the emulator/bash never came up — reopens as a shell rather than `finish()`ing the
 activity. The signal is the user-interaction flag, not a timeout, so it
 doesn't misfire on a slow device or a fast quit.
 
@@ -469,20 +472,14 @@ doesn't misfire on a slow device or a fast quit.
   until the first keypress.
 - **No appcompat/material dependency.** All views are custom-drawn anyway;
   plain `android.app.Activity` keeps the dependency graph and build minimal.
-- **PRoot runs in a fork()ed child, never exec'd.** W^X leaves nowhere in
-  app data to exec a proot binary from, and shipping it as a fake jniLib
-  would still waste a copy — linking it into `libterm.so` and calling
-  `proot_main()` after `fork()` needs no exec at all. The child only uses
-  fork-safe machinery (bionic takes its allocator locks across fork), and
-  the tracees exec fresh images anyway.
-- **The loader links with `--image-base`, not upstream's `-Ttext`.** The
-  NDK toolchain passes `--no-rosegment`, which folds the ELF headers (at
-  the default low base) and `.text` (at the loader address) into a single
-  load segment; lld then emits a file spanning the ~128 GiB between them.
-  `--image-base` puts the entire image at the loader address: ~4 KiB file,
-  and no loader mappings down in ranges where non-PIE guests load.
+- **arm64chroot runs in a fork()ed child, never exec'd.** W^X leaves
+  nowhere in app data to exec from, and it is a pure emulator anyway (guest
+  `execve` is an in-process ELF reload), so linking it into `libterm.so` and
+  calling `arm64chroot_main()` after `fork()` needs no exec and no loader.
+  The child only uses fork-safe machinery, and the emulator installs its own
+  signal handlers after the fork.
 - **The rootfs is an optional asset, not a download.** Builds stay
-  hermetic and offline-testable; a missing tarball just disables Debian
+  hermetic and offline-testable; a missing tarball just disables userland
   (CI builds this way). The cost — a fatter APK — is acceptable for a
   development project. The tar reader is local code over `org.tukaani:xz`
   rather than commons-compress: the rootfs only needs files, dirs and

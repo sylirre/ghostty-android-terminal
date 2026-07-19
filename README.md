@@ -10,8 +10,8 @@ Features:
 - All or almost all features of Ghostty VT engine, including Kitty graphics
   protocol, etc
 - Fast terminal rendering
-- 2 session modes: Linux userland (Debian proot, default) and standard
-  Android `/system/bin/sh`
+- 2 session modes: Linux userland (Debian via the bundled arm64chroot
+  emulator, default) and standard Android `/system/bin/sh`
 - Pinch-zoom to change font size
 - Terminal text search
 - Userland backup/restore via tar archives
@@ -36,7 +36,7 @@ Some features will NOT be implemented:
 - On-boot automation like [Termux:Boot](https://github.com/termux/termux-boot)
 - Tasker and other automation apps integration
 - Camera, microphone and other hardware access
-- Chroot instead of proot for rooted devices
+- Real `chroot(2)` for rooted devices instead of the user-space emulator
 - AI and other external services integration
 
 ## Requirements
@@ -130,3 +130,12 @@ See [docs/testing.md](docs/testing.md).
 - [docs/native-build.md](docs/native-build.md) — how the Ghostty library is
   cross-compiled and how to upgrade it
 - [docs/testing.md](docs/testing.md) — test suites and how to run them
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
+
+The app bundles third-party components — Ghostty (MIT), stb_image
+(MIT / Public Domain), and XZ for Java (0BSD) — whose copyright notices and
+license texts are retained in [NOTICE](NOTICE) and must be preserved in any
+redistribution.
