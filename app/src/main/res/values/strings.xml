@@ -202,6 +202,20 @@
     <string name="setting_userland_shell_title">Userland login shell</string>
     <string name="setting_userland_shell_summary">Absolute path to shell executable in userland. Takes effect only for new sessions.</string>
     <string name="setting_userland_shell_hint">/bin/bash</string>
+    <string name="setting_userland_identity_title">User identity</string>
+    <string name="setting_userland_identity_summary">Identity for userland sessions as user, user:group, uid or uid:gid. Names are resolved from /etc/passwd and /etc/group. Blank means root (0:0). Takes effect only for new sessions.</string>
+    <string name="setting_userland_identity_hint">user:group or uid:gid</string>
+    <string name="setting_userland_home_title">Home directory</string>
+    <string name="setting_userland_home_summary">Absolute path used as HOME in userland. Set automatically from the configured user; blank derives it from /etc/passwd. Takes effect only for new sessions.</string>
+    <string name="setting_userland_home_hint">/root</string>
+    <string name="setting_userland_workdir_title">Working directory</string>
+    <string name="setting_userland_workdir_summary">Absolute path where new userland sessions start. Blank uses the user\'s home directory. Takes effect only for new sessions.</string>
+    <string name="setting_userland_workdir_hint">/root</string>
+    <string name="setting_userland_workdir_default">Home directory</string>
+    <string name="setting_userland_isolate_proc_title">Isolate /proc</string>
+    <string name="setting_userland_isolate_proc_summary">Give each userland session its own /proc. Disable to share the process view across sessions of the same environment (ps and top see each other). Takes effect only for new sessions.</string>
+    <string name="setting_userland_path_not_absolute">Path must be absolute (start with /).</string>
+    <string name="setting_userland_path_missing">Path does not exist in the userland environment.</string>
 
     <!-- Settings: Userland backup & restore -->
     <string name="setting_backup_title">Back up Userland</string>

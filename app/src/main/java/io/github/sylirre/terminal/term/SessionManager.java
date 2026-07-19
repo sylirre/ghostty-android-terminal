@@ -34,24 +34,17 @@ public final class SessionManager {
      *
      * @param userland Login shell under arm64chroot (rootfs must be
      *               installed) instead of /system/bin/sh.
-     * @param loginShell guest-absolute path of the login shell (e.g.
-     *                   {@code /bin/bash}); ignored when {@code userland} is false.
+     * @param userlandOptions arm64chroot inputs (login shell, identity, home,
+     *                   working directory, /proc isolation, storage binding);
+     *                   used only when {@code userland} is true.
      * @param scrollbackLines lines of history the new session keeps.
      */
     public TerminalSession create(Context context, int cols, int rows,
             int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean userland,
-            String loginShell, TerminalSession.Listener listener) throws IOException {
-        return create(context, cols, rows, cellWidthPx, cellHeightPx, scrollbackLines,
-                userland, loginShell, false, false, listener);
-    }
-
-    public TerminalSession create(Context context, int cols, int rows,
-            int cellWidthPx, int cellHeightPx, int scrollbackLines, boolean userland,
-            String loginShell, boolean bindExternalStorage,
-            boolean terminateProcessesOnExit,
+            UserlandOptions userlandOptions, boolean terminateProcessesOnExit,
             TerminalSession.Listener listener) throws IOException {
         SessionCommand command = userland
-                ? UserlandRootfs.command(context, loginShell, bindExternalStorage)
+                ? UserlandRootfs.command(context, userlandOptions)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
                         context.getCacheDir().getAbsolutePath());

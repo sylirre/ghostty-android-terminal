@@ -55,6 +55,7 @@ import io.github.sylirre.terminal.term.RootfsBackup;
 import io.github.sylirre.terminal.term.SessionManager;
 import io.github.sylirre.terminal.term.SessionService;
 import io.github.sylirre.terminal.term.TerminalSession;
+import io.github.sylirre.terminal.term.UserlandOptions;
 
 /**
  * Hosts the tab strip, terminal view, and extra-keys toolbar.
@@ -372,12 +373,15 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     private void createSession(boolean userland) {
         try {
-            boolean bindExternalStorage = storageBindingEnabledForNewSession();
+            UserlandOptions userlandOptions = new UserlandOptions(
+                    settings.userlandLoginShell(), storageBindingEnabledForNewSession(),
+                    settings.userlandIdentity(), settings.userlandHome(),
+                    settings.userlandWorkDir(), settings.userlandIsolateProc());
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),
-                    settings.scrollbackLines(), userland, settings.userlandLoginShell(),
-                    bindExternalStorage, settings.terminateProcessesOnExit(), this);
+                    settings.scrollbackLines(), userland, userlandOptions,
+                    settings.terminateProcessesOnExit(), this);
             switchTo(s);
             applyTheme(); // color the new session before any output arrives
             if (settings.touchKeyboard()) showKeyboard();

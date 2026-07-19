@@ -24,10 +24,13 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import io.github.sylirre.terminal.R;
+import io.github.sylirre.terminal.term.UserlandIdentity;
 import io.github.sylirre.terminal.term.UserlandRootfs;
 
 /**
@@ -216,6 +219,31 @@ public final class SettingsActivity extends Activity {
                 getString(R.string.setting_userland_shell_summary),
                 settings::userlandLoginShell,
                 this::showLoginShellDialog));
+        userland.add(new Setting.Action(
+                getString(R.string.setting_userland_identity_title),
+                getString(R.string.setting_userland_identity_summary),
+                settings::userlandIdentity,
+                this::showIdentityDialog));
+        userland.add(new Setting.Action(
+                getString(R.string.setting_userland_home_title),
+                getString(R.string.setting_userland_home_summary),
+                settings::userlandHome,
+                this::showHomeDialog));
+        userland.add(new Setting.Action(
+                getString(R.string.setting_userland_workdir_title),
+                getString(R.string.setting_userland_workdir_summary),
+                () -> {
+                    String w = settings.userlandWorkDir();
+                    return w.isEmpty()
+                            ? getString(R.string.setting_userland_workdir_default)
+                            : w;
+                },
+                this::showWorkDirDialog));
+        userland.add(new Setting.Toggle(
+                getString(R.string.setting_userland_isolate_proc_title),
+                getString(R.string.setting_userland_isolate_proc_summary),
+                settings::userlandIsolateProc,
+                settings::setUserlandIsolateProc));
         userland.add(new Setting.RequestToggle(
                 getString(R.string.setting_bind_storage_title),
                 getString(R.string.setting_bind_storage_summary),
@@ -319,14 +347,55 @@ public final class SettingsActivity extends Activity {
         }
     }
 
-    // --- Userland login shell ---
+    // --- Userland text settings (login shell, identity, home, working dir) ---
 
     private void showLoginShellDialog() {
+        showTextSettingDialog(R.string.setting_userland_shell_title,
+                R.string.setting_userland_shell_hint, settings.userlandLoginShell(),
+                shell -> {
+                    if (!shell.isEmpty()) settings.setUserlandLoginShell(shell);
+                });
+    }
+
+    private void showIdentityDialog() {
+        showTextSettingDialog(R.string.setting_userland_identity_title,
+                R.string.setting_userland_identity_hint, settings.userlandIdentity(),
+                id -> {
+                    settings.setUserlandIdentity(id);
+                    // Populate the home setting from the configured user's passwd
+                    // entry (the "home is set when identity is configured" rule).
+                    if (UserlandRootfs.isInstalled(this)) {
+                        String home = UserlandIdentity.homeForIdentity(
+                                UserlandRootfs.dir(this), id);
+                        settings.setUserlandHome(home != null ? home : "/");
+                    }
+                });
+    }
+
+    private void showHomeDialog() {
+        showTextSettingDialog(R.string.setting_userland_home_title,
+                R.string.setting_userland_home_hint, settings.userlandHome(),
+                home -> {
+                    if (isValidGuestDir(home)) settings.setUserlandHome(home);
+                });
+    }
+
+    private void showWorkDirDialog() {
+        showTextSettingDialog(R.string.setting_userland_workdir_title,
+                R.string.setting_userland_workdir_hint, settings.userlandWorkDir(),
+                dir -> {
+                    if (isValidGuestDir(dir)) settings.setUserlandWorkDir(dir);
+                });
+    }
+
+    /** Free-text editor shared by the userland string settings. */
+    private void showTextSettingDialog(int titleRes, int hintRes, String current,
+            Consumer<String> onAccept) {
         EditText input = new EditText(this);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         input.setSingleLine(true);
-        input.setHint(R.string.setting_userland_shell_hint);
-        input.setText(settings.userlandLoginShell());
+        input.setHint(hintRes);
+        input.setText(current);
 
         LinearLayout box = new LinearLayout(this);
         int p = Chrome.dp(this, R.dimen.space_5);
@@ -336,14 +405,38 @@ public final class SettingsActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
         new AlertDialog.Builder(this)
-                .setTitle(R.string.setting_userland_shell_title)
+                .setTitle(titleRes)
                 .setView(box)
-                .setPositiveButton(android.R.string.ok, (d, w) -> {
-                    String shell = input.getText().toString().trim();
-                    if (!shell.isEmpty()) settings.setUserlandLoginShell(shell);
-                })
+                .setPositiveButton(android.R.string.ok, (d, w) ->
+                        onAccept.accept(input.getText().toString().trim()))
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
+    }
+
+    /**
+     * Accepts an empty value (means "derive at spawn") or an absolute path that,
+     * when the rootfs is installed, names an existing directory inside it.
+     * Rejects a relative or missing path with a Toast — the same rule
+     * {@code UserlandRootfs} enforces at spawn time.
+     */
+    private boolean isValidGuestDir(String path) {
+        if (path.isEmpty()) return true;
+        if (!path.startsWith("/")) {
+            Toast.makeText(this, R.string.setting_userland_path_not_absolute,
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+        if (UserlandRootfs.isInstalled(this)) {
+            String rel = path.substring(1);
+            File target = rel.isEmpty()
+                    ? UserlandRootfs.dir(this) : new File(UserlandRootfs.dir(this), rel);
+            if (!target.isDirectory()) {
+                Toast.makeText(this, R.string.setting_userland_path_missing,
+                        Toast.LENGTH_LONG).show();
+                return false;
+            }
+        }
+        return true;
     }
 
     // --- Storage binding permission ---

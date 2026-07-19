@@ -200,61 +200,75 @@ public final class UserlandRootfs {
     }
 
     /**
-     * arm64chroot command for a login shell. Requires an installed rootfs;
-     * the emulator is linked into libterm.so, so there is no loader or
-     * external binary to locate.
+     * arm64chroot command for a login shell with the historical defaults
+     * ({@link UserlandOptions#defaults}). Requires an installed rootfs; the
+     * emulator is linked into libterm.so, so there is no loader or external
+     * binary to locate.
      *
      * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
      */
     public static SessionCommand command(Context ctx, String shell) throws IOException {
-        return command(ctx, shell, false);
+        return command(ctx, UserlandOptions.defaults(shell));
     }
 
     /**
-     * @param shell guest-absolute path to the login shell (e.g. {@code /bin/bash})
-     * @param bindExternalStorage when true, Android shared storage is bound
-     *                            under /mnt for this new session.
+     * arm64chroot command for a userland session. The raw settings in
+     * {@code opts} are resolved and validated against the installed rootfs here:
+     * the identity to a numeric {@code --fake-id} (see {@link UserlandIdentity}),
+     * and the home / working directory to existing guest-absolute paths.
      */
-    public static SessionCommand command(Context ctx, String shell,
-            boolean bindExternalStorage) throws IOException {
+    public static SessionCommand command(Context ctx, UserlandOptions opts)
+            throws IOException {
         if (!isInstalled(ctx)) throw new IOException("Userland rootfs not installed");
-        if (!hasShell(dir(ctx))) {
+        File root = dir(ctx);
+        if (!hasShell(root)) {
             // FIXME: non-bash shells are good to go too.
             throw new IOException("Userland rootfs is incomplete: /bin/bash is "
                     + "missing (was it deleted outside the app?)");
         }
+        String shell = opts.loginShell;
         String shellRel = shell.startsWith("/") ? shell.substring(1) : shell;
-        if (!new File(dir(ctx), shellRel).exists()) {
+        if (!new File(root, shellRel).exists()) {
             throw new IOException("Login shell " + shell + " not found in rootfs");
         }
         List<String> argv = new ArrayList<>();
         argv.add("arm64chroot");
         argv.add("--jit");           // native basic-block translation (W^X-safe)
-        argv.add("--fake-id");       // fake uid/gid 0: apt/dpkg insist on root
         argv.add("--link2symlink");  // apps can't hard-link; dpkg needs ln to work
-        // Land the guest in /root when present. --work-dir resolves inside the
-        // rootfs; a missing --work-dir is fatal, so guard it — a restored rootfs
-        // (RootfsBackup skips writeGuestDefaults) may lack /root, and then the
-        // host-cwd mapping below falls back to "/" as it did before -w existed.
-        if (new File(dir(ctx), "root").isDirectory()) {
-            argv.add("--work-dir");
-            argv.add("/root");
+        // Guest identity: --fake-id takes numeric uid:gid only, so the "User
+        // identity" setting is resolved against the rootfs passwd/group here.
+        // An empty/invalid/unresolvable value yields 0:0 (root), matching the
+        // historical default that apt/dpkg insist on.
+        argv.add("--fake-id");
+        argv.add(UserlandIdentity.resolveFakeId(root, opts.identity));
+        // /proc is isolated per session by default; sharing it (registry keyed
+        // by rootfs) lets ps/top across sessions of this rootfs see each other.
+        if (!opts.isolateProc) {
+            argv.add("--shared-proc");
         }
+        // Working directory: the configured path, else the configured user's
+        // home from /etc/passwd, else "/". guestDir validates existence, so
+        // --work-dir (fatal on a missing dir) is always safe to pass.
+        String workDir = resolveGuestDir(root, opts.workDir, opts.identity);
+        argv.add("--work-dir");
+        argv.add(workDir);
         // arm64chroot synthesizes /proc and whitelists /dev itself; /sys is the
         // one host tree it doesn't special-case, so bind it in like PRoot did.
         if (new File("/sys").isDirectory()) {
             argv.add("--bind");
             argv.add("/sys:/sys");
         }
-        if (bindExternalStorage) argv.addAll(StorageBindings.bindArgs(ctx));
+        if (opts.bindExternalStorage) argv.addAll(StorageBindings.bindArgs(ctx));
         // Guest environment via native -E: arm64chroot starts the guest with a
         // clean env (only TERM/COLORTERM are inherited from the host, and we
-        // override TERM here), so set the full login env explicitly.
-        // FIXME: need configurable user and other variables.
+        // override TERM here), so set the full login env explicitly. HOME comes
+        // from the "Home directory" setting; USER tracks the identity — the
+        // passwd name for the resolved uid, or the uid number when unlisted.
+        String home = resolveGuestDir(root, opts.home, opts.identity);
         argv.add("-E");
-        argv.add("HOME=/root");
+        argv.add("HOME=" + home);
         argv.add("-E");
-        argv.add("USER=root");
+        argv.add("USER=" + UserlandIdentity.userNameForIdentity(root, opts.identity));
         argv.add("-E");
         argv.add("TERM=xterm-256color");
         argv.add("-E");
@@ -262,16 +276,52 @@ public final class UserlandRootfs {
         argv.add("-E");
         argv.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
         // Positional rootfs, then the guest login shell, run directly.
-        argv.add(dir(ctx).getAbsolutePath());
+        argv.add(root.getAbsolutePath());
         argv.add(shell);
         argv.add("--login");
-        String[] env = {"PATH=/system/bin"};
-        // Host cwd for the fork()ed child: when /root exists the --work-dir above
-        // is authoritative; otherwise arm64chroot maps this host cwd into the
-        // guest when it lies inside the rootfs (else the guest starts at "/").
-        String cwd = new File(dir(ctx), "root").getAbsolutePath();
+        // Host env for the fork()ed child. TMPDIR gives arm64chroot's
+        // --shared-proc proctab a writable backing dir: Android has no /dev/shm
+        // or XDG_RUNTIME_DIR, so without it the shared /proc registry has
+        // nowhere to live (native/arm64chroot/src/proctab.c).
+        String[] env = {"PATH=/system/bin",
+                "TMPDIR=" + ctx.getFilesDir().getAbsolutePath()};
+        // Host cwd for the fork()ed child mirrors --work-dir inside the rootfs.
+        String workRel = workDir.equals("/") ? "" : workDir.substring(1);
+        String cwd = (workRel.isEmpty() ? root : new File(root, workRel))
+                .getAbsolutePath();
         return new SessionCommand(null, argv.toArray(new String[0]), env,
                 cwd, "deb", true);
+    }
+
+    /**
+     * Resolves a Home / Working-directory setting to an existing guest-absolute
+     * directory: the setting itself when valid, else the configured user's
+     * {@code /etc/passwd} home, else {@code "/"} (the rootfs root, always
+     * present). Guarantees a path that {@code --work-dir} and {@code HOME} can
+     * safely take.
+     */
+    private static String resolveGuestDir(File root, String setting, String identity) {
+        String dir = guestDir(root, setting);
+        if (dir == null) {
+            dir = guestDir(root, UserlandIdentity.homeForIdentity(root, identity));
+        }
+        return dir != null ? dir : "/";
+    }
+
+    /**
+     * Validates a guest-absolute directory path against the installed rootfs:
+     * returns it (trimmed) when it is absolute, free of {@code ".."} escapes,
+     * and names an existing directory inside the rootfs; otherwise {@code null}
+     * so the caller falls back to a derived default. A null/empty or relative
+     * path is rejected — only absolute paths within the rootfs are allowed.
+     */
+    private static String guestDir(File root, String path) {
+        if (path == null) return null;
+        String p = path.trim();
+        if (p.isEmpty() || !p.startsWith("/")) return null;
+        File target = resolve(root, p); // null on a ".." escape
+        if (target == null || !target.isDirectory()) return null;
+        return p;
     }
 
     // --- tar extraction ---

@@ -45,6 +45,10 @@ public final class AppSettings {
     private static final String KEY_TERMINAL_BELL_LEGACY = "terminal_bell";
     private static final String KEY_TERMINAL_BELL_MODE = "terminal_bell_mode";
     private static final String KEY_USERLAND_LOGIN_SHELL = "userland_shell";
+    private static final String KEY_USERLAND_IDENTITY = "userland_identity";
+    private static final String KEY_USERLAND_HOME = "userland_home";
+    private static final String KEY_USERLAND_WORK_DIR = "userland_work_dir";
+    private static final String KEY_USERLAND_ISOLATE_PROC = "userland_isolate_proc";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
     private static final String KEY_TERMINAL_BOLD_FONT_PATH = "terminal_bold_font_path";
@@ -394,6 +398,62 @@ public final class AppSettings {
 
     public void setUserlandLoginShell(String shell) {
         prefs.edit().putString(KEY_USERLAND_LOGIN_SHELL, shell.trim()).apply();
+    }
+
+    /**
+     * Raw "User identity" setting for userland sessions: {@code user},
+     * {@code user:group}, {@code uid} or {@code uid:gid}. Named components are
+     * resolved against the rootfs passwd/group when a session spawns (see
+     * {@code UserlandIdentity}); an empty or unresolvable value falls back to
+     * {@code 0:0} (root). Defaults to {@code 0:0}.
+     */
+    public String userlandIdentity() {
+        return prefs.getString(KEY_USERLAND_IDENTITY, "0:0");
+    }
+
+    public void setUserlandIdentity(String identity) {
+        prefs.edit().putString(KEY_USERLAND_IDENTITY, identity.trim()).apply();
+    }
+
+    /**
+     * Guest-absolute HOME for userland sessions (passed as {@code -E HOME=}).
+     * Populated from the configured user's {@code /etc/passwd} home when the
+     * identity is set; an empty value derives it at spawn time (falling back to
+     * {@code /}). Defaults to {@code /root}.
+     */
+    public String userlandHome() {
+        return prefs.getString(KEY_USERLAND_HOME, "/root");
+    }
+
+    public void setUserlandHome(String home) {
+        prefs.edit().putString(KEY_USERLAND_HOME, home.trim()).apply();
+    }
+
+    /**
+     * Guest-absolute working directory for userland sessions (passed as
+     * {@code --work-dir}). An empty value derives the configured user's home
+     * (falling back to {@code /}) at spawn time. Unlike {@link #userlandHome},
+     * it is not repopulated when the identity changes. Defaults to empty.
+     */
+    public String userlandWorkDir() {
+        return prefs.getString(KEY_USERLAND_WORK_DIR, "");
+    }
+
+    public void setUserlandWorkDir(String workDir) {
+        prefs.edit().putString(KEY_USERLAND_WORK_DIR, workDir.trim()).apply();
+    }
+
+    /**
+     * When true (default), each userland session gets a private /proc; when
+     * false, {@code --shared-proc} shares the synthesized /proc across sessions
+     * of the same rootfs. Takes effect for new sessions.
+     */
+    public boolean userlandIsolateProc() {
+        return prefs.getBoolean(KEY_USERLAND_ISOLATE_PROC, true);
+    }
+
+    public void setUserlandIsolateProc(boolean isolate) {
+        prefs.edit().putBoolean(KEY_USERLAND_ISOLATE_PROC, isolate).apply();
     }
 
     /** Absolute path to the custom regular terminal font, or null for default monospace. */
