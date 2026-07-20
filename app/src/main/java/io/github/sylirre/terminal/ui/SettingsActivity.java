@@ -258,11 +258,6 @@ public final class SettingsActivity extends Activity {
                     return p.isEmpty() ? UserlandOptions.DEFAULT_PATH : p;
                 },
                 this::showPathDialog));
-        userland.add(new Setting.Toggle(
-                getString(R.string.setting_userland_isolate_proc_title),
-                getString(R.string.setting_userland_isolate_proc_summary),
-                settings::userlandIsolateProc,
-                settings::setUserlandIsolateProc));
         userland.add(new Setting.RequestToggle(
                 getString(R.string.setting_bind_storage_title),
                 getString(R.string.setting_bind_storage_summary),

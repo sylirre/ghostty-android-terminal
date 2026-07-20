@@ -219,8 +219,6 @@
     <string name="setting_userland_path_title">Executable path</string>
     <string name="setting_userland_path_summary">Colon-separated search path passed as PATH to userland sessions. Blank uses the default search path. Takes effect only for new sessions.</string>
     <string name="setting_userland_path_hint">/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin</string>
-    <string name="setting_userland_isolate_proc_title">Isolate /proc</string>
-    <string name="setting_userland_isolate_proc_summary">Give each userland session its own /proc. Disable to share the process view across sessions of the same environment (ps and top see each other). Takes effect only for new sessions.</string>
     <string name="setting_userland_path_not_absolute">Path must be absolute (start with /).</string>
     <string name="setting_userland_path_missing">Path does not exist in the userland environment.</string>
 

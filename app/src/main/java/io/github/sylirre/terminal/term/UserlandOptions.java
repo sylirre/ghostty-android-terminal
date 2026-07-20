@@ -32,12 +32,10 @@ public final class UserlandOptions {
     public final String locale;
     /** Raw "Executable path" setting passed as {@code PATH}; an empty value falls back to {@link #DEFAULT_PATH}. */
     public final String path;
-    /** When true, /proc is private to this session (no {@code --shared-proc}). */
-    public final boolean isolateProc;
 
     public UserlandOptions(String loginShell, boolean bindExternalStorage,
             String identity, String home, String workDir, String locale,
-            String path, boolean isolateProc) {
+            String path) {
         this.loginShell = loginShell;
         this.bindExternalStorage = bindExternalStorage;
         this.identity = identity;
@@ -45,7 +43,6 @@ public final class UserlandOptions {
         this.workDir = workDir;
         this.locale = locale;
         this.path = path;
-        this.isolateProc = isolateProc;
     }
 
     /**
@@ -54,10 +51,10 @@ public final class UserlandOptions {
      * command(Context, String)} overload and the tests — reproduces the historical
      * behavior: root identity ({@code 0:0}), {@code /root} home, a home-derived
      * working directory, the {@code C.UTF-8} locale, the {@link #DEFAULT_PATH}
-     * search path, isolated /proc, and no storage binding.
+     * search path, and no storage binding.
      */
     public static UserlandOptions defaults(String loginShell) {
         return new UserlandOptions(loginShell, false, "0:0", "/root", "",
-                "C.UTF-8", DEFAULT_PATH, true);
+                "C.UTF-8", DEFAULT_PATH);
     }
 }

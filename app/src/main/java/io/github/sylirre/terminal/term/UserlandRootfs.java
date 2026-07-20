@@ -243,11 +243,9 @@ public final class UserlandRootfs {
         // historical default that apt/dpkg insist on.
         argv.add("--fake-id");
         argv.add(UserlandIdentity.resolveFakeId(root, opts.identity));
-        // /proc is isolated per session by default; sharing it (registry keyed
-        // by rootfs) lets ps/top across sessions of this rootfs see each other.
-        if (!opts.isolateProc) {
-            argv.add("--shared-proc");
-        }
+        // /proc is always shared across sessions of this rootfs (registry keyed
+        // by rootfs), so ps/top see processes from every session.
+        argv.add("--shared-proc");
         // Working directory: the configured path, else the configured user's
         // home from /etc/passwd, else "/". guestDir validates existence, so
         // --work-dir (fatal on a missing dir) is always safe to pass.

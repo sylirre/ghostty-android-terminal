@@ -51,7 +51,6 @@ public final class AppSettings {
     private static final String KEY_USERLAND_WORK_DIR = "userland_work_dir";
     private static final String KEY_USERLAND_LOCALE = "userland_locale";
     private static final String KEY_USERLAND_PATH = "userland_path";
-    private static final String KEY_USERLAND_ISOLATE_PROC = "userland_isolate_proc";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
     private static final String KEY_TERMINAL_BOLD_FONT_PATH = "terminal_bold_font_path";
@@ -474,19 +473,6 @@ public final class AppSettings {
 
     public void setUserlandPath(String path) {
         prefs.edit().putString(KEY_USERLAND_PATH, path.trim()).apply();
-    }
-
-    /**
-     * When true (default), each userland session gets a private /proc; when
-     * false, {@code --shared-proc} shares the synthesized /proc across sessions
-     * of the same rootfs. Takes effect for new sessions.
-     */
-    public boolean userlandIsolateProc() {
-        return prefs.getBoolean(KEY_USERLAND_ISOLATE_PROC, true);
-    }
-
-    public void setUserlandIsolateProc(boolean isolate) {
-        prefs.edit().putBoolean(KEY_USERLAND_ISOLATE_PROC, isolate).apply();
     }
 
     /** Absolute path to the custom regular terminal font, or null for default monospace. */
