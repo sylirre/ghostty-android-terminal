@@ -287,9 +287,8 @@ public final class UserlandRootfs {
         argv.add(root.getAbsolutePath());
         for (String tok : shellCmd.trim().split("\\s+")) argv.add(tok);
         // Host env for the fork()ed child. TMPDIR gives arm64chroot's
-        // --shared-proc proctab a writable backing dir: Android has no /dev/shm
-        // or XDG_RUNTIME_DIR, so without it the shared /proc registry has
-        // nowhere to live (native/arm64chroot/src/proctab.c).
+        // a writable backing dir for shared memory images when memfd_create
+        // fails.
         String[] env = {"PATH=/system/bin",
                 "TMPDIR=" + ctx.getFilesDir().getAbsolutePath()};
         // Host cwd for the fork()ed child mirrors --work-dir inside the rootfs.
