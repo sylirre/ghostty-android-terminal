@@ -61,6 +61,13 @@
     <string name="storage_permission_denied">Storage permission is required.</string>
     <string name="storage_permission_settings_unavailable">Storage permission settings are not available on this device.</string>
 
+    <!-- Settings: Emulator JIT -->
+    <string name="setting_userland_jit_title">Use emulator JIT</string>
+    <string name="setting_userland_jit_summary">Translate hot guest code to native instructions for speed. Applicable only to userland sessions.</string>
+    <string name="setting_userland_jit_mb_title">JIT buffer size</string>
+    <string name="setting_userland_jit_mb_summary">Per-thread JIT code-cache size in MiB. Larger caches translate more code before flushing.</string>
+    <string name="setting_userland_jit_mb_value">%1$d MB</string>
+
     <!-- Settings: Session close behavior -->
     <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
     <string name="setting_terminate_processes_summary">Processes in session that is being closed will receive the kill signal.</string>

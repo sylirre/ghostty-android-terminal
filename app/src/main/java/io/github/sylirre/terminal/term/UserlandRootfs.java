@@ -235,7 +235,9 @@ public final class UserlandRootfs {
         }
         List<String> argv = new ArrayList<>();
         argv.add("arm64chroot");
-        argv.add("--jit");           // native basic-block translation (W^X-safe)
+        if (opts.jit) {
+            argv.add("--jit");       // native basic-block translation (W^X-safe)
+        }
         argv.add("--link2symlink");  // apps can't hard-link; dpkg needs ln to work
         // Guest identity: --fake-id takes numeric uid:gid only, so the "User
         // identity" setting is resolved against the rootfs passwd/group here.
@@ -287,17 +289,23 @@ public final class UserlandRootfs {
         String[] shellTokens = shellCmd.trim().split("\\s+");
         argv.add(root.getAbsolutePath());
         for (String tok : shellTokens) argv.add(tok);
-        // Host env for the fork()ed child. TMPDIR gives arm64chroot's
-        // a writable backing dir for shared memory images when memfd_create
-        // fails.
-        String[] env = {"PATH=/system/bin",
-                "TMPDIR=" + ctx.getFilesDir().getAbsolutePath()};
+        // Host env for the fork()ed child — this becomes arm64chroot's process
+        // environ (what getenv sees), NOT the guest env, which rides in the -E
+        // flags above. TMPDIR gives arm64chroot a writable backing dir for
+        // shared memory images when memfd_create fails. A64_JIT_MB sizes the
+        // JIT code cache and is read via getenv, so it only matters with --jit
+        // and is emitted only then.
+        List<String> env = new ArrayList<>();
+        env.add("PATH=/system/bin");
+        env.add("TMPDIR=" + ctx.getFilesDir().getAbsolutePath());
+        if (opts.jit) env.add("A64_JIT_MB=" + opts.jitBufferMb);
         // Host cwd for the fork()ed child mirrors --work-dir inside the rootfs.
         String workRel = workDir.equals("/") ? "" : workDir.substring(1);
         String cwd = (workRel.isEmpty() ? root : new File(root, workRel))
                 .getAbsolutePath();
         // Tab label from the login shell's basename (e.g. /bin/bash -> "bash").
-        return new SessionCommand(null, argv.toArray(new String[0]), env,
+        return new SessionCommand(null, argv.toArray(new String[0]),
+                env.toArray(new String[0]),
                 cwd, SessionCommand.labelForShell(shellTokens[0]), true);
     }
 

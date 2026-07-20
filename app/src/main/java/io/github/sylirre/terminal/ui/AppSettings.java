@@ -51,6 +51,8 @@ public final class AppSettings {
     private static final String KEY_USERLAND_WORK_DIR = "userland_work_dir";
     private static final String KEY_USERLAND_LOCALE = "userland_locale";
     private static final String KEY_USERLAND_PATH = "userland_path";
+    private static final String KEY_USERLAND_JIT = "userland_jit";
+    private static final String KEY_USERLAND_JIT_MB = "userland_jit_mb";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
     private static final String KEY_TERMINAL_BOLD_FONT_PATH = "terminal_bold_font_path";
@@ -65,6 +67,13 @@ public final class AppSettings {
 
     /** Default extra-keys cap vertical padding (dp); matches {@code R.dimen.key_pad_v}. */
     private static final int DEFAULT_EXTRA_KEYS_ROW_PADDING = 8;
+
+    /** JIT code-cache bounds (MiB), matching the "JIT buffer size" slider. */
+    private static final int USERLAND_JIT_MB_MIN = 4;
+    private static final int USERLAND_JIT_MB_MAX = 128;
+    private static final int USERLAND_JIT_MB_STEP = 4;
+    /** Default cache size; matches arm64chroot's own A64_JIT_MB default. */
+    private static final int DEFAULT_USERLAND_JIT_MB = 32;
 
     public static final int BELL_OFF = 0;
     public static final int BELL_HAPTIC = 1;
@@ -358,6 +367,37 @@ public final class AppSettings {
 
     public void setBindExternalStorage(boolean enabled) {
         prefs.edit().putBoolean(KEY_BIND_EXTERNAL_STORAGE, enabled).apply();
+    }
+
+    /**
+     * When true, userland sessions run arm64chroot with {@code --jit} (native
+     * block translation). Off falls back to the interpreter. Defaults to on.
+     */
+    public boolean userlandJitEnabled() {
+        return prefs.getBoolean(KEY_USERLAND_JIT, true);
+    }
+
+    public void setUserlandJitEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_USERLAND_JIT, enabled).apply();
+    }
+
+    /**
+     * Per-thread JIT code-cache size (MiB) passed to arm64chroot as
+     * {@code A64_JIT_MB}. Clamped to [{@value #USERLAND_JIT_MB_MIN},
+     * {@value #USERLAND_JIT_MB_MAX}] and snapped to a multiple of
+     * {@value #USERLAND_JIT_MB_STEP}, matching the slider's range and step.
+     */
+    public int userlandJitBufferMb() {
+        return clampJitMb(prefs.getInt(KEY_USERLAND_JIT_MB, DEFAULT_USERLAND_JIT_MB));
+    }
+
+    public void setUserlandJitBufferMb(int mb) {
+        prefs.edit().putInt(KEY_USERLAND_JIT_MB, clampJitMb(mb)).apply();
+    }
+
+    private static int clampJitMb(int mb) {
+        int clamped = Math.max(USERLAND_JIT_MB_MIN, Math.min(USERLAND_JIT_MB_MAX, mb));
+        return Math.round(clamped / (float) USERLAND_JIT_MB_STEP) * USERLAND_JIT_MB_STEP;
     }
 
     /**

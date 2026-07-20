@@ -263,6 +263,19 @@ public final class SettingsActivity extends Activity {
                 getString(R.string.setting_bind_storage_summary),
                 settings::bindExternalStorage,
                 this::setBindExternalStorageRequested));
+        userland.add(new Setting.Toggle(
+                getString(R.string.setting_userland_jit_title),
+                getString(R.string.setting_userland_jit_summary),
+                settings::userlandJitEnabled,
+                settings::setUserlandJitEnabled));
+        userland.add(new Setting.Slider(
+                getString(R.string.setting_userland_jit_mb_title),
+                getString(R.string.setting_userland_jit_mb_summary),
+                4, 128, 4,
+                settings::userlandJitBufferMb,
+                settings::setUserlandJitBufferMb,
+                mb -> getString(R.string.setting_userland_jit_mb_value, mb))
+                .enabledWhen(settings::userlandJitEnabled));
         userland.add(new Setting.Action(
                 getString(R.string.setting_backup_title),
                 getString(R.string.setting_backup_summary),

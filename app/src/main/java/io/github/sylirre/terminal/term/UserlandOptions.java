@@ -32,10 +32,14 @@ public final class UserlandOptions {
     public final String locale;
     /** Raw "Executable path" setting passed as {@code PATH}; an empty value falls back to {@link #DEFAULT_PATH}. */
     public final String path;
+    /** When true, arm64chroot runs with {@code --jit} (native block translation); off uses the interpreter. */
+    public final boolean jit;
+    /** JIT code-cache size (MiB), passed to arm64chroot as {@code A64_JIT_MB}; only used when {@link #jit} is true. */
+    public final int jitBufferMb;
 
     public UserlandOptions(String loginShell, boolean bindExternalStorage,
             String identity, String home, String workDir, String locale,
-            String path) {
+            String path, boolean jit, int jitBufferMb) {
         this.loginShell = loginShell;
         this.bindExternalStorage = bindExternalStorage;
         this.identity = identity;
@@ -43,6 +47,8 @@ public final class UserlandOptions {
         this.workDir = workDir;
         this.locale = locale;
         this.path = path;
+        this.jit = jit;
+        this.jitBufferMb = jitBufferMb;
     }
 
     /**
@@ -51,10 +57,10 @@ public final class UserlandOptions {
      * command(Context, String)} overload and the tests — reproduces the historical
      * behavior: root identity ({@code 0:0}), {@code /root} home, a home-derived
      * working directory, the {@code C.UTF-8} locale, the {@link #DEFAULT_PATH}
-     * search path, and no storage binding.
+     * search path, no storage binding, and JIT enabled with a 32 MiB cache.
      */
     public static UserlandOptions defaults(String loginShell) {
         return new UserlandOptions(loginShell, false, "0:0", "/root", "",
-                "C.UTF-8", DEFAULT_PATH);
+                "C.UTF-8", DEFAULT_PATH, true, 32);
     }
 }

@@ -379,7 +379,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     settings.userlandLoginShell(), storageBindingEnabledForNewSession(),
                     settings.userlandIdentity(), settings.userlandHome(),
                     settings.userlandWorkDir(), settings.userlandLocale(),
-                    settings.userlandPath());
+                    settings.userlandPath(),
+                    settings.userlandJitEnabled(), settings.userlandJitBufferMb());
             TerminalSession s = sessions.create(this,
                     terminal.gridCols(), terminal.gridRows(),
                     terminal.cellWidthPx(), terminal.cellHeightPx(),

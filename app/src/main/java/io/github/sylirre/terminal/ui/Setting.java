@@ -5,14 +5,20 @@ package io.github.sylirre.terminal.ui;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewTreeObserver;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+
+import io.github.sylirre.terminal.R;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
 import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -280,6 +286,85 @@ abstract class Setting {
         @Override
         void onRowClick(View control) {
             onClick.run();
+        }
+    }
+
+    /**
+     * An integer setting adjusted with a horizontal slider. The trailing
+     * control is a fixed-width {@link SeekBar} plus a live read-out label (e.g.
+     * "32 MB"). {@code min}, {@code max} and {@code step} bound the value; the
+     * SeekBar works in whole steps, so the value emitted through
+     * {@code onChange} is always {@code min + k*step}. The row body itself is
+     * inert — the bar owns its touch, so there is no {@code onRowClick}.
+     */
+    static final class Slider extends Setting {
+
+        private final int min;
+        private final int max;
+        private final int step;
+        private final IntSupplier value;
+        private final IntConsumer onChange;
+        private final IntFunction<String> valueLabel;
+
+        Slider(String title, String summary, int min, int max, int step,
+               IntSupplier value, IntConsumer onChange,
+               IntFunction<String> valueLabel) {
+            super(title, summary);
+            this.min = min;
+            this.max = max;
+            this.step = step;
+            this.value = value;
+            this.onChange = onChange;
+            this.valueLabel = valueLabel;
+        }
+
+        @Override
+        View createControl(Context context) {
+            float density = context.getResources().getDisplayMetrics().density;
+            int current = value.getAsInt();
+
+            TextView readout = new TextView(context);
+            readout.setText(valueLabel.apply(current));
+            readout.setTextColor(Chrome.color(context, R.color.text_secondary));
+            readout.setTextSize(14);
+            readout.setGravity(Gravity.END);
+            readout.setMinWidth(Math.round(52 * density));
+
+            SeekBar bar = new SeekBar(context);
+            // Seed progress before wiring the listener so this is silent.
+            bar.setMin(min / step);
+            bar.setMax(max / step);
+            bar.setProgress(current / step);
+            bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
+                    if (!fromUser) return;
+                    int v = progress * step;
+                    readout.setText(valueLabel.apply(v));
+                    onChange.accept(v);
+                }
+                @Override public void onStartTrackingTouch(SeekBar s) {}
+                @Override public void onStopTrackingTouch(SeekBar s) {}
+            });
+
+            // The trailing control slot is wrap_content, so pin the bar to a
+            // fixed width; a wrap_content SeekBar collapses to its thumb.
+            LinearLayout box = new LinearLayout(context) {
+                @Override
+                public void setEnabled(boolean enabled) {
+                    // Row.applyEnabled() disables the container it gets back;
+                    // forward that to the bar so a greyed row is non-draggable.
+                    super.setEnabled(enabled);
+                    bar.setEnabled(enabled);
+                }
+            };
+            box.setOrientation(LinearLayout.HORIZONTAL);
+            box.setGravity(Gravity.CENTER_VERTICAL);
+            box.addView(bar, new LinearLayout.LayoutParams(
+                    Math.round(120 * density),
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+            box.addView(readout);
+            return box;
         }
     }
 }
