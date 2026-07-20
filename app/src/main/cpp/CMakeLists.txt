@@ -12,41 +12,31 @@ set_target_properties(ghostty-vt PROPERTIES
 # --- arm64chroot: the AArch64 user-space emulator, linked into libterm.so and
 # entered via arm64chroot_main() in the fork()ed PTY child.
 #
-# Source list mirrors the Makefile's SRCS (native/arm64chroot/Makefile). Its
-# own target so the vendored third-party code compiles clear of libterm.so's
-# -Wall -Werror.
+# The source list is derived from the submodule's own Makefile SRCS rather than
+# duplicated here, so the two can't drift on a submodule bump. A file missing
+# from this list is a link-time undefined-symbol error (e.g. the sys_ipc.c
+# shm_* / sys_shm* symbols), not a compile error, so it slips past a local
+# build that happens to skip the link. We read the Makefile, pull every
+# `src/<file>.c` token out of its CORE/JIT/SRCS assignments (the only place
+# such tokens appear), and rebase them onto ${A64_DIR}. CMAKE_CONFIGURE_DEPENDS
+# re-runs configure whenever the Makefile changes so a bump is picked up
+# without a manual clean.
+#
+# Its own target so the vendored third-party code compiles clear of
+# libterm.so's -Wall -Werror.
 
-add_library(arm64chroot STATIC
-    ${A64_DIR}/core/cpu.c
-    ${A64_DIR}/core/decode.c
-    ${A64_DIR}/core/exec_fpsimd.c
-    ${A64_DIR}/core/sysreg.c
-    ${A64_DIR}/jit/jit.c
-    ${A64_DIR}/jit/frontend.c
-    ${A64_DIR}/jit/backend_x86_64.c
-    ${A64_DIR}/jit/backend_a64.c
-    ${A64_DIR}/mem.c
-    ${A64_DIR}/exception.c
-    ${A64_DIR}/loop.c
-    ${A64_DIR}/predecode.c
-    ${A64_DIR}/elf.c
-    ${A64_DIR}/path.c
-    ${A64_DIR}/signal.c
-    ${A64_DIR}/syscall.c
-    ${A64_DIR}/strace.c
-    ${A64_DIR}/sys_file.c
-    ${A64_DIR}/sys_mm.c
-    ${A64_DIR}/sys_proc.c
-    ${A64_DIR}/sys_sig.c
-    ${A64_DIR}/sys_time.c
-    ${A64_DIR}/sys_misc.c
-    ${A64_DIR}/sys_net.c
-    ${A64_DIR}/sys_netlink.c
-    ${A64_DIR}/sys_procfs.c
-    ${A64_DIR}/sys_ptrace.c
-    ${A64_DIR}/proctab.c
-    ${A64_DIR}/ptracetab.c
-    ${A64_DIR}/main.c)
+set_property(DIRECTORY APPEND PROPERTY
+    CMAKE_CONFIGURE_DEPENDS ${NATIVE_DIR}/arm64chroot/Makefile)
+file(READ ${NATIVE_DIR}/arm64chroot/Makefile _a64_makefile)
+string(REGEX MATCHALL "src/[A-Za-z0-9_/]+\\.c" _a64_srcs "${_a64_makefile}")
+list(REMOVE_DUPLICATES _a64_srcs)
+if(NOT _a64_srcs)
+    message(FATAL_ERROR
+        "arm64chroot: no sources parsed from native/arm64chroot/Makefile SRCS")
+endif()
+list(TRANSFORM _a64_srcs REPLACE "^src/" "${A64_DIR}/")
+
+add_library(arm64chroot STATIC ${_a64_srcs})
 
 target_include_directories(arm64chroot PRIVATE
     ${A64_DIR} ${A64_DIR}/core ${A64_DIR}/jit)
