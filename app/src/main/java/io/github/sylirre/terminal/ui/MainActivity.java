@@ -90,6 +90,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private TerminalView terminal;
     private TabStripView tabs;
     private SearchBarView searchBar;
+    private TextView searchButton;
     private ExtraKeysView extraKeys;
     private TextView installStatus;
     private TerminalSession current;
@@ -148,11 +149,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             @Override public void onClose() { hideSearch(); }
         });
         terminal.setSearchListener(searchBar);
-        findViewById(R.id.search_button).setOnClickListener(v -> {
+        searchButton = findViewById(R.id.search_button);
+        searchButton.setOnClickListener(v -> {
             if (searchBar.isOpen()) hideSearch();
-            else searchBar.show();
+            else showSearch();
         });
-        Glyphs.applyTo(findViewById(R.id.search_button));
+        Glyphs.applyTo(searchButton);
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -450,16 +452,38 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         if (imm != null) imm.showSoftInput(terminal, 0);
     }
 
+    /** Opens the find bar and highlights the search button. */
+    private void showSearch() {
+        searchBar.show();
+        setSearchButtonActive(true);
+    }
+
     /** Collapses the find bar and clears its match highlight. */
     private void hideSearch() {
         boolean wasOpen = searchBar.isOpen();
         searchBar.hide();
+        setSearchButtonActive(false);
         terminal.searchClose();
         // Always restore the keyboard when search was actually open; search
         // requires it and the user expects it back when dismissing the bar.
         // When called from switchTo() with a closed bar, skip it — the caller
         // handles keyboard visibility based on the touch-keyboard setting.
         if (wasOpen) showKeyboard();
+    }
+
+    /** Swaps the search button between the idle chip and the accent-fill active look. */
+    private void setSearchButtonActive(boolean active) {
+        if (active) {
+            float r = Chrome.dimen(this, R.dimen.radius_md);
+            searchButton.setBackground(Chrome.rounded(this, R.color.accent, r, 0));
+            searchButton.setTextColor(Chrome.color(this, R.color.on_accent));
+        } else {
+            searchButton.setBackground(getDrawable(R.drawable.bg_chip));
+            searchButton.setTextColor(Chrome.color(this, R.color.text_secondary));
+        }
+        // Glyphs bakes the icon tint from the current text color, so re-span
+        // the 🔍 to pick up the new color.
+        Glyphs.applyTo(searchButton);
     }
 
     @Override
