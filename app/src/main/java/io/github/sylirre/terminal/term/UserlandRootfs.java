@@ -284,8 +284,9 @@ public final class UserlandRootfs {
         // Positional rootfs, then the guest login command (shell + its args),
         // run directly. The login flag now rides in the configured value (e.g.
         // -l), so there is no separate --login here.
+        String[] shellTokens = shellCmd.trim().split("\\s+");
         argv.add(root.getAbsolutePath());
-        for (String tok : shellCmd.trim().split("\\s+")) argv.add(tok);
+        for (String tok : shellTokens) argv.add(tok);
         // Host env for the fork()ed child. TMPDIR gives arm64chroot's
         // a writable backing dir for shared memory images when memfd_create
         // fails.
@@ -295,8 +296,9 @@ public final class UserlandRootfs {
         String workRel = workDir.equals("/") ? "" : workDir.substring(1);
         String cwd = (workRel.isEmpty() ? root : new File(root, workRel))
                 .getAbsolutePath();
+        // Tab label from the login shell's basename (e.g. /bin/bash -> "bash").
         return new SessionCommand(null, argv.toArray(new String[0]), env,
-                cwd, "deb", true);
+                cwd, SessionCommand.labelForShell(shellTokens[0]), true);
     }
 
     /**

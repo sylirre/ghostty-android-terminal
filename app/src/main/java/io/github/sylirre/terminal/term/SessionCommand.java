@@ -48,6 +48,21 @@ public final class SessionCommand {
                 "ANDROID_DATA=/data",
         };
         return new SessionCommand("/system/bin/sh", new String[] {"sh"}, env,
-                homeDir, "sh", false);
+                homeDir, labelForShell("/system/bin/sh"), false);
+    }
+
+    /**
+     * Default tab label for a login shell: the basename of its executable path,
+     * e.g. {@code /system/bin/sh -> "sh"}, {@code /bin/bash -> "bash"}. Any
+     * arguments must already be stripped by the caller. Falls back to
+     * {@code "sh"} for a null/empty or slash-only path.
+     */
+    static String labelForShell(String shellPath) {
+        if (shellPath == null) return "sh";
+        String p = shellPath.trim();
+        int end = p.length();
+        while (end > 0 && p.charAt(end - 1) == '/') end--; // drop trailing slashes
+        String base = p.substring(p.lastIndexOf('/', end - 1) + 1, end);
+        return base.isEmpty() ? "sh" : base;
     }
 }
