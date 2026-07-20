@@ -278,8 +278,11 @@ public final class UserlandRootfs {
         String locale = opts.locale == null ? "" : opts.locale.trim();
         argv.add("-E");
         argv.add("LANG=" + (locale.isEmpty() ? "C.UTF-8" : locale));
+        // Guest PATH from the "Executable path" setting; a blank value falls
+        // back to the standard search path.
+        String path = opts.path == null ? "" : opts.path.trim();
         argv.add("-E");
-        argv.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
+        argv.add("PATH=" + (path.isEmpty() ? UserlandOptions.DEFAULT_PATH : path));
         // Positional rootfs, then the guest login command (shell + its args),
         // run directly. The login flag now rides in the configured value (e.g.
         // -l), so there is no separate --login here.

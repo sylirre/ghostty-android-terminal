@@ -31,6 +31,7 @@ import java.util.function.Consumer;
 
 import io.github.sylirre.terminal.R;
 import io.github.sylirre.terminal.term.UserlandIdentity;
+import io.github.sylirre.terminal.term.UserlandOptions;
 import io.github.sylirre.terminal.term.UserlandRootfs;
 
 /**
@@ -249,6 +250,14 @@ public final class SettingsActivity extends Activity {
                             : l;
                 },
                 this::showLocaleDialog));
+        userland.add(new Setting.Action(
+                getString(R.string.setting_userland_path_title),
+                getString(R.string.setting_userland_path_summary),
+                () -> {
+                    String p = settings.userlandPath();
+                    return p.isEmpty() ? UserlandOptions.DEFAULT_PATH : p;
+                },
+                this::showPathDialog));
         userland.add(new Setting.Toggle(
                 getString(R.string.setting_userland_isolate_proc_title),
                 getString(R.string.setting_userland_isolate_proc_summary),
@@ -357,7 +366,7 @@ public final class SettingsActivity extends Activity {
         }
     }
 
-    // --- Userland text settings (login shell, identity, home, working dir, locale) ---
+    // --- Userland text settings (login shell, identity, home, working dir, locale, path) ---
 
     private void showLoginShellDialog() {
         showTextSettingDialog(R.string.setting_userland_shell_title,
@@ -405,6 +414,12 @@ public final class SettingsActivity extends Activity {
         showTextSettingDialog(R.string.setting_userland_locale_title,
                 R.string.setting_userland_locale_hint, settings.userlandLocale(),
                 settings::setUserlandLocale);
+    }
+
+    private void showPathDialog() {
+        showTextSettingDialog(R.string.setting_userland_path_title,
+                R.string.setting_userland_path_hint, settings.userlandPath(),
+                settings::setUserlandPath);
     }
 
     /** Free-text editor shared by the userland string settings. */

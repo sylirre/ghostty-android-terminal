@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import io.github.sylirre.terminal.term.TerminalNative;
+import io.github.sylirre.terminal.term.UserlandOptions;
 
 /**
  * App-wide user settings, persisted in a named SharedPreferences file so
@@ -49,6 +50,7 @@ public final class AppSettings {
     private static final String KEY_USERLAND_HOME = "userland_home";
     private static final String KEY_USERLAND_WORK_DIR = "userland_work_dir";
     private static final String KEY_USERLAND_LOCALE = "userland_locale";
+    private static final String KEY_USERLAND_PATH = "userland_path";
     private static final String KEY_USERLAND_ISOLATE_PROC = "userland_isolate_proc";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
@@ -458,6 +460,20 @@ public final class AppSettings {
 
     public void setUserlandLocale(String locale) {
         prefs.edit().putString(KEY_USERLAND_LOCALE, locale.trim()).apply();
+    }
+
+    /**
+     * Guest {@code PATH} for userland sessions, passed as {@code -E PATH=}. A
+     * blank value falls back to {@link UserlandOptions#DEFAULT_PATH} at spawn
+     * time. Defaults to that same search path. Takes effect only for new
+     * sessions.
+     */
+    public String userlandPath() {
+        return prefs.getString(KEY_USERLAND_PATH, UserlandOptions.DEFAULT_PATH);
+    }
+
+    public void setUserlandPath(String path) {
+        prefs.edit().putString(KEY_USERLAND_PATH, path.trim()).apply();
     }
 
     /**
