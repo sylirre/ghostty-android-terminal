@@ -15,9 +15,12 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
+import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowInsets;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -318,11 +321,23 @@ public final class SettingsActivity extends Activity {
                 ((TextView) row.findViewById(R.id.setting_summary)).setText(setting.summary);
 
                 View control = setting.createControl(this);
-                if (control instanceof TextView) {
+                // A Switch is a TextView subclass, so exclude CompoundButtons here;
+                // this styling is only for the plain value labels (Choice / Action).
+                if (control instanceof TextView && !(control instanceof CompoundButton)) {
                     // Trailing value label (Choice / Action): a muted, compact read-out.
                     TextView label = (TextView) control;
                     label.setTextColor(Chrome.color(this, R.color.text_secondary));
                     label.setTextSize(14);
+                    // Keep it to a single, width-bounded line. Free-text values
+                    // (e.g. the default PATH) can be long; the trailing slot is
+                    // wrap_content and measured before the weight-1 title column,
+                    // so without a cap a long value grabs the whole row and the
+                    // title/summary collapse to nothing. Ellipsize instead — the
+                    // full value is still shown/editable in the row's dialog.
+                    label.setSingleLine(true);
+                    label.setEllipsize(TextUtils.TruncateAt.END);
+                    label.setGravity(Gravity.END);
+                    label.setMaxWidth(getResources().getDisplayMetrics().widthPixels / 2);
                 }
                 if (control != null) {
                     ((FrameLayout) row.findViewById(R.id.setting_control)).addView(control);
