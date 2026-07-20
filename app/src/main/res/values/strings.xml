@@ -212,6 +212,10 @@
     <string name="setting_userland_workdir_summary">Absolute path where new userland sessions start. Blank uses the user\'s home directory. Takes effect only for new sessions.</string>
     <string name="setting_userland_workdir_hint">/root</string>
     <string name="setting_userland_workdir_default">Home directory</string>
+    <string name="setting_userland_locale_title">Locale</string>
+    <string name="setting_userland_locale_summary">Locale passed as LANG to userland sessions (e.g. C.UTF-8, en_US.UTF-8). Blank uses C.UTF-8. Takes effect only for new sessions.</string>
+    <string name="setting_userland_locale_hint">C.UTF-8</string>
+    <string name="setting_userland_locale_default">C.UTF-8</string>
     <string name="setting_userland_isolate_proc_title">Isolate /proc</string>
     <string name="setting_userland_isolate_proc_summary">Give each userland session its own /proc. Disable to share the process view across sessions of the same environment (ps and top see each other). Takes effect only for new sessions.</string>
     <string name="setting_userland_path_not_absolute">Path must be absolute (start with /).</string>

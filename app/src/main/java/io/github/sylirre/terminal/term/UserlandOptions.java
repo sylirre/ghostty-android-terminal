@@ -24,16 +24,20 @@ public final class UserlandOptions {
     public final String home;
     /** Raw "Working directory" setting; an empty value derives from /etc/passwd. */
     public final String workDir;
+    /** Raw "Locale" setting passed as {@code LANG}; an empty value falls back to {@code C.UTF-8}. */
+    public final String locale;
     /** When true, /proc is private to this session (no {@code --shared-proc}). */
     public final boolean isolateProc;
 
     public UserlandOptions(String loginShell, boolean bindExternalStorage,
-            String identity, String home, String workDir, boolean isolateProc) {
+            String identity, String home, String workDir, String locale,
+            boolean isolateProc) {
         this.loginShell = loginShell;
         this.bindExternalStorage = bindExternalStorage;
         this.identity = identity;
         this.home = home;
         this.workDir = workDir;
+        this.locale = locale;
         this.isolateProc = isolateProc;
     }
 
@@ -42,9 +46,11 @@ public final class UserlandOptions {
      * that only has a login shell — the convenience {@link UserlandRootfs#command
      * command(Context, String)} overload and the tests — reproduces the historical
      * behavior: root identity ({@code 0:0}), {@code /root} home, a home-derived
-     * working directory, isolated /proc, and no storage binding.
+     * working directory, the {@code C.UTF-8} locale, isolated /proc, and no
+     * storage binding.
      */
     public static UserlandOptions defaults(String loginShell) {
-        return new UserlandOptions(loginShell, false, "0:0", "/root", "", true);
+        return new UserlandOptions(loginShell, false, "0:0", "/root", "",
+                "C.UTF-8", true);
     }
 }

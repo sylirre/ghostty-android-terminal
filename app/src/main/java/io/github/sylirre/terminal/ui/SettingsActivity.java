@@ -239,6 +239,16 @@ public final class SettingsActivity extends Activity {
                             : w;
                 },
                 this::showWorkDirDialog));
+        userland.add(new Setting.Action(
+                getString(R.string.setting_userland_locale_title),
+                getString(R.string.setting_userland_locale_summary),
+                () -> {
+                    String l = settings.userlandLocale();
+                    return l.isEmpty()
+                            ? getString(R.string.setting_userland_locale_default)
+                            : l;
+                },
+                this::showLocaleDialog));
         userland.add(new Setting.Toggle(
                 getString(R.string.setting_userland_isolate_proc_title),
                 getString(R.string.setting_userland_isolate_proc_summary),
@@ -347,7 +357,7 @@ public final class SettingsActivity extends Activity {
         }
     }
 
-    // --- Userland text settings (login shell, identity, home, working dir) ---
+    // --- Userland text settings (login shell, identity, home, working dir, locale) ---
 
     private void showLoginShellDialog() {
         showTextSettingDialog(R.string.setting_userland_shell_title,
@@ -389,6 +399,12 @@ public final class SettingsActivity extends Activity {
                 dir -> {
                     if (isValidGuestDir(dir)) settings.setUserlandWorkDir(dir);
                 });
+    }
+
+    private void showLocaleDialog() {
+        showTextSettingDialog(R.string.setting_userland_locale_title,
+                R.string.setting_userland_locale_hint, settings.userlandLocale(),
+                settings::setUserlandLocale);
     }
 
     /** Free-text editor shared by the userland string settings. */

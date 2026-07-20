@@ -273,8 +273,11 @@ public final class UserlandRootfs {
         argv.add("USER=" + UserlandIdentity.userNameForIdentity(root, opts.identity));
         argv.add("-E");
         argv.add("TERM=xterm-256color");
+        // Guest locale from the "Locale" setting; a blank value falls back to
+        // C.UTF-8, which the minimal rootfs always provides.
+        String locale = opts.locale == null ? "" : opts.locale.trim();
         argv.add("-E");
-        argv.add("LANG=C.UTF-8");
+        argv.add("LANG=" + (locale.isEmpty() ? "C.UTF-8" : locale));
         argv.add("-E");
         argv.add("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
         // Positional rootfs, then the guest login command (shell + its args),
