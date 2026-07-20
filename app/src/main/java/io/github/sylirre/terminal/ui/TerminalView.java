@@ -1537,10 +1537,16 @@ public class TerminalView extends View {
             // codepoints rendered as one glyph; draw it whole so the font can
             // shape it, which means keeping it out of batched runs like wides.
             String cluster = x < sc ? snap.graphemeAt(i) : null;
+            // Batched runs assume every glyph advances exactly cellWidth, which
+            // only holds for the primary monospace font's own (ASCII) glyphs. A
+            // non-ASCII codepoint may be drawn via font fallback at a different
+            // advance, so keep it out of the batch and pin it below.
+            boolean nonAscii = x < sc && cp > 0x7F;
             boolean breakRun = x == sc || cp == 0 || fg != runFg || attr != runAttr
                     // Wide glyphs advance two cells; keep them out of batched runs.
                     || (x < sc && (snap.attrs[i] & TerminalNative.ATTR_WIDE) != 0)
-                    || cluster != null;
+                    || cluster != null
+                    || nonAscii;
             if (breakRun && runStart >= 0 && runText.length() > 0) {
                 applyStyle(runFg, runAttr);
                 canvas.drawText(runText, 0, runText.length(),
@@ -1562,11 +1568,16 @@ public class TerminalView extends View {
                         textMarginLeft + (x + 2) * cellWidth, top);
                 continue;
             }
-            if (cluster != null) {
-                // Narrow cluster: one cell wide, drawn individually so its
-                // combining marks attach to the base instead of the next cell.
+            if (cluster != null || cp > 0x7F) {
+                // Narrow cluster or lone non-ASCII glyph: one cell wide, drawn
+                // individually and pinned to its grid column. A cluster's
+                // combining marks attach to the base instead of the next cell,
+                // and a glyph whose font advance differs from cellWidth (e.g. a
+                // block/box element resolved via font fallback) can't push later
+                // cells right the way it would inside a batched drawText.
                 applyStyle(fg, attr);
-                canvas.drawText(cluster, textMarginLeft + x * cellWidth,
+                String s = cluster != null ? cluster : new String(Character.toChars(cp));
+                canvas.drawText(s, textMarginLeft + x * cellWidth,
                         top + baseline, textPaint);
                 drawUnderline(canvas, fg, attr,
                         textMarginLeft + x * cellWidth,
