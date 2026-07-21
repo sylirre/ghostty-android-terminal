@@ -212,6 +212,17 @@ public final class TerminalEmulator implements AutoCloseable {
                 : new String(utf8, java.nio.charset.StandardCharsets.UTF_8);
     }
 
+    /**
+     * OSC 8 hyperlink URI at viewport cell (x, y), or null when the cell has
+     * no hyperlink (or after {@link #close}). Cheap enough to call per tap.
+     */
+    public synchronized String hyperlinkAt(int x, int y) {
+        if (handle == 0) return null;
+        byte[] utf8 = TerminalNative.terminalHyperlinkAt(handle, x, y);
+        return utf8 == null ? null
+                : new String(utf8, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     // --- Text search. The search state (query, matches, current index) lives
     // in the native context; set/step scan and highlight in a single locked
     // call, so they can't race with the reader thread, and the current match is

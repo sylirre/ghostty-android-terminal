@@ -54,6 +54,16 @@
     <string name="setting_mouse_tracking_title">Mouse reporting</string>
     <string name="setting_mouse_tracking_summary">Send taps and swipes to programs that support the mouse: a tap is a left click, a swipe is wheel scroll (vertical and horizontal). Only active while a program enables mouse tracking.</string>
 
+    <!-- Settings: Tap to open links -->
+    <string name="setting_tap_open_links_title">Tap to open links</string>
+    <string name="setting_tap_open_links_summary">Underline OSC 8 hyperlinks and open them on tap. A preview shows the full address first so you can check where it leads.</string>
+
+    <!-- Hyperlink preview dialog -->
+    <string name="link_dialog_title">Open link</string>
+    <string name="link_open">Open</string>
+    <string name="link_copied">Link copied</string>
+    <string name="link_open_failed">No app can open this link</string>
+
     <!-- Settings: Storage binding -->
     <string name="setting_bind_storage_title">Bind device storage</string>
     <string name="setting_bind_storage_summary">Bind Android shared storage directories under /mnt. Applicable only to userland sessions.</string>

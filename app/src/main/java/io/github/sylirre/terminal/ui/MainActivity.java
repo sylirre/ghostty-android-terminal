@@ -135,6 +135,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setTouchKeyboardEnabled(settings.touchKeyboard());
         terminal.setSmoothScroll(settings.smoothScroll());
         terminal.setMouseTracking(settings.mouseTracking());
+        terminal.setTapToOpenLinks(settings.tapToOpenLinks());
         applyTextMargins();
         findViewById(R.id.settings_button).setOnClickListener(this::openSettings);
         Glyphs.applyTo(findViewById(R.id.settings_button));
@@ -278,6 +279,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setRichKeyboard(settings.richKeyboard());
         terminal.setSmoothScroll(settings.smoothScroll());
         terminal.setMouseTracking(settings.mouseTracking());
+        terminal.setTapToOpenLinks(settings.tapToOpenLinks());
         applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
         extraKeys.setShowSwitch(settings.showExtraKeysSwitch());
         extraKeys.setRowEnabled(settings.extraKeysEnabled());

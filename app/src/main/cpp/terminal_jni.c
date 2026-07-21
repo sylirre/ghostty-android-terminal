@@ -462,6 +462,10 @@ static jint pack_rgb(GhosttyColorRgb c) {
    (single/double/curly/dotted/dashed). */
 #define ATTR_UL_SHIFT 5
 #define ATTR_UL_MASK (7 << ATTR_UL_SHIFT)
+/* OSC 8 hyperlink presence. Bits 0-7 are taken by the flags above and the
+   underline-shape field, so this lands at bit 8. The renderer underlines
+   these cells as a tap-to-open affordance. */
+#define ATTR_HYPERLINK 256
 
 /* Selection flag bits in meta[9], mirrored in ScreenSnapshot. */
 #define SEL_ACTIVE 1
@@ -673,16 +677,23 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
     while (ghostty_render_state_row_iterator_next(c->row_iter) && y < rows) {
         ghostty_render_state_row_get(
             c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &c->cells);
-        /* The row-level grapheme flag lets non-grapheme rows skip the per-cell
-         * cluster-length probe entirely — the overwhelmingly common case. */
+        /* The row-level grapheme and hyperlink flags let ordinary rows skip
+         * the matching per-cell probes entirely — the overwhelmingly common
+         * case. Both hang off the same raw row, so fetch it once. */
         bool row_has_graphemes = false;
-        if (!g_disabled) {
+        bool row_has_links = false;
+        {
             GhosttyRow raw_row = 0;
             if (ghostty_render_state_row_get(
                     c->row_iter, GHOSTTY_RENDER_STATE_ROW_DATA_RAW, &raw_row) ==
-                GHOSTTY_SUCCESS)
-                ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_GRAPHEME,
-                                &row_has_graphemes);
+                GHOSTTY_SUCCESS) {
+                if (!g_disabled)
+                    ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_GRAPHEME,
+                                    &row_has_graphemes);
+                /* May false-positive; the per-cell probe below confirms. */
+                ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_HYPERLINK,
+                                &row_has_links);
+            }
         }
         GhosttyRenderStateRowSelection rsel =
             GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
@@ -788,6 +799,12 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
             if (style.strikethrough) attr |= ATTR_STRIKE;
             if (wide == GHOSTTY_CELL_WIDE_WIDE) attr |= ATTR_WIDE;
             if (style.blink) attr |= ATTR_BLINK;
+            if (row_has_links) {
+                bool cell_link = false;
+                if (ghostty_cell_get(cell, GHOSTTY_CELL_DATA_HAS_HYPERLINK,
+                                     &cell_link) == GHOSTTY_SUCCESS && cell_link)
+                    attr |= ATTR_HYPERLINK;
+            }
 
             row_cp[x] = (jint)cp;
             row_fg[x] = fg;
@@ -1498,6 +1515,45 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectionText(
     if (out)
         (*env)->SetByteArrayRegion(env, out, 0, (jsize)len, (const jbyte *)buf);
     ghostty_free(NULL, buf, len);
+    return out;
+}
+
+/*
+ * Returns the OSC 8 hyperlink URI for viewport cell (x, y) as UTF-8 bytes,
+ * or null when the cell has no hyperlink or the coordinates don't resolve.
+ * Bytes, not a jstring: the URI is arbitrary UTF-8 and NewStringUTF expects
+ * modified UTF-8. The untracked ref is produced and consumed within this one
+ * call with no terminal mutation in between, satisfying its lifetime rules.
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalHyperlinkAt(
+    JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
+    (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttyGridRef ref;
+    if (!viewport_ref(c, x, y, &ref)) return NULL;
+
+    /* A NULL buffer probes the size: SUCCESS with len 0 means the cell has no
+       hyperlink; OUT_OF_SPACE reports the byte count needed. */
+    size_t len = 0;
+    if (ghostty_grid_ref_hyperlink_uri(&ref, NULL, 0, &len) !=
+            GHOSTTY_OUT_OF_SPACE ||
+        len == 0)
+        return NULL;
+
+    uint8_t *buf = malloc(len);
+    if (!buf) return NULL;
+    size_t got = 0;
+    jbyteArray out = NULL;
+    if (ghostty_grid_ref_hyperlink_uri(&ref, buf, len, &got) ==
+            GHOSTTY_SUCCESS &&
+        got > 0) {
+        out = (*env)->NewByteArray(env, (jsize)got);
+        if (out)
+            (*env)->SetByteArrayRegion(env, out, 0, (jsize)got,
+                                       (const jbyte *)buf);
+    }
+    free(buf);
     return out;
 }
 

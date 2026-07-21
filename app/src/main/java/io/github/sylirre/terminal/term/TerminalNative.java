@@ -29,6 +29,13 @@ public final class TerminalNative {
     public static final int ATTR_STRIKE = 8;
     public static final int ATTR_WIDE = 16;
     public static final int ATTR_BLINK = 32;
+    /**
+     * The cell belongs to an OSC 8 hyperlink. Bit 8, clear of the
+     * underline-shape field in bits 5-7; the renderer underlines these cells
+     * as a tap-to-open affordance and {@link #terminalHyperlinkAt} resolves
+     * the URI.
+     */
+    public static final int ATTR_HYPERLINK = 256;
 
     /**
      * Underline shape: a 3-bit field in the attrs int (bits 5-7) holding one
@@ -276,6 +283,12 @@ public final class TerminalNative {
 
     /** Selected text as UTF-8 (unwrapped, trimmed), or null if no selection. */
     public static native byte[] terminalSelectionText(long handle);
+
+    /**
+     * OSC 8 hyperlink URI (UTF-8) for viewport cell (x, y), or null when the
+     * cell has no hyperlink or the coordinates don't resolve to a cell.
+     */
+    public static native byte[] terminalHyperlinkAt(long handle, int x, int y);
 
     // --- Text search (state lives in the terminal; matches are screen ranges) ---
 

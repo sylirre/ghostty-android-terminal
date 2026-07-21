@@ -3,10 +3,13 @@
 
 package io.github.sylirre.terminal.ui;
 
+import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -17,6 +20,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.SystemClock;
 import android.text.Editable;
 import android.text.InputType;
@@ -36,6 +40,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.OverScroller;
+import android.widget.Toast;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -236,6 +241,13 @@ public class TerminalView extends View {
     private boolean mouseDragging;
     private int mouseDragCellX = -1, mouseDragCellY = -1;
 
+    // --- OSC 8 hyperlinks. When enabled, cells carrying a hyperlink are drawn
+    // underlined (the only tap affordance available without a hover) and a
+    // single tap on one previews the URI in a dialog before opening it. Off
+    // suppresses both the underline and the tap handling. Pushed in from the
+    // AppSettings toggle by MainActivity.
+    private boolean tapToOpenLinks = true;
+
     // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
     // to an OverScroller, whose decelerating position is sampled once per
     // animation frame and converted to whole-row scrollBy() calls (the engine
@@ -343,6 +355,11 @@ public class TerminalView extends View {
                 // rather than a request for the keyboard.
                 if (mouseReporting()) {
                     sendMouseClick(e.getX(), e.getY());
+                    return true;
+                }
+                // A tap that lands on an OSC 8 hyperlink opens it (with a
+                // preview) instead of raising the keyboard.
+                if (tapToOpenLinks && openLinkAt(e.getX(), e.getY())) {
                     return true;
                 }
                 if (touchKeyboardEnabled) {
@@ -560,6 +577,18 @@ public class TerminalView extends View {
      */
     public void setMouseTracking(boolean enabled) {
         mouseTrackingEnabled = enabled;
+    }
+
+    /**
+     * Master switch for OSC 8 hyperlinks. When on, hyperlink cells are drawn
+     * underlined and a tap on one previews and opens its URI; when off, links
+     * render like ordinary text and taps just raise the keyboard. Repaints so
+     * the underline affordance appears/disappears immediately.
+     */
+    public void setTapToOpenLinks(boolean enabled) {
+        if (tapToOpenLinks == enabled) return;
+        tapToOpenLinks = enabled;
+        invalidate();
     }
 
     /**
@@ -1096,6 +1125,59 @@ public class TerminalView extends View {
         if (text == null || text.isEmpty()) return;
         ClipboardManager cm = getContext().getSystemService(ClipboardManager.class);
         if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("terminal", text));
+    }
+
+    /**
+     * If viewport pixel (px, py) lands on an OSC 8 hyperlink cell, previews its
+     * URI and returns true; false when the cell carries no link (so the caller
+     * falls back to raising the keyboard). Mirrors startSelection's pixel→cell
+     * math but accounts for — rather than clears — the smooth-scroll sub-row
+     * offset, so tapping doesn't jolt the viewport.
+     */
+    private boolean openLinkAt(float px, float py) {
+        if (session == null || cellWidth <= 0 || cellHeight <= 0) return false;
+        int col = clampToGrid((px - textMarginLeft) / cellWidth, cols);
+        int row = clampToGrid((py - pixelScrollOffset) / cellHeight, rows);
+        String url = session.emulator.hyperlinkAt(col, row);
+        if (url == null) return false;
+        url = url.trim();
+        if (url.isEmpty()) return false;
+        showLinkDialog(url);
+        return true;
+    }
+
+    /**
+     * Previews a hyperlink URI and offers to open it in the system handler or
+     * copy it. Opening is deliberately a second, explicit tap: OSC 8 lets a
+     * program's visible link text differ from the real target, so the user
+     * sees the actual destination before anything launches.
+     */
+    private void showLinkDialog(final String url) {
+        new AlertDialog.Builder(getContext())
+                .setTitle(R.string.link_dialog_title)
+                .setMessage(url)
+                .setPositiveButton(R.string.link_open, (d, w) -> openUrl(url))
+                .setNeutralButton(android.R.string.copy, (d, w) -> {
+                    ClipboardManager cm =
+                            getContext().getSystemService(ClipboardManager.class);
+                    if (cm == null) return;
+                    cm.setPrimaryClip(ClipData.newPlainText("url", url));
+                    Toast.makeText(getContext(), R.string.link_copied,
+                            Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void openUrl(String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Toast.makeText(getContext(), R.string.link_open_failed,
+                    Toast.LENGTH_SHORT).show();
+        }
     }
 
     /**
@@ -1644,7 +1726,13 @@ public class TerminalView extends View {
     private void drawUnderline(Canvas canvas, int color, int attr,
             float left, float right, float top) {
         int style = (attr & TerminalNative.ATTR_UL_MASK) >> TerminalNative.ATTR_UL_SHIFT;
-        if (style == TerminalNative.UNDERLINE_NONE) return;
+        if (style == TerminalNative.UNDERLINE_NONE) {
+            // Underline OSC 8 hyperlinks that carry no SGR underline of their
+            // own — the only tap affordance available without a hover. A link
+            // that already sets an underline style keeps it (handled below).
+            if (!tapToOpenLinks || (attr & TerminalNative.ATTR_HYPERLINK) == 0) return;
+            style = TerminalNative.UNDERLINE_SINGLE;
+        }
 
         // Sit the line within the descent, below the glyph baseline.
         float descent = cellHeight - baseline;

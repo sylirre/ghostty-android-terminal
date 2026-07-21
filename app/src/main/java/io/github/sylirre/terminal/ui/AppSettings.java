@@ -40,6 +40,7 @@ public final class AppSettings {
     private static final String KEY_GRAPHEME_CLUSTERING = "grapheme_clustering";
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
+    private static final String KEY_TAP_OPEN_LINKS = "tap_open_links";
     private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
     private static final String KEY_TERMINATE_PROCESSES_ON_EXIT =
             "terminate_processes_on_exit";
@@ -354,6 +355,20 @@ public final class AppSettings {
 
     public void setMouseTracking(boolean enabled) {
         prefs.edit().putBoolean(KEY_MOUSE_TRACKING, enabled).apply();
+    }
+
+    /**
+     * When true (default), OSC 8 hyperlinks are underlined and a tap on one
+     * previews its address and opens it in the system handler. Off renders
+     * links like ordinary text and leaves taps to raise the keyboard. Applied
+     * to the view by {@code MainActivity}.
+     */
+    public boolean tapToOpenLinks() {
+        return prefs.getBoolean(KEY_TAP_OPEN_LINKS, true);
+    }
+
+    public void setTapToOpenLinks(boolean enabled) {
+        prefs.edit().putBoolean(KEY_TAP_OPEN_LINKS, enabled).apply();
     }
 
     /**

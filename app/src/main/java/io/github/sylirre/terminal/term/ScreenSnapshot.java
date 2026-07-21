@@ -155,6 +155,15 @@ public final class ScreenSnapshot {
         return graphemeMap.isEmpty() ? null : graphemeMap.get(i);
     }
 
+    /**
+     * True when the cell at index {@code i} belongs to an OSC 8 hyperlink —
+     * the renderer underlines it and a tap resolves the URI via
+     * {@link TerminalEmulator#hyperlinkAt}.
+     */
+    public boolean hasHyperlink(int i) {
+        return (attrs[i] & TerminalNative.ATTR_HYPERLINK) != 0;
+    }
+
     /** Row text with trailing blanks trimmed; empty cells become spaces. */
     public String rowText(int y) {
         StringBuilder sb = new StringBuilder(cols);

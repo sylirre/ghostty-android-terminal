@@ -376,6 +376,33 @@ newest output reachable, which is what a terminal user at the bottom of the
 buffer wants. The UI numbers the current match globally, so the count stays
 truthful even past the cap.
 
+### Hyperlinks (OSC 8)
+
+Programs mark text as a hyperlink with OSC 8 (`ESC ] 8 ; params ; URI ST`);
+libghostty-vt stores the URI on each spanned cell. Two paths surface it, both
+gated on the **Tap to open links** setting (`AppSettings.tapToOpenLinks` →
+`TerminalView.setTapToOpenLinks`, default on):
+
+- **Affordance.** The snapshot's per-cell probe reads
+  `GHOSTTY_CELL_DATA_HAS_HYPERLINK` behind the cheap per-row
+  `GHOSTTY_ROW_DATA_HYPERLINK` short-circuit (the same pattern as the grapheme
+  row flag), packing an `ATTR_HYPERLINK` bit (bit 8, clear of the underline
+  field) into the `attrs` array. `drawUnderline` underlines link cells that
+  carry no SGR underline of their own — the only "this is tappable" cue
+  available without a hover.
+
+- **Tap.** A single tap that lands on a link cell (mapped to a viewport cell
+  like the selection gesture) calls `TerminalEmulator.hyperlinkAt`, which
+  resolves the cell to a `GhosttyGridRef` (the `viewport_ref` helper reused
+  from selection) and reads its URI via `ghostty_grid_ref_hyperlink_uri`
+  (query-then-fill; bytes, not a jstring, to keep arbitrary UTF-8 intact). The
+  view then shows a preview dialog with the full destination and Open / Copy —
+  deliberately a second, explicit tap, because OSC 8 lets a program's visible
+  link text differ from the real target, and an accidental tap should not
+  silently launch an app. Opening is a guarded `ACTION_VIEW`. Taps fall through
+  to the keyboard when the cell has no link, and the mouse-reporting path still
+  wins first so a program that tracks the mouse gets the click.
+
 ### Keyboard and extra keys
 
 The view's `InputConnection` uses `TYPE_NULL` so soft keyboards deliver

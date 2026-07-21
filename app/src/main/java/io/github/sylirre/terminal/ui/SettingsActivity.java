@@ -199,6 +199,11 @@ public final class SettingsActivity extends Activity {
                 settings::mouseTracking,
                 settings::setMouseTracking));
         terminal.add(new Setting.Toggle(
+                getString(R.string.setting_tap_open_links_title),
+                getString(R.string.setting_tap_open_links_summary),
+                settings::tapToOpenLinks,
+                settings::setTapToOpenLinks));
+        terminal.add(new Setting.Toggle(
                 getString(R.string.setting_keep_screen_on_title),
                 getString(R.string.setting_keep_screen_on_summary),
                 settings::keepScreenOn,

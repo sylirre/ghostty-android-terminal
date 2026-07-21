@@ -210,6 +210,27 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void osc8Hyperlink() {
+        // OSC 8 opens a hyperlink for "LINK"; an empty OSC 8 closes it before
+        // " x" is written. ST is ESC \.
+        feed("\u001b]8;;https://example.com\u001b\\LINK\u001b]8;;\u001b\\ x");
+        ScreenSnapshot s = snapshot();
+        assertEquals("LINK x", s.rowText(0));
+        // The four link cells carry the hyperlink attr; the space and 'x' don't.
+        for (int x = 0; x < 4; x++) {
+            assertTrue("cell " + x + " should be a hyperlink", s.hasHyperlink(cell(x, 0)));
+            assertTrue((s.attrs[cell(x, 0)] & TerminalNative.ATTR_HYPERLINK) != 0);
+        }
+        assertFalse(s.hasHyperlink(cell(4, 0))); // space
+        assertFalse(s.hasHyperlink(cell(5, 0))); // 'x'
+        // The URI resolves at any link cell and nowhere else.
+        assertEquals("https://example.com", term.hyperlinkAt(0, 0));
+        assertEquals("https://example.com", term.hyperlinkAt(3, 0));
+        assertNull(term.hyperlinkAt(4, 0));
+        assertNull(term.hyperlinkAt(5, 0));
+    }
+
+    @Test
     public void themeColorsApply() {
         // A palette where ANSI red (index 1) is a recognizable color; the rest
         // are black. fg/bg/cursor are distinct so each meta slot is testable.
