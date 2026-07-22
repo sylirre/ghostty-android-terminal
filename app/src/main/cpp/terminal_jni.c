@@ -432,6 +432,65 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalScrollbar(
     (*env)->SetIntArrayRegion(env, jout, 0, 3, vals);
 }
 
+/* True when screen row y is a primary OSC 133 prompt line (not a
+ * continuation). Screen/history lookups walk the page list, so callers should
+ * stop at the first hit rather than scan the whole buffer eagerly. */
+static bool screen_row_is_prompt(TermCtx *c, uint32_t y) {
+    GhosttyPoint p = {
+        .tag = GHOSTTY_POINT_TAG_SCREEN,
+        .value.coordinate = {.x = 0, .y = y},
+    };
+    GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    if (ghostty_terminal_grid_ref(c->term, p, &ref) != GHOSTTY_SUCCESS)
+        return false;
+    GhosttyRow row = 0;
+    if (ghostty_grid_ref_row(&ref, &row) != GHOSTTY_SUCCESS) return false;
+    GhosttyRowSemanticPrompt sp = GHOSTTY_ROW_SEMANTIC_NONE;
+    ghostty_row_get(row, GHOSTTY_ROW_DATA_SEMANTIC_PROMPT, &sp);
+    return sp == GHOSTTY_ROW_SEMANTIC_PROMPT;
+}
+
+/*
+ * Scrolls the viewport to the nearest primary shell-prompt line (OSC 133) in
+ * the given direction: dir < 0 walks back to the previous prompt above the
+ * viewport top, dir > 0 to the next prompt below it. The target prompt lands at
+ * the top of the viewport (clamped to the scrollable range). Returns 1 if it
+ * moved, 0 when there is no prompt in that direction.
+ */
+JNIEXPORT jint JNICALL
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalPromptNav(
+    JNIEnv *env, jclass clazz, jlong h, jint dir) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttyTerminalScrollbar sb = {0};
+    ghostty_terminal_get(c->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &sb);
+    long total = (long)sb.total;
+    long top = (long)sb.offset;
+    long len = sb.len ? (long)sb.len : 1;
+    if (total == 0) return 0;
+
+    long found = -1;
+    if (dir < 0) {
+        for (long y = top - 1; y >= 0; y--)
+            if (screen_row_is_prompt(c, (uint32_t)y)) { found = y; break; }
+    } else {
+        for (long y = top + 1; y < total; y++)
+            if (screen_row_is_prompt(c, (uint32_t)y)) { found = y; break; }
+    }
+    if (found < 0) return 0;
+
+    long max_top = total - len;
+    if (max_top < 0) max_top = 0;
+    long target = found > max_top ? max_top : found;
+    long delta = target - top;
+    if (delta != 0) {
+        GhosttyTerminalScrollViewport sv = {.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA};
+        sv.value.delta = (intptr_t)delta;
+        ghostty_terminal_scroll_viewport(c->term, sv);
+    }
+    return 1;
+}
+
 /* Force-enables or disables DEC mode 2027 (grapheme clustering). When on, the
  * engine groups multi-codepoint grapheme clusters — combining marks, ZWJ emoji,
  * and Indic conjuncts (consonant-virama-consonant) — into one cell, which the
@@ -466,6 +525,11 @@ static jint pack_rgb(GhosttyColorRgb c) {
    underline-shape field, so this lands at bit 8. The renderer underlines
    these cells as a tap-to-open affordance. */
 #define ATTR_HYPERLINK 256
+/* The cell sits on a primary shell-prompt line (OSC 133 semantic prompt,
+   GHOSTTY_ROW_SEMANTIC_PROMPT). Set on every cell of such a row so the
+   renderer can draw a left-edge prompt mark; continuation lines don't get it.
+   Bit 9. */
+#define ATTR_PROMPT 512
 
 /* Selection flag bits in meta[9], mirrored in ScreenSnapshot. */
 #define SEL_ACTIVE 1
@@ -682,6 +746,7 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
          * case. Both hang off the same raw row, so fetch it once. */
         bool row_has_graphemes = false;
         bool row_has_links = false;
+        bool row_is_prompt = false;
         {
             GhosttyRow raw_row = 0;
             if (ghostty_render_state_row_get(
@@ -693,6 +758,12 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
                 /* May false-positive; the per-cell probe below confirms. */
                 ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_HYPERLINK,
                                 &row_has_links);
+                /* OSC 133 semantic prompt state: mark only primary prompt lines
+                   (not continuations) so the renderer draws one mark per prompt. */
+                GhosttyRowSemanticPrompt sp = GHOSTTY_ROW_SEMANTIC_NONE;
+                if (ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_SEMANTIC_PROMPT,
+                                    &sp) == GHOSTTY_SUCCESS)
+                    row_is_prompt = sp == GHOSTTY_ROW_SEMANTIC_PROMPT;
             }
         }
         GhosttyRenderStateRowSelection rsel =
@@ -819,6 +890,9 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
             row_bg[x] = selected ? meta[8] : meta[7];
             row_attr[x] = 0;
         }
+        /* Tag the whole prompt row so the renderer can find it by any cell. */
+        if (row_is_prompt)
+            for (int rx = 0; rx < cols; rx++) row_attr[rx] |= ATTR_PROMPT;
         jsize off = (jsize)y * cols;
         (*env)->SetIntArrayRegion(env, jcp, off, cols, row_cp);
         (*env)->SetIntArrayRegion(env, jfg, off, cols, row_fg);

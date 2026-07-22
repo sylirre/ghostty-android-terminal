@@ -164,6 +164,17 @@ public final class ScreenSnapshot {
         return (attrs[i] & TerminalNative.ATTR_HYPERLINK) != 0;
     }
 
+    /**
+     * True when viewport row {@code y} is a primary shell-prompt line, as
+     * reported by OSC 133 semantic-prompt sequences. The renderer draws a
+     * left-edge mark on these rows. The whole row carries the flag, so any of
+     * its cells answers; the first cell is cheapest.
+     */
+    public boolean isPromptRow(int y) {
+        if (cols <= 0) return false;
+        return (attrs[y * cols] & TerminalNative.ATTR_PROMPT) != 0;
+    }
+
     /** Row text with trailing blanks trimmed; empty cells become spaces. */
     public String rowText(int y) {
         StringBuilder sb = new StringBuilder(cols);

@@ -88,6 +88,16 @@ public final class TerminalEmulator implements AutoCloseable {
         if (handle != 0) TerminalNative.terminalScrollbar(handle, out);
     }
 
+    /**
+     * Scrolls to the previous ({@code dir < 0}) or next ({@code dir > 0})
+     * primary shell-prompt line (OSC 133), landing it at the top of the
+     * viewport. Returns true if it moved, false when there is no prompt in that
+     * direction (or after {@link #close}).
+     */
+    public synchronized boolean promptNav(int dir) {
+        return handle != 0 && TerminalNative.terminalPromptNav(handle, dir) != 0;
+    }
+
     /** Fills out with the current viewport; returns false after close(). */
     public synchronized boolean snapshot(ScreenSnapshot out) {
         if (handle == 0) return false;

@@ -403,6 +403,53 @@ gated on the **Tap to open links** setting (`AppSettings.tapToOpenLinks` →
   to the keyboard when the cell has no link, and the mouse-reporting path still
   wins first so a program that tracks the mouse gets the click.
 
+### Shell prompts (OSC 133)
+
+libghostty-vt parses OSC 133 semantic-prompt sequences itself and tags each row
+with its prompt state, so this is read-only from the engine — no custom parsing.
+The snapshot builder reads `GHOSTTY_ROW_DATA_SEMANTIC_PROMPT` off the raw row
+(alongside the grapheme/hyperlink row hints) and, on a primary prompt line
+(`GHOSTTY_ROW_SEMANTIC_PROMPT`, not a continuation), ORs an `ATTR_PROMPT` bit
+(bit 9) into every cell of the row. `ScreenSnapshot.isPromptRow` answers off the
+first cell, and `TerminalView` draws a thin left-edge mark colored with the
+effective cursor color. Navigation (`terminalPromptNav`) walks screen rows via
+`GHOSTTY_POINT_TAG_SCREEN` + `ghostty_grid_ref_row` looking for the nearest
+primary prompt above/below the viewport top and scrolls it to the top — the same
+screen-scan and delta-scroll shape as search's `show_match`. The top-bar
+prompt-navigation buttons and the marks are both gated on the **Shell prompt
+marks** setting (`AppSettings.promptMarks`, default on). Command exit status
+(OSC 133;D) is deliberately not surfaced: the row/cell API exposes prompt regions
+but not exit codes, which would need a separate parser.
+
+### Clipboard and progress (OSC 52 / OSC 9;4)
+
+These two are the sequences libghostty-vt recognizes but does **not** surface
+through any callback, and whose payloads its OSC parser doesn't expose, so a
+small stateful side-scanner (`OscSideScanner`) parses them directly. It taps the
+raw PTY stream in `TerminalSession.readLoop` *before* `emulator.feed` — a passive
+read, never mutating what the engine sees — with an `ESC ] … (BEL | ST)` state
+machine that carries partial sequences across PTY reads (an OSC can straddle a
+read boundary) and drops a payload over 1 MiB. Detected events hop the reader
+thread to the main thread via the session's `Listener`, mirroring the bell/title
+effects:
+
+- **OSC 52 clipboard.** A set request (`52 ; <sel> ; <base64>`) decodes to the
+  Android clipboard, gated on **Programs can set clipboard**
+  (`AppSettings.clipboardWrite`, default on). A read request (`52 ; <sel> ; ?`)
+  is answered with the clipboard base64-encoded back to the PTY only when
+  **Programs can read clipboard** (`clipboardRead`, default **off**) is enabled —
+  it lets any program exfiltrate the clipboard, and Android restricts background
+  clipboard reads besides. The reply is written via
+  `TerminalSession.sendClipboardResponse`, which does not count as user input.
+
+- **OSC 9;4 progress.** A ConEmu-style report (`9 ; 4 ; <state> ; <pct>`) updates
+  the session's stored progress and drives a per-tab indicator in `TabStripView`
+  (a thin bar under the pill: determinate accent for normal, red for error, amber
+  for paused, animated for indeterminate, hidden when cleared). Gated on
+  **Progress reporting** (`AppSettings.showProgress`, default on). Ticks update
+  the one tab in place (`TabStripView.setProgress`) rather than rebuilding the
+  strip.
+
 ### Keyboard and extra keys
 
 The view's `InputConnection` uses `TYPE_NULL` so soft keyboards deliver

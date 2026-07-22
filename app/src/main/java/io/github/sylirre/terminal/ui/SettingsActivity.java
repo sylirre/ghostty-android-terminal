@@ -204,6 +204,26 @@ public final class SettingsActivity extends Activity {
                 settings::tapToOpenLinks,
                 settings::setTapToOpenLinks));
         terminal.add(new Setting.Toggle(
+                getString(R.string.setting_prompt_marks_title),
+                getString(R.string.setting_prompt_marks_summary),
+                settings::promptMarks,
+                settings::setPromptMarks));
+        terminal.add(new Setting.Toggle(
+                getString(R.string.setting_progress_title),
+                getString(R.string.setting_progress_summary),
+                settings::showProgress,
+                settings::setShowProgress));
+        terminal.add(new Setting.Toggle(
+                getString(R.string.setting_clipboard_write_title),
+                getString(R.string.setting_clipboard_write_summary),
+                settings::clipboardWrite,
+                settings::setClipboardWrite));
+        terminal.add(new Setting.Toggle(
+                getString(R.string.setting_clipboard_read_title),
+                getString(R.string.setting_clipboard_read_summary),
+                settings::clipboardRead,
+                settings::setClipboardRead));
+        terminal.add(new Setting.Toggle(
                 getString(R.string.setting_keep_screen_on_title),
                 getString(R.string.setting_keep_screen_on_summary),
                 settings::keepScreenOn,

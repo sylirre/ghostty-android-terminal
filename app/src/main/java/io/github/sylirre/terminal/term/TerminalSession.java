@@ -26,6 +26,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class TerminalSession {
     private static final int SIGKILL = 9;
 
+    // OSC 9;4 (ConEmu) progress states, as reported by a running program.
+    /** No progress / cleared. */
+    public static final int PROGRESS_NONE = 0;
+    /** Determinate progress; {@code progressValue()} is the percentage. */
+    public static final int PROGRESS_NORMAL = 1;
+    /** An error occurred; the percentage (if any) is the point it failed at. */
+    public static final int PROGRESS_ERROR = 2;
+    /** Busy with an unknown completion time. */
+    public static final int PROGRESS_INDETERMINATE = 3;
+    /** Paused / waiting on the user. */
+    public static final int PROGRESS_PAUSED = 4;
+
     public interface Listener {
         /** Screen content changed; pull a fresh snapshot. */
         void onUpdate(TerminalSession session);
@@ -33,6 +45,24 @@ public final class TerminalSession {
         void onBell(TerminalSession session);
         /** Shell exited; code is the exit status or -signal. */
         void onExited(TerminalSession session, int exitCode);
+
+        /**
+         * A program set the clipboard via OSC 52. {@code data} is the raw
+         * decoded bytes; {@code sel} names the target selection(s) (e.g. "c").
+         */
+        default void onClipboardWrite(TerminalSession session, String sel, byte[] data) {}
+
+        /**
+         * A program requested the clipboard via OSC 52 ({@code ?}). The app may
+         * answer with {@link #sendClipboardResponse}, subject to user consent.
+         */
+        default void onClipboardQuery(TerminalSession session, String sel) {}
+
+        /**
+         * OSC 9;4 progress changed. {@code state} is one of the
+         * {@code PROGRESS_*} constants; {@code value} is 0..100.
+         */
+        default void onProgress(TerminalSession session, int state, int value) {}
     }
 
     public final TerminalEmulator emulator;
@@ -50,6 +80,41 @@ public final class TerminalSession {
     private volatile String title;
     private volatile Integer exitCode;
     private volatile boolean terminateProcessesOnExit;
+    private volatile int progressState = PROGRESS_NONE;
+    private volatile int progressValue;
+
+    /**
+     * Taps the raw PTY stream for OSC 52 / OSC 9;4 in parallel with the VT
+     * engine. Its callbacks fire on the reader thread; this session hops them to
+     * the main thread and out to the {@link Listener}, like the VT effects.
+     */
+    private final OscSideScanner oscScanner = new OscSideScanner(new OscSideScanner.OscSink() {
+        @Override
+        public void onClipboardWrite(String sel, byte[] data) {
+            mainHandler.post(() -> {
+                Listener l = listener;
+                if (l != null) l.onClipboardWrite(TerminalSession.this, sel, data);
+            });
+        }
+
+        @Override
+        public void onClipboardQuery(String sel) {
+            mainHandler.post(() -> {
+                Listener l = listener;
+                if (l != null) l.onClipboardQuery(TerminalSession.this, sel);
+            });
+        }
+
+        @Override
+        public void onProgress(int state, int value) {
+            progressState = state;
+            progressValue = value;
+            mainHandler.post(() -> {
+                Listener l = listener;
+                if (l != null) l.onProgress(TerminalSession.this, state, value);
+            });
+        }
+    });
 
     private final String label;
     private final boolean userland;
@@ -117,6 +182,9 @@ public final class TerminalSession {
             int n;
             while ((n = in.read(buf)) >= 0) {
                 if (n == 0) continue;
+                // Passive tap for OSC 52 / OSC 9;4 before the engine sees the
+                // bytes; it reads, never mutates, so ordering doesn't matter.
+                oscScanner.scan(buf, n);
                 byte[] response = emulator.feed(buf, n);
                 if (response != null) writeRaw(response); // protocol reply, not user input
                 dispatchEvents();
@@ -194,6 +262,25 @@ public final class TerminalSession {
     /** Exit status, or null while the shell is running. */
     public Integer exitCode() {
         return exitCode;
+    }
+
+    /** Latest OSC 9;4 progress state ({@code PROGRESS_*}); {@code PROGRESS_NONE} if unset. */
+    public int progressState() {
+        return progressState;
+    }
+
+    /** Latest OSC 9;4 progress percentage (0..100), meaningful for the determinate states. */
+    public int progressValue() {
+        return progressValue;
+    }
+
+    /**
+     * Writes an OSC 52 clipboard-query answer back to the PTY. Like the VT
+     * engine's own query replies, this is a protocol response, so it does not
+     * count as user interaction.
+     */
+    public void sendClipboardResponse(byte[] data) {
+        writeRaw(data);
     }
 
     /**

@@ -28,6 +28,38 @@
                 android:layout_weight="1" />
 
             <TextView
+                android:id="@+id/prompt_prev_button"
+                android:layout_width="@dimen/icon_button"
+                android:layout_height="@dimen/icon_button"
+                android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical"
+                android:gravity="center"
+                android:text="@string/prompt_prev_icon"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                android:background="@drawable/bg_chip"
+                android:contentDescription="@string/prompt_prev_description"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/prompt_next_button"
+                android:layout_width="@dimen/icon_button"
+                android:layout_height="@dimen/icon_button"
+                android:layout_marginStart="4dp"
+                android:layout_gravity="center_vertical"
+                android:gravity="center"
+                android:text="@string/prompt_next_icon"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp"
+                android:background="@drawable/bg_chip"
+                android:contentDescription="@string/prompt_next_description"
+                android:clickable="true"
+                android:focusable="true"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/search_button"
                 android:layout_width="@dimen/icon_button"
                 android:layout_height="@dimen/icon_button"

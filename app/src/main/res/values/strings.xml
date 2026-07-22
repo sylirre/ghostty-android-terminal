@@ -58,6 +58,29 @@
     <string name="setting_tap_open_links_title">Tap to open links</string>
     <string name="setting_tap_open_links_summary">Underline OSC 8 hyperlinks and open them on tap. A preview shows the full address first so you can check where it leads.</string>
 
+    <!-- Settings: Shell prompt marks -->
+    <string name="setting_prompt_marks_title">Shell prompt marks</string>
+    <string name="setting_prompt_marks_summary">Mark shell prompt lines (OSC 133) in the left gutter and show top-bar buttons to jump between them. Needs shell integration that emits the sequences.</string>
+
+    <!-- Settings: Progress reporting -->
+    <string name="setting_progress_title">Progress reporting</string>
+    <string name="setting_progress_summary">Show a per-tab progress bar for programs that report progress via OSC 9;4 (ConEmu style).</string>
+
+    <!-- Settings: Clipboard write / read (OSC 52) -->
+    <string name="setting_clipboard_write_title">Programs can set clipboard</string>
+    <string name="setting_clipboard_write_summary">Let programs copy to the Android clipboard via OSC 52.</string>
+    <string name="setting_clipboard_read_title">Programs can read clipboard</string>
+    <string name="setting_clipboard_read_summary">Answer OSC 52 clipboard read requests with the clipboard contents. Off by default: any program could read what you copied, and Android limits background clipboard access.</string>
+
+    <!-- Clipboard set via OSC 52 -->
+    <string name="clipboard_set">Copied to clipboard</string>
+
+    <!-- Prompt navigation buttons (top bar) -->
+    <string name="prompt_prev_icon">⌃</string>
+    <string name="prompt_next_icon">⌄</string>
+    <string name="prompt_prev_description">Previous shell prompt</string>
+    <string name="prompt_next_description">Next shell prompt</string>
+
     <!-- Hyperlink preview dialog -->
     <string name="link_dialog_title">Open link</string>
     <string name="link_open">Open</string>

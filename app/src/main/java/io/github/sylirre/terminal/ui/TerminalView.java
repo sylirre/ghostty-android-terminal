@@ -248,6 +248,13 @@ public class TerminalView extends View {
     // AppSettings toggle by MainActivity.
     private boolean tapToOpenLinks = true;
 
+    // --- OSC 133 shell-prompt marks. When enabled, primary prompt lines carry a
+    // thin left-edge mark and jumpTo{Prev,Next}Prompt walk between them. Colored
+    // with the effective cursor color so it tracks the theme. Pushed in from the
+    // AppSettings toggle by MainActivity.
+    private boolean promptMarks = true;
+    private final Paint promptMarkPaint = new Paint();
+
     // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
     // to an OverScroller, whose decelerating position is sampled once per
     // animation frame and converted to whole-row scrollBy() calls (the engine
@@ -262,6 +269,24 @@ public class TerminalView extends View {
     // per-frame computeVerticalScroll* callbacks read it instead of crossing
     // the JNI boundary themselves.
     private final int[] scrollState = new int[3];
+
+    /** Notified (on the main thread) when the viewport enters or leaves the live bottom. */
+    public interface ScrollStateListener {
+        void onScrollStateChanged(boolean atBottom);
+    }
+
+    private ScrollStateListener scrollStateListener;
+    private boolean lastAtBottom = true;
+
+    public void setScrollStateListener(ScrollStateListener l) {
+        scrollStateListener = l;
+    }
+
+    /** True when the viewport is at the live bottom (not scrolled into history). */
+    public boolean isAtBottom() {
+        return lastAtBottom;
+    }
+
     // Cap peak fling speed so a hard flick on a device reporting a huge
     // velocity can't leap across the whole scrollback in a couple of frames.
     private static final float MAX_FLING_ROWS_PER_SEC = 600f;
@@ -589,6 +614,52 @@ public class TerminalView extends View {
         if (tapToOpenLinks == enabled) return;
         tapToOpenLinks = enabled;
         invalidate();
+    }
+
+    /**
+     * Master switch for OSC 133 prompt marks. When on, primary shell-prompt
+     * lines carry a left-edge mark and {@link #jumpToPrevPrompt}/{@link
+     * #jumpToNextPrompt} navigate between them. Repaints so the marks appear or
+     * disappear immediately.
+     */
+    public void setPromptMarks(boolean enabled) {
+        if (promptMarks == enabled) return;
+        promptMarks = enabled;
+        invalidate();
+    }
+
+    /** Scrolls to the previous shell prompt (OSC 133), if any, above the viewport. */
+    public void jumpToPrevPrompt() {
+        promptNav(-1);
+    }
+
+    /** Scrolls to the next shell prompt (OSC 133), if any, below the viewport. */
+    public void jumpToNextPrompt() {
+        promptNav(1);
+    }
+
+    private void promptNav(int dir) {
+        if (session == null) return;
+        if (session.emulator.promptNav(dir)) {
+            pixelScrollOffset = 0; // land on a whole-row boundary
+            invalidate();
+        }
+    }
+
+    /**
+     * Fires the scroll-state listener when the viewport crosses between the live
+     * bottom and scrolled-into-history. {@code scrollState} is {total, offset,
+     * len}; at the bottom the offset plus the viewport length reaches the total.
+     * Posted so a listener can safely touch layout from within a draw pass.
+     */
+    private void notifyScrollStateIfChanged() {
+        boolean atBottom = scrollState[1] + scrollState[2] >= scrollState[0];
+        if (atBottom == lastAtBottom) return;
+        lastAtBottom = atBottom;
+        ScrollStateListener l = scrollStateListener;
+        if (l != null) post(() -> {
+            if (scrollStateListener != null) scrollStateListener.onScrollStateChanged(atBottom);
+        });
     }
 
     /**
@@ -1348,6 +1419,7 @@ public class TerminalView extends View {
         }
         float offsetPx = haveAbove ? pixelScrollOffset : 0;
         session.emulator.scrollbar(scrollState); // keep the indicator current
+        notifyScrollStateIfChanged();
         updateRichInputActive();
         canvas.drawColor(snapshot.defaultBg());
         drawBackgroundImage(canvas);
@@ -1376,6 +1448,7 @@ public class TerminalView extends View {
         if (haveAbove) {
             drawRowText(canvas, aboveSnapshot, 0, aboveSnapshot.cols, -cellHeight);
         }
+        drawPromptMarks(canvas, sr, haveAbove);
         drawImages(canvas, false); // z >= 0: above text (the Kitty default)
         canvas.restore();
 
@@ -1399,6 +1472,29 @@ public class TerminalView extends View {
                     if (actionMode != null) actionMode.invalidateContentRect();
                 });
             }
+        }
+    }
+
+    /**
+     * Draws a thin left-edge mark on each visible primary shell-prompt line
+     * (OSC 133). Runs inside the smooth-scroll-translated canvas region, so the
+     * marks ride with the rows; {@code haveAbove} covers the partial row exposed
+     * above the viewport top. Colored with the effective cursor color so it
+     * tracks the theme.
+     */
+    private void drawPromptMarks(Canvas canvas, int rowsToDraw, boolean haveAbove) {
+        if (!promptMarks) return;
+        int color = snapshot.cursorColor();
+        if (color == 0) color = snapshot.defaultFg();
+        promptMarkPaint.setColor(color);
+        float w = Math.max(2f, cellWidth * 0.18f);
+        if (haveAbove && aboveSnapshot.isPromptRow(0)) {
+            canvas.drawRect(0, -cellHeight, w, 0, promptMarkPaint);
+        }
+        for (int y = 0; y < rowsToDraw; y++) {
+            if (!snapshot.isPromptRow(y)) continue;
+            float top = y * cellHeight;
+            canvas.drawRect(0, top, w, top + cellHeight, promptMarkPaint);
         }
     }
 

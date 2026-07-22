@@ -41,6 +41,10 @@ public final class AppSettings {
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
     private static final String KEY_TAP_OPEN_LINKS = "tap_open_links";
+    private static final String KEY_PROMPT_MARKS = "prompt_marks";
+    private static final String KEY_CLIPBOARD_WRITE = "clipboard_write";
+    private static final String KEY_CLIPBOARD_READ = "clipboard_read";
+    private static final String KEY_SHOW_PROGRESS = "show_progress";
     private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
     private static final String KEY_TERMINATE_PROCESSES_ON_EXIT =
             "terminate_processes_on_exit";
@@ -369,6 +373,57 @@ public final class AppSettings {
 
     public void setTapToOpenLinks(boolean enabled) {
         prefs.edit().putBoolean(KEY_TAP_OPEN_LINKS, enabled).apply();
+    }
+
+    /**
+     * When true (default), primary shell-prompt lines reported via OSC 133 are
+     * marked in the left gutter and the prompt-navigation buttons in the top bar
+     * jump between them. Applied to the view by {@code MainActivity}.
+     */
+    public boolean promptMarks() {
+        return prefs.getBoolean(KEY_PROMPT_MARKS, true);
+    }
+
+    public void setPromptMarks(boolean enabled) {
+        prefs.edit().putBoolean(KEY_PROMPT_MARKS, enabled).apply();
+    }
+
+    /**
+     * When true (default), programs may set the Android clipboard via OSC 52.
+     * Off ignores clipboard-set sequences.
+     */
+    public boolean clipboardWrite() {
+        return prefs.getBoolean(KEY_CLIPBOARD_WRITE, true);
+    }
+
+    public void setClipboardWrite(boolean enabled) {
+        prefs.edit().putBoolean(KEY_CLIPBOARD_WRITE, enabled).apply();
+    }
+
+    /**
+     * When true, programs may <em>read</em> the clipboard via an OSC 52 query
+     * ({@code ?}); the app answers with the clipboard contents. Off by default
+     * because it lets any program exfiltrate the clipboard, and Android further
+     * restricts background clipboard reads.
+     */
+    public boolean clipboardRead() {
+        return prefs.getBoolean(KEY_CLIPBOARD_READ, false);
+    }
+
+    public void setClipboardRead(boolean enabled) {
+        prefs.edit().putBoolean(KEY_CLIPBOARD_READ, enabled).apply();
+    }
+
+    /**
+     * When true (default), OSC 9;4 progress reports drive a per-tab progress
+     * indicator in the tab strip. Off hides it.
+     */
+    public boolean showProgress() {
+        return prefs.getBoolean(KEY_SHOW_PROGRESS, true);
+    }
+
+    public void setShowProgress(boolean enabled) {
+        prefs.edit().putBoolean(KEY_SHOW_PROGRESS, enabled).apply();
     }
 
     /**

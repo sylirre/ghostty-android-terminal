@@ -4,8 +4,13 @@
 package io.github.sylirre.terminal.ui;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.Gravity;
@@ -14,9 +19,11 @@ import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import io.github.sylirre.terminal.R;
+import io.github.sylirre.terminal.term.TerminalSession;
 
 /**
  * Session tab bar: one rounded pill per shell, a close (×) on the active tab
@@ -34,7 +41,25 @@ public class TabStripView extends HorizontalScrollView {
         void onNewTabLongPress();
     }
 
+    /** OSC 9;4 progress for one tab: a {@code TerminalSession.PROGRESS_*} state and 0..100. */
+    public static final class TabProgress {
+        public static final TabProgress NONE =
+                new TabProgress(TerminalSession.PROGRESS_NONE, 0);
+        public final int state;
+        public final int value;
+
+        public TabProgress(int state, int value) {
+            this.state = state;
+            this.value = value;
+        }
+    }
+
+    private static final int PROGRESS_ERROR_COLOR = 0xFFE5534B;
+    private static final int PROGRESS_PAUSED_COLOR = 0xFFD9A441;
+
     private final LinearLayout row;
+    // Per-tab progress overlays, aligned with the tab index; rebuilt by update().
+    private final List<ProgressLine> progressLines = new ArrayList<>();
     private Listener listener;
 
     public TabStripView(Context context, AttributeSet attrs) {
@@ -51,13 +76,16 @@ public class TabStripView extends HorizontalScrollView {
         listener = l;
     }
 
-    public void update(List<String> titles, int activeIndex) {
+    public void update(List<String> titles, int activeIndex, List<TabProgress> progress) {
         row.removeAllViews();
+        progressLines.clear();
         View activeTab = null;
         for (int i = 0; i < titles.size(); i++) {
             final int index = i;
             boolean active = i == activeIndex;
-            View tab = makeTab(titles.get(i), active, index);
+            TabProgress p = progress != null && i < progress.size()
+                    ? progress.get(i) : TabProgress.NONE;
+            View tab = makeTab(titles.get(i), active, index, p);
             row.addView(tab, tabLayout());
             if (active) activeTab = tab;
         }
@@ -78,8 +106,87 @@ public class TabStripView extends HorizontalScrollView {
         }
     }
 
-    /** One tab pill: a label plus, when active, a close affordance. */
-    private View makeTab(String title, boolean active, int index) {
+    /**
+     * Updates the progress indicator on a single tab in place, without
+     * rebuilding the strip — cheap enough to call on every OSC 9;4 tick.
+     */
+    public void setProgress(int index, int state, int value) {
+        if (index < 0 || index >= progressLines.size()) return;
+        progressLines.get(index).set(state, value);
+    }
+
+    /**
+     * A thin progress line drawn as a tab pill's foreground, along its bottom
+     * edge: an accent fill scaled to the percentage for normal progress, red
+     * for error, amber for paused, and a full accent bar for indeterminate.
+     * A foreground drawable never affects the pill's measurement, clickability
+     * or visibility, so the tab stays a clean tap target.
+     */
+    private static final class ProgressLine extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int inset;
+        private final int thickness;
+        private final int accent;
+        private int state = TerminalSession.PROGRESS_NONE;
+        private int value;
+
+        ProgressLine(int inset, int thickness, int accent) {
+            this.inset = inset;
+            this.thickness = thickness;
+            this.accent = accent;
+        }
+
+        void set(int state, int value) {
+            this.state = state;
+            this.value = Math.max(0, Math.min(100, value));
+            invalidateSelf();
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            if (state == TerminalSession.PROGRESS_NONE) return;
+            int color;
+            float frac;
+            switch (state) {
+                case TerminalSession.PROGRESS_ERROR:
+                    color = PROGRESS_ERROR_COLOR;
+                    frac = value > 0 ? value / 100f : 1f;
+                    break;
+                case TerminalSession.PROGRESS_PAUSED:
+                    color = PROGRESS_PAUSED_COLOR;
+                    frac = value > 0 ? value / 100f : 1f;
+                    break;
+                case TerminalSession.PROGRESS_INDETERMINATE:
+                    color = accent;
+                    frac = 1f;
+                    break;
+                default:
+                    color = accent;
+                    frac = value / 100f;
+                    break;
+            }
+            Rect b = getBounds();
+            float left = b.left + inset;
+            float right = b.right - inset;
+            float top = b.bottom - thickness;
+            paint.setColor(color);
+            canvas.drawRect(left, top, left + (right - left) * frac, b.bottom, paint);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {}
+
+        @Override
+        public void setColorFilter(ColorFilter colorFilter) {}
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+    }
+
+    /** One tab pill: a label plus, when active, a close affordance; progress line as foreground. */
+    private View makeTab(String title, boolean active, int index, TabProgress progress) {
         LinearLayout chip = new LinearLayout(getContext());
         chip.setOrientation(LinearLayout.HORIZONTAL);
         chip.setGravity(Gravity.CENTER_VERTICAL);
@@ -121,6 +228,16 @@ public class TabStripView extends HorizontalScrollView {
             close.setOnClickListener(v -> listener.onTabClosed(index));
             chip.addView(close);
         }
+
+        // A thin progress line rides as the pill's foreground, inset from the
+        // rounded corners. Foreground drawing leaves layout and hit-testing
+        // untouched, so the tab stays a clean tap target.
+        int thickness = Math.round(3 * getResources().getDisplayMetrics().density);
+        ProgressLine line = new ProgressLine(padH, thickness,
+                Chrome.color(getContext(), R.color.accent));
+        line.set(progress.state, progress.value);
+        chip.setForeground(line);
+        progressLines.add(line);
         return chip;
     }
 

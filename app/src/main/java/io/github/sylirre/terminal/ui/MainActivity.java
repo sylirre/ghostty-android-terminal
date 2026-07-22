@@ -8,6 +8,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -27,6 +29,7 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.provider.OpenableColumns;
 import android.provider.Settings;
+import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.WindowInsets;
@@ -42,6 +45,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -91,6 +95,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private TabStripView tabs;
     private SearchBarView searchBar;
     private TextView searchButton;
+    private TextView promptPrevButton;
+    private TextView promptNextButton;
+    private long lastClipToastUptime;
     private ExtraKeysView extraKeys;
     private TextView installStatus;
     private TerminalSession current;
@@ -156,6 +163,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             else showSearch();
         });
         Glyphs.applyTo(searchButton);
+
+        promptPrevButton = findViewById(R.id.prompt_prev_button);
+        promptNextButton = findViewById(R.id.prompt_next_button);
+        promptPrevButton.setOnClickListener(v -> terminal.jumpToPrevPrompt());
+        promptNextButton.setOnClickListener(v -> terminal.jumpToNextPrompt());
+        // The prompt-navigation buttons appear only while scrolled into history —
+        // where jumping between prompts is useful — so the tab strip keeps the
+        // full top-bar width during normal typing at the live bottom.
+        terminal.setScrollStateListener(atBottom -> updatePromptNav(atBottom));
+        applyPromptMarks();
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -280,6 +297,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setSmoothScroll(settings.smoothScroll());
         terminal.setMouseTracking(settings.mouseTracking());
         terminal.setTapToOpenLinks(settings.tapToOpenLinks());
+        applyPromptMarks();
         applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
         extraKeys.setShowSwitch(settings.showExtraKeysSwitch());
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
@@ -822,6 +840,28 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
+    /**
+     * Pushes the prompt-marks preference to the view. The navigation buttons
+     * follow the current scroll position (they show only while scrolled into
+     * history), so re-evaluate their visibility for the current state.
+     */
+    private void applyPromptMarks() {
+        terminal.setPromptMarks(settings.promptMarks());
+        updatePromptNav(terminal.isAtBottom());
+    }
+
+    /**
+     * Shows the prompt-navigation buttons only when prompt marks are enabled and
+     * the terminal is scrolled into history; hidden at the live bottom so the tab
+     * strip keeps the full top-bar width.
+     */
+    private void updatePromptNav(boolean atBottom) {
+        boolean show = settings.promptMarks() && !atBottom;
+        int vis = show ? View.VISIBLE : View.GONE;
+        promptPrevButton.setVisibility(vis);
+        promptNextButton.setVisibility(vis);
+    }
+
     private void applyTextMargins() {
         float density = getResources().getDisplayMetrics().density;
         int leftPx = Math.round(settings.textMarginLeft() * density);
@@ -869,13 +909,18 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     private void updateTabs() {
         List<String> titles = new ArrayList<>();
+        List<TabStripView.TabProgress> progress = new ArrayList<>();
         List<TerminalSession> all = sessions.sessions();
+        boolean showProgress = settings.showProgress();
         for (int i = 0; i < all.size(); i++) {
-            String t = all.get(i).title();
-            titles.add(t == null || t.isEmpty()
-                    ? all.get(i).label() + ":" + (i + 1) : t);
+            TerminalSession s = all.get(i);
+            String t = s.title();
+            titles.add(t == null || t.isEmpty() ? s.label() + ":" + (i + 1) : t);
+            progress.add(showProgress
+                    ? new TabStripView.TabProgress(s.progressState(), s.progressValue())
+                    : TabStripView.TabProgress.NONE);
         }
-        tabs.update(titles, sessions.indexOf(current));
+        tabs.update(titles, sessions.indexOf(current), progress);
     }
 
     // --- TerminalSession.Listener (main thread) ---
@@ -904,6 +949,64 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         } else if (mode == AppSettings.BELL_SOUND) {
             playBellSound();
         }
+    }
+
+    @Override
+    public void onClipboardWrite(TerminalSession session, String sel, byte[] data) {
+        if (!settings.clipboardWrite()) return;
+        ClipboardManager cm = getSystemService(ClipboardManager.class);
+        if (cm == null) return;
+        String text = new String(data, StandardCharsets.UTF_8);
+        cm.setPrimaryClip(ClipData.newPlainText("terminal", text));
+        // A program can set the clipboard in a loop; throttle the confirmation.
+        long now = SystemClock.uptimeMillis();
+        if (now - lastClipToastUptime >= 1500) {
+            lastClipToastUptime = now;
+            Toast.makeText(this, R.string.clipboard_set, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    public void onClipboardQuery(TerminalSession session, String sel) {
+        // Off by default: answering lets any program read the clipboard.
+        if (!settings.clipboardRead()) return;
+        ClipboardManager cm = getSystemService(ClipboardManager.class);
+        String text = "";
+        if (cm != null && cm.hasPrimaryClip()) {
+            ClipData clip = cm.getPrimaryClip();
+            if (clip != null && clip.getItemCount() > 0) {
+                CharSequence cs = clip.getItemAt(0).coerceToText(this);
+                if (cs != null) text = cs.toString();
+            }
+        }
+        String b64 = Base64.encodeToString(
+                text.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+        // OSC 52 reply: ESC ] 52 ; <sel> ; <base64> ST, echoing the requested
+        // selection (sanitized to the protocol's target letters).
+        String resp = "\u001b]52;" + sanitizeClipboardSelection(sel) + ";" + b64
+                + "\u001b\\";
+        session.sendClipboardResponse(resp.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    /** Keeps only OSC 52 selection letters (c/p/q/s and buffers 0-7); defaults to "c". */
+    private static String sanitizeClipboardSelection(String sel) {
+        StringBuilder sb = new StringBuilder(sel.length());
+        for (int i = 0; i < sel.length(); i++) {
+            char ch = sel.charAt(i);
+            if ("cpqs01234567".indexOf(ch) >= 0) sb.append(ch);
+        }
+        return sb.length() == 0 ? "c" : sb.toString();
+    }
+
+    @Override
+    public void onProgress(TerminalSession session, int state, int value) {
+        int index = sessions.indexOf(session);
+        if (index < 0) return;
+        if (!settings.showProgress()) {
+            tabs.setProgress(index, TerminalSession.PROGRESS_NONE, 0);
+            return;
+        }
+        tabs.setProgress(index, state, value);
     }
 
     private void vibrateBell() {
