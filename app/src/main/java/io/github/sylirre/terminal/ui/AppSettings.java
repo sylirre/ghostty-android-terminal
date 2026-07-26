@@ -376,12 +376,13 @@ public final class AppSettings {
     }
 
     /**
-     * When true (default), the top-bar prompt-navigation buttons appear while
-     * scrolled into history and jump between primary shell-prompt lines reported
-     * via OSC 133. Applied to the view by {@code MainActivity}.
+     * When true, the top-bar prompt-navigation buttons appear while scrolled
+     * into history and jump between primary shell-prompt lines reported via
+     * OSC 133. Off by default (needs a shell that emits the sequences).
+     * Applied to the view by {@code MainActivity}.
      */
     public boolean promptNav() {
-        return prefs.getBoolean(KEY_PROMPT_NAV, true);
+        return prefs.getBoolean(KEY_PROMPT_NAV, false);
     }
 
     public void setPromptNav(boolean enabled) {

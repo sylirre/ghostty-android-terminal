@@ -417,7 +417,7 @@ and scrolls it to the top — the same screen-scan and delta-scroll shape as
 search's `show_match`. The top-bar ⌃/⌄ buttons drive it; they surface only while
 scrolled into history (via `TerminalView.ScrollStateListener`, so the tab strip
 keeps full width at the live bottom) and are gated on the **Shell prompt
-navigation** setting (`AppSettings.promptNav`, default on). Command exit status
+navigation** setting (`AppSettings.promptNav`, default off). Command exit status
 (OSC 133;D) is deliberately not surfaced: the row/cell API exposes prompt regions
 but not exit codes, which would need a separate parser.
 
