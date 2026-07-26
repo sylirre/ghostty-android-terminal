@@ -6,25 +6,23 @@ package io.github.sylirre.terminal.ui;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
-import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Point;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.DragEvent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -58,6 +56,8 @@ public final class ExtraKeysActivity extends Activity {
 
     private ExtraKeysConfig config;
     private AppSettings settings;
+    /** Fixed dark token palette; the editor keeps the app chrome, not the theme's. */
+    private ChromePalette palette;
 
     /** Working copy of the active profile's rows; persisted after each edit. */
     private final List<List<ExtraKeysConfig.KeySpec>> rows = new ArrayList<>();
@@ -66,6 +66,8 @@ public final class ExtraKeysActivity extends Activity {
     private LinearLayout rowHeightBar;
     private LinearLayout grid;
     private View addRowButton;
+    /** Danger drop bar shown along the bottom edge while a key is dragged. */
+    private TextView dropDelete;
 
     /** Bounds of the row-height slider (vertical padding per cap, dp). */
     private static final int ROW_HEIGHT_MIN_DP = 2;
@@ -78,6 +80,8 @@ public final class ExtraKeysActivity extends Activity {
     private ExtraKeysConfig.KeySpec draggingSpec;
     /** {row, index} where the open gap is currently drawn during a drag, or null. */
     private int[] gapAt;
+    /** The gap view currently in the grid, moved incrementally during a drag. */
+    private View gapView;
     /** {row, index} the dragged key was lifted from, for cancel/exit restore. */
     private int[] dragOrigin;
 
@@ -97,12 +101,16 @@ public final class ExtraKeysActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_extra_keys);
 
+        palette = ChromePalette.from(this, android.graphics.Color.BLACK);
         TopBarView topBar = findViewById(R.id.top_bar);
         topBar.setTitle(getString(R.string.extra_keys_title));
         topBar.setOnBack(this::finish);
         TextView reset = topBar.addTextAction(R.string.extra_keys_reset, false);
         reset.setId(R.id.extra_keys_reset);
-        reset.setOnClickListener(v -> resetActiveProfile());
+        reset.setOnClickListener(v -> Dialogs.confirmDanger(this,
+                getString(R.string.extra_keys_reset),
+                getString(R.string.extra_keys_reset_confirm),
+                R.string.extra_keys_reset, this::resetActiveProfile));
         TextView done = topBar.addTextAction(R.string.extra_keys_done, true);
         done.setId(R.id.extra_keys_done);
         done.setOnClickListener(v -> finish());
@@ -117,6 +125,10 @@ public final class ExtraKeysActivity extends Activity {
         addRowButton = findViewById(R.id.extra_keys_add_row);
         addRowButton.setOnClickListener(v -> addRow());
         grid.setOnDragListener(this::onGridDrag);
+        // The live toolbar's outer gutter (key_gap/2 around key_gap/2 cap
+        // margins), so the framed grid previews exactly what the toolbar draws.
+        int gridPad = Chrome.dp(this, R.dimen.key_gap) / 2;
+        grid.setPadding(gridPad, gridPad, gridPad, gridPad);
 
         loadRows();
         render();
@@ -286,13 +298,28 @@ public final class ExtraKeysActivity extends Activity {
     private void renderGrid() {
         grid.removeAllViews();
         caps.clear();
+        gapView = null;
         for (int r = 0; r < rows.size(); r++) {
             LinearLayout rowView = new LinearLayout(this);
             rowView.setOrientation(LinearLayout.HORIZONTAL);
+            // Siblings slide out of the gap's way during a drag instead of
+            // teleporting; appear/disappear stay instant so full re-renders
+            // (row-height drags) don't flicker.
+            android.animation.LayoutTransition lt = new android.animation.LayoutTransition();
+            lt.disableTransitionType(android.animation.LayoutTransition.APPEARING);
+            lt.disableTransitionType(android.animation.LayoutTransition.DISAPPEARING);
+            rowView.setLayoutTransition(lt);
+            // Same per-row uniform label sizing as the live toolbar (WYSIWYG).
+            rowView.addOnLayoutChangeListener((v, l, t, ri, b, ol, ot, or, ob) -> {
+                if (ri - l != or - ol) KeyCaps.uniformize((LinearLayout) v);
+            });
             List<ExtraKeysConfig.KeySpec> row = rows.get(r);
             boolean gapHere = gapAt != null && gapAt[0] == r;
             for (int i = 0; i < row.size(); i++) {
-                if (gapHere && gapAt[1] == i) rowView.addView(makeGap(), gapParams());
+                if (gapHere && gapAt[1] == i) {
+                    gapView = makeGap();
+                    rowView.addView(gapView, gapParams());
+                }
                 KeyCapView cap = makeCap(row.get(i), r, i);
                 caps.add(new CapRef(cap, r, i));
                 // MATCH_PARENT height: caps autosize their labels to different text
@@ -305,7 +332,10 @@ public final class ExtraKeysActivity extends Activity {
                 lp.setMargins(m, m, m, m);
                 rowView.addView(cap, lp);
             }
-            if (gapHere && gapAt[1] >= row.size()) rowView.addView(makeGap(), gapParams());
+            if (gapHere && gapAt[1] >= row.size()) {
+                gapView = makeGap();
+                rowView.addView(gapView, gapParams());
+            }
             rowView.addView(addCell(r), addCellParams());
             grid.addView(rowView, new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -313,25 +343,17 @@ public final class ExtraKeysActivity extends Activity {
     }
 
     private KeyCapView makeCap(ExtraKeysConfig.KeySpec spec, int r, int i) {
-        KeyCapView cap = new KeyCapView(this);
         ExtraKey key = ExtraKeysConfig.resolve(this, spec.id);
-        cap.setText(key != null ? key.label : spec.id);
-        cap.setMaxLines(1);
-        cap.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        cap.setTextColor(Color.WHITE);
-        cap.setGravity(Gravity.CENTER);
-        // Vertical padding tracks the toolbar's configured row height so the
-        // editor renders caps at the same height as the live toolbar (WYSIWYG).
-        int vpad = dp(settings.extraKeysVerticalPadding());
-        cap.setPadding(dp(3), vpad, dp(3), vpad);
-        cap.setBackground(Chrome.ripple(this, R.color.surface_2,
-                Chrome.dimen(this, R.dimen.key_radius), R.color.border));
-        cap.setClickable(true);
-        Glyphs.applyTo(cap);
+        CharSequence secondaryHint = null;
         if (spec.secondaryId != null) {
             ExtraKey sec = ExtraKeysConfig.resolve(this, spec.secondaryId);
-            if (sec != null) cap.setSecondaryHint(sec.label);
+            if (sec != null) secondaryHint = sec.label;
         }
+        // Vertical padding tracks the toolbar's configured row height; the
+        // shared factory guarantees everything else matches the live toolbar.
+        KeyCapView cap = KeyCaps.make(this, palette,
+                key != null ? key.label : spec.id, secondaryHint,
+                dp(settings.extraKeysVerticalPadding()));
         cap.setOnClickListener(v -> editKey(r, i));
         cap.setOnLongClickListener(v -> startDrag(cap, r, i));
         return cap;
@@ -348,7 +370,7 @@ public final class ExtraKeysActivity extends Activity {
         cell.setGravity(Gravity.CENTER);
         int vpad = dp(settings.extraKeysVerticalPadding());
         cell.setPadding(dp(6), vpad, dp(6), vpad);
-        cell.setBackground(Chrome.ripple(this, R.color.surface_1,
+        cell.setBackground(Chrome.ripple(this, R.color.surface_2,
                 Chrome.dimen(this, R.dimen.key_radius), R.color.border));
         cell.setClickable(true);
         cell.setOnClickListener(v -> pickKey(false, id -> addKeyToRow(r, id)));
@@ -394,6 +416,7 @@ public final class ExtraKeysActivity extends Activity {
                 getString(R.string.extra_keys_profile_menu_delete),
         };
         new AlertDialog.Builder(this)
+                .setTitle(config.profiles().get(index).name)
                 .setItems(items, (d, which) -> {
                     if (which == 0) promptRenameProfile(index);
                     else if (which == 1) { config.duplicateProfile(index); loadRows(); render(); }
@@ -413,39 +436,21 @@ public final class ExtraKeysActivity extends Activity {
     private void confirmDeleteProfile(int index) {
         if (config.profileCount() <= 1) return;  // last profile can't be removed
         String name = config.profiles().get(index).name;
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.extra_keys_profile_delete_title)
-                .setMessage(getString(R.string.extra_keys_profile_delete_message, name))
-                .setPositiveButton(R.string.extra_keys_profile_menu_delete, (d, w) -> {
+        Dialogs.confirmDanger(this, getString(R.string.extra_keys_profile_delete_title),
+                getString(R.string.extra_keys_profile_delete_message, name),
+                R.string.extra_keys_profile_menu_delete, () -> {
                     config.removeProfile(index);
                     loadRows();
                     render();
-                })
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
+                });
     }
 
     private void promptName(String title, String initial, Consumer<String> onName) {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setSingleLine(true);
-        input.setHint(R.string.extra_keys_profile_name_hint);
-        input.setText(initial);
-        LinearLayout container = new LinearLayout(this);
-        int p = dp(20);
-        container.setPadding(p, p / 2, p, 0);
-        container.addView(input, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setView(container)
-                .setPositiveButton(R.string.action_ok, (d, w) -> {
-                    String name = input.getText().toString().trim();
-                    if (name.isEmpty()) { toast(R.string.extra_keys_profile_name_empty); return; }
-                    onName.accept(name);
-                })
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
+        Dialogs.prompt(this, title, initial,
+                getString(R.string.extra_keys_profile_name_hint), false,
+                name -> name.isEmpty()
+                        ? getString(R.string.extra_keys_profile_name_empty) : null,
+                onName, null);
     }
 
     // --- Edit a key ---
@@ -604,13 +609,13 @@ public final class ExtraKeysActivity extends Activity {
     }
 
     private void promptCustom(Consumer<String> onPicked) {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setSingleLine(true);
-        input.setHint(R.string.extra_keys_add_custom_hint);
+        // Not Dialogs.prompt: that trims the value, and leading/trailing
+        // spaces are legitimate in a custom text key. Same field styling.
+        EditText input = Dialogs.field(this, "",
+                getString(R.string.extra_keys_add_custom_hint), false);
         LinearLayout container = new LinearLayout(this);
-        int p = dp(20);
-        container.setPadding(p, p / 2, p, 0);
+        int padH = Chrome.dp(this, R.dimen.space_5);
+        container.setPaddingRelative(padH, Chrome.dp(this, R.dimen.space_2), padH, 0);
         container.addView(input, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         new AlertDialog.Builder(this)
@@ -640,69 +645,59 @@ public final class ExtraKeysActivity extends Activity {
         modsRow.addView(alt);
         modsRow.addView(shift);
 
-        TextView baseLabel = new TextView(this);
-        baseLabel.setText(R.string.extra_keys_combo_base_label);
-        baseLabel.setPadding(0, dp(14), 0, dp(4));
+        TextView baseLabel = sectionLabel(getString(R.string.extra_keys_combo_base_label));
 
-        final List<String> labels = new ArrayList<>();
+        // Base-key catalog from resources (localizable) plus generated F-keys.
+        final List<CharSequence> labels = new ArrayList<>();
         final List<String> tokens = new ArrayList<>();  // parallel to labels[1..]
         labels.add(getString(R.string.extra_keys_combo_base_char));
-        addSpecial(labels, tokens, "← Left", "left");
-        addSpecial(labels, tokens, "→ Right", "right");
-        addSpecial(labels, tokens, "↑ Up", "up");
-        addSpecial(labels, tokens, "↓ Down", "down");
-        addSpecial(labels, tokens, "Home", "home");
-        addSpecial(labels, tokens, "End", "end");
-        addSpecial(labels, tokens, "PgUp", "pgup");
-        addSpecial(labels, tokens, "PgDn", "pgdn");
-        addSpecial(labels, tokens, "Tab", "tab");
-        addSpecial(labels, tokens, "Enter", "enter");
-        addSpecial(labels, tokens, "Esc", "esc");
-        addSpecial(labels, tokens, "Delete", "del");
-        addSpecial(labels, tokens, "Backspace", "bksp");
-        addSpecial(labels, tokens, "Insert", "ins");
-        for (int i = 1; i <= 12; i++) addSpecial(labels, tokens, "F" + i, "f" + i);
+        String[] specialLabels = getResources().getStringArray(R.array.extra_keys_combo_labels);
+        String[] specialTokens = getResources().getStringArray(R.array.extra_keys_combo_tokens);
+        for (int i = 0; i < specialLabels.length; i++) {
+            labels.add(specialLabels[i]);
+            tokens.add(specialTokens[i]);
+        }
+        for (int i = 1; i <= 12; i++) {
+            labels.add("F" + i);
+            tokens.add("f" + i);
+        }
 
-        Spinner spinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
-                android.R.layout.simple_spinner_item, labels) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View v = super.getView(position, convertView, parent);
-                Glyphs.applyTo((TextView) v);
-                return v;
-            }
-            @Override
-            public View getDropDownView(int position, View convertView, ViewGroup parent) {
-                View v = super.getDropDownView(position, convertView, parent);
-                Glyphs.applyTo((TextView) v);
-                return v;
-            }
+        EditText charInput = Dialogs.field(this, "",
+                getString(R.string.extra_keys_combo_char_hint), false);
+
+        // The base picker: a tonal button opening the app's single-choice
+        // dialog — the raw platform Spinner was the one un-themed control left.
+        final int[] basePos = {0};
+        Button baseButton = new Button(this, null, 0, R.style.ButtonTonal);
+        Runnable syncBase = () -> {
+            baseButton.setText(labels.get(basePos[0]));
+            Glyphs.applyTo(baseButton);
+            charInput.setVisibility(basePos[0] == 0 ? View.VISIBLE : View.GONE);
         };
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spinner.setAdapter(adapter);
-
-        EditText charInput = new EditText(this);
-        charInput.setInputType(InputType.TYPE_CLASS_TEXT);
-        charInput.setSingleLine(true);
-        charInput.setHint(R.string.extra_keys_combo_char_hint);
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View v, int pos, long id) {
-                charInput.setEnabled(pos == 0);
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) { }
-        });
+        syncBase.run();
+        baseButton.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle(R.string.extra_keys_combo_base_label)
+                .setSingleChoiceItems(labels.toArray(new CharSequence[0]), basePos[0],
+                        (d, which) -> {
+                            basePos[0] = which;
+                            syncBase.run();
+                            d.dismiss();
+                        })
+                .setNegativeButton(R.string.action_cancel, null)
+                .show());
 
         LinearLayout container = new LinearLayout(this);
         container.setOrientation(LinearLayout.VERTICAL);
-        int p = dp(20);
-        container.setPadding(p, p / 2, p, 0);
+        int padH = Chrome.dp(this, R.dimen.space_5);
+        container.setPaddingRelative(padH, Chrome.dp(this, R.dimen.space_2), padH, 0);
         container.addView(modsRow);
         container.addView(baseLabel);
-        container.addView(spinner);
-        container.addView(charInput);
+        container.addView(baseButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams charLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        charLp.topMargin = Chrome.dp(this, R.dimen.space_2);
+        container.addView(charInput, charLp);
 
         new AlertDialog.Builder(this)
                 .setTitle(R.string.extra_keys_add_combo_title)
@@ -712,9 +707,8 @@ public final class ExtraKeysActivity extends Activity {
                             | (alt.isChecked() ? TerminalNative.MOD_ALT : 0)
                             | (shift.isChecked() ? TerminalNative.MOD_SHIFT : 0);
                     if (mods == 0) { toast(R.string.extra_keys_combo_no_mod); return; }
-                    int pos = spinner.getSelectedItemPosition();
                     String base;
-                    if (pos <= 0) {
+                    if (basePos[0] == 0) {
                         String t = charInput.getText().toString();
                         if (t.codePointCount(0, t.length()) != 1) {
                             toast(R.string.extra_keys_combo_no_char);
@@ -722,7 +716,7 @@ public final class ExtraKeysActivity extends Activity {
                         }
                         base = t.toLowerCase(Locale.ROOT);
                     } else {
-                        base = tokens.get(pos - 1);
+                        base = tokens.get(basePos[0] - 1);
                     }
                     onPicked.accept(ExtraKeysConfig.comboId(mods, base));
                 })
@@ -736,15 +730,9 @@ public final class ExtraKeysActivity extends Activity {
         box.setTextColor(Chrome.color(this, R.color.text_primary));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(12);
+        lp.setMarginEnd(dp(12));
         box.setLayoutParams(lp);
         return box;
-    }
-
-    private static void addSpecial(List<String> labels, List<String> tokens,
-                                   String label, String token) {
-        labels.add(label);
-        tokens.add(token);
     }
 
     // --- Drag & drop ---
@@ -758,15 +746,142 @@ public final class ExtraKeysActivity extends Activity {
         ClipData data = ClipData.newPlainText("", "");
         // Shadow is a bitmap snapshot taken now, so it survives the re-render
         // below that tears the source cap down.
-        View.DragShadowBuilder shadow = new View.DragShadowBuilder(cap);
+        View.DragShadowBuilder shadow = new LiftShadow(cap);
         boolean started = cap.startDragAndDrop(data, shadow, null, 0);
         if (started) {
             draggingSpec = rows.get(r).remove(i);
             dragOrigin = new int[]{r, i};
             gapAt = new int[]{r, i};
             renderGrid();
+            showDropTarget(true);
         }
         return started;
+    }
+
+    /**
+     * The drag shadow as a "lifted" key: the cap drawn slightly scaled up, the
+     * standard pick-it-up affordance, instead of the flat 1:1 default.
+     */
+    private static final class LiftShadow extends View.DragShadowBuilder {
+        private static final float SCALE = 1.12f;
+
+        LiftShadow(View view) {
+            super(view);
+        }
+
+        @Override
+        public void onProvideShadowMetrics(Point size, Point touch) {
+            View v = getView();
+            size.set(Math.max(1, Math.round(v.getWidth() * SCALE)),
+                    Math.max(1, Math.round(v.getHeight() * SCALE)));
+            touch.set(size.x / 2, size.y / 2);
+        }
+
+        @Override
+        public void onDrawShadow(Canvas canvas) {
+            canvas.scale(SCALE, SCALE);
+            getView().draw(canvas);
+        }
+    }
+
+    /** Lazily adds the danger drop bar (delete-by-drag) to the activity root. */
+    private void ensureDropTarget() {
+        if (dropDelete != null) return;
+        dropDelete = new TextView(this);
+        dropDelete.setText(R.string.extra_keys_edit_remove);
+        dropDelete.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+                Chrome.dimen(this, R.dimen.text_action));
+        dropDelete.setTypeface(Typeface.DEFAULT_BOLD);
+        dropDelete.setGravity(Gravity.CENTER);
+        dropDelete.setMinHeight(Chrome.dp(this, R.dimen.touch_min));
+        dropDelete.setVisibility(View.GONE);
+        styleDropTarget(false);
+        android.widget.FrameLayout root = findViewById(R.id.root);
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM);
+        int m = Chrome.dp(this, R.dimen.space_4);
+        lp.setMargins(m, m, m, m);
+        root.addView(dropDelete, lp);
+        dropDelete.setOnDragListener((v, event) -> {
+            switch (event.getAction()) {
+                case DragEvent.ACTION_DRAG_STARTED:
+                    return draggingSpec != null;
+                case DragEvent.ACTION_DRAG_ENTERED:
+                    styleDropTarget(true);
+                    return true;
+                case DragEvent.ACTION_DRAG_EXITED:
+                    styleDropTarget(false);
+                    return true;
+                case DragEvent.ACTION_DROP:
+                    deleteDragged();
+                    return true;
+                case DragEvent.ACTION_DRAG_ENDED:
+                    styleDropTarget(false);
+                    return true;
+                default:
+                    return true;
+            }
+        });
+    }
+
+    private void styleDropTarget(boolean hot) {
+        android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(Chrome.dimen(this, R.dimen.radius_md));
+        if (hot) {
+            bg.setColor(Chrome.color(this, R.color.danger));
+            dropDelete.setTextColor(Chrome.color(this, R.color.on_accent));
+        } else {
+            bg.setColor(Chrome.color(this, R.color.surface_2));
+            bg.setStroke(Chrome.dp(this, R.dimen.stroke_hairline),
+                    Chrome.color(this, R.color.danger));
+            dropDelete.setTextColor(Chrome.color(this, R.color.danger));
+        }
+        dropDelete.setBackground(bg);
+    }
+
+    private void showDropTarget(boolean show) {
+        ensureDropTarget();
+        // Keep it clear of the navigation bar (the root itself is not padded).
+        WindowInsets wi = dropDelete.getRootWindowInsets();
+        int nav = 0;
+        if (wi != null) {
+            nav = Build.VERSION.SDK_INT >= 30
+                    ? wi.getInsets(WindowInsets.Type.systemBars()).bottom
+                    : wi.getSystemWindowInsetBottom();
+        }
+        android.widget.FrameLayout.LayoutParams lp =
+                (android.widget.FrameLayout.LayoutParams) dropDelete.getLayoutParams();
+        lp.bottomMargin = Chrome.dp(this, R.dimen.space_4) + nav;
+        dropDelete.setLayoutParams(lp);
+        dropDelete.animate().cancel();
+        if (show) {
+            dropDelete.setVisibility(View.VISIBLE);
+            dropDelete.setAlpha(0f);
+            dropDelete.setTranslationY(Chrome.dp(this, R.dimen.space_4));
+            dropDelete.animate().alpha(1f).translationY(0f).setDuration(160).start();
+        } else {
+            dropDelete.animate().alpha(0f)
+                    .translationY(Chrome.dp(this, R.dimen.space_4)).setDuration(120)
+                    .withEndAction(() -> {
+                        dropDelete.setVisibility(View.GONE);
+                        dropDelete.setAlpha(1f);
+                        dropDelete.setTranslationY(0f);
+                    }).start();
+        }
+    }
+
+    /** Drop on the danger bar: the lifted key is simply not re-inserted. */
+    private void deleteDragged() {
+        if (draggingSpec == null) return;
+        draggingSpec = null;
+        gapAt = null;
+        gapView = null;
+        dragOrigin = null;
+        cleanupEmptyRows();
+        persist();
+        render();
     }
 
     /** Grid-level drag listener: opens the gap under the finger and commits the drop. */
@@ -784,6 +899,7 @@ public final class ExtraKeysActivity extends Activity {
                 commitDrop();
                 return true;
             case DragEvent.ACTION_DRAG_ENDED:
+                showDropTarget(false);
                 cancelDrag();  // no-op if ACTION_DROP already consumed the key
                 return true;
             default:
@@ -807,18 +923,36 @@ public final class ExtraKeysActivity extends Activity {
         if (draggingSpec == null) return;
         int tr = rowAt(y);
         if (tr < 0 || tr >= rows.size()) return;
-        int before = insertIndex(tr, x);
-        if (gapAt != null && gapAt[0] == tr && gapAt[1] == before) return;
-        gapAt = new int[]{tr, before};
-        renderGrid();
+        placeGap(tr, insertIndex(tr, x));
     }
 
     /** Finger left the grid: show the key back at its origin so releasing is a no-op. */
     private void returnGapHome() {
         if (draggingSpec == null || dragOrigin == null) return;
-        if (gapAt != null && gapAt[0] == dragOrigin[0] && gapAt[1] == dragOrigin[1]) return;
-        gapAt = new int[]{dragOrigin[0], dragOrigin[1]};
-        renderGrid();
+        placeGap(dragOrigin[0], dragOrigin[1]);
+    }
+
+    /**
+     * Moves the single gap view to slot {@code before} in row {@code r}
+     * incrementally — no grid rebuild — so the rows' LayoutTransitions slide
+     * the neighbouring keys aside as the gap travels with the finger.
+     */
+    private void placeGap(int r, int before) {
+        if (gapAt != null && gapAt[0] == r && gapAt[1] == before) return;
+        gapAt = new int[]{r, before};
+        if (gapView != null && gapView.getParent() != null) {
+            ((ViewGroup) gapView.getParent()).removeView(gapView);
+        }
+        if (r < 0 || r >= grid.getChildCount()) {
+            gapView = null;
+            return;
+        }
+        LinearLayout rowView = (LinearLayout) grid.getChildAt(r);
+        gapView = makeGap();
+        // Children are the row's caps in model order plus the trailing
+        // add-cell, so the model slot maps straight to a child index.
+        int childIndex = Math.max(0, Math.min(before, rowView.getChildCount() - 1));
+        rowView.addView(gapView, childIndex, gapParams());
     }
 
     /** Drop: insert the dragged key where the gap is shown, then persist. */
@@ -884,7 +1018,8 @@ public final class ExtraKeysActivity extends Activity {
         gap.setTextSize(15);
         gap.setGravity(Gravity.CENTER);
         int vpad = dp(settings.extraKeysVerticalPadding());
-        gap.setPadding(dp(3), vpad, dp(3), vpad);
+        int padH = Chrome.dp(this, R.dimen.key_pad_h);
+        gap.setPadding(padH, vpad, padH, vpad);
         gap.setBackground(Chrome.rounded(this, R.color.surface_1,
                 Chrome.dimen(this, R.dimen.key_radius), R.color.accent));
         return gap;
@@ -906,7 +1041,8 @@ public final class ExtraKeysActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(text);
         t.setTextColor(Chrome.color(this, R.color.text_secondary));
-        t.setTextSize(13);
+        t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+                Chrome.dimen(this, R.dimen.text_row_summary));
         t.setPadding(0, dp(14), 0, dp(6));
         return t;
     }
@@ -918,19 +1054,20 @@ public final class ExtraKeysActivity extends Activity {
         t.setGravity(Gravity.CENTER);
         t.setPadding(dp(14), dp(8), dp(6), dp(8));
         t.setClickable(true);
-        t.setBackground(getDrawable(android.R.drawable.list_selector_background));
+        t.setBackground(Chrome.rippleTransparent(this, Chrome.dimen(this, R.dimen.radius_sm)));
         return t;
     }
 
     private TextView pickerAction(String text, Runnable onClick) {
         TextView t = new TextView(this);
         t.setText(text);
+        t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+                Chrome.dimen(this, R.dimen.text_action));
         t.setTextColor(Chrome.color(this, R.color.accent));
-        t.setTextSize(15);
         t.setGravity(Gravity.CENTER);
         t.setPadding(dp(8), dp(16), dp(8), dp(16));
         t.setClickable(true);
-        t.setBackground(getDrawable(android.R.drawable.list_selector_background));
+        t.setBackground(Chrome.rippleTransparent(this, Chrome.dimen(this, R.dimen.radius_sm)));
         t.setOnClickListener(v -> onClick.run());
         return t;
     }

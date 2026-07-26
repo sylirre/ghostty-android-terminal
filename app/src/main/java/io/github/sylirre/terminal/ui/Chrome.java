@@ -74,6 +74,17 @@ final class Chrome {
     }
 
     /**
+     * The accent press ripple layered over an arbitrary content drawable
+     * (e.g. a hand-built stroked card fill), clipped to the same corners.
+     */
+    static RippleDrawable rippleOver(Context c, android.graphics.drawable.Drawable content,
+            float radiusPx) {
+        return new RippleDrawable(
+                ColorStateList.valueOf(color(c, R.color.accent_translucent)),
+                content, roundedMask(radiusPx));
+    }
+
+    /**
      * A pressed/normal state list of rounded fills, used where the caller also
      * swaps the whole background to signal state (e.g. active/locked modifier
      * keys) rather than relying on a ripple. {@code strokeRes == 0} → no border.

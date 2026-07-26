@@ -321,6 +321,7 @@
     <string name="onb_done_title">All set</string>
     <string name="onb_done_detail">%1$s is ready.</string>
     <string name="onb_failed_title">Setup failed</string>
+    <string name="onb_failed_detail">The install didn\'t finish. Check free storage and try again.\n%1$s</string>
     <string name="onb_retry">Retry</string>
     <string name="onb_start">Start</string>
 
@@ -389,6 +390,7 @@
     <string name="extra_keys_switch_chooser_title">Switch layout</string>
     <string name="extra_keys_done">Done</string>
     <string name="extra_keys_reset">Reset</string>
+    <string name="extra_keys_reset_confirm">Replace this layout\'s keys and row height with the defaults? This can\'t be undone.</string>
     <string name="extra_keys_section_profiles">Layouts</string>
     <string name="extra_keys_section_row_height">Row height</string>
     <string name="extra_keys_section_grid">Keyboard</string>
@@ -427,4 +429,38 @@
     <string name="extra_keys_combo_base_char">Character (type below)</string>
     <string name="extra_keys_combo_no_mod">Pick at least one modifier.</string>
     <string name="extra_keys_combo_no_char">Type a single base character.</string>
+    <!-- Special base keys for modifier combos; parallel to
+         extra_keys_combo_tokens. F1–F12 are appended in code. -->
+    <string-array name="extra_keys_combo_labels">
+        <item>&#9664; Left</item>
+        <item>&#9654; Right</item>
+        <item>&#9650; Up</item>
+        <item>&#9660; Down</item>
+        <item>Home</item>
+        <item>End</item>
+        <item>PgUp</item>
+        <item>PgDn</item>
+        <item>Tab</item>
+        <item>Enter</item>
+        <item>Esc</item>
+        <item>Delete</item>
+        <item>Backspace</item>
+        <item>Insert</item>
+    </string-array>
+    <string-array name="extra_keys_combo_tokens" translatable="false">
+        <item>left</item>
+        <item>right</item>
+        <item>up</item>
+        <item>down</item>
+        <item>home</item>
+        <item>end</item>
+        <item>pgup</item>
+        <item>pgdn</item>
+        <item>tab</item>
+        <item>enter</item>
+        <item>esc</item>
+        <item>del</item>
+        <item>bksp</item>
+        <item>ins</item>
+    </string-array>
 </resources>

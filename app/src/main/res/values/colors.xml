@@ -40,4 +40,10 @@
 
     <!-- Dialog scrim. -->
     <color name="scrim">#99000000</color>
+
+    <!-- Onboarding distro-card branding (monogram tile fill + letter ink). -->
+    <color name="onb_alpine_tile">#2E2F9ED9</color>
+    <color name="onb_alpine_ink">#8FD4F5</color>
+    <color name="onb_debian_tile">#2EE04A6F</color>
+    <color name="onb_debian_ink">#FF7D9C</color>
 </resources>

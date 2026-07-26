@@ -214,43 +214,13 @@ public class ExtraKeysView extends LinearLayout {
             // size (the narrowest cap's fitted size) — per-cap autosizing
             // otherwise mixes label sizes within a row.
             rowView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-                if (r - l != or - ol) uniformizeRow((LinearLayout) v);
+                if (r - l != or - ol) KeyCaps.uniformize((LinearLayout) v);
             });
             rowsContainer.addView(rowView,
                     new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
         applyVisibility();
         updateToggles();
-    }
-
-    /**
-     * Applies one shared label size to every cap in a row: the size at which
-     * the row's most cramped label still fits its cap. Glyph caps measure by
-     * their original characters, which tracks the vector spans closely enough.
-     */
-    private void uniformizeRow(LinearLayout rowView) {
-        float maxPx = android.util.TypedValue.applyDimension(
-                android.util.TypedValue.COMPLEX_UNIT_SP, KeyCapView.TEXT_SP_MAX,
-                getResources().getDisplayMetrics());
-        float uniformSp = KeyCapView.TEXT_SP_MAX;
-        for (int i = 0; i < rowView.getChildCount(); i++) {
-            if (!(rowView.getChildAt(i) instanceof KeyCapView)) continue;
-            KeyCapView cap = (KeyCapView) rowView.getChildAt(i);
-            int avail = cap.getWidth() - cap.getPaddingLeft() - cap.getPaddingRight();
-            CharSequence text = cap.getText();
-            if (avail <= 0 || text.length() == 0) continue;
-            android.text.TextPaint p = new android.text.TextPaint(cap.getPaint());
-            p.setTextSize(maxPx);
-            float w = p.measureText(text.toString());
-            if (w > avail) {
-                uniformSp = Math.min(uniformSp, Math.max(
-                        KeyCapView.TEXT_SP_MIN, KeyCapView.TEXT_SP_MAX * avail / w));
-            }
-        }
-        for (int i = 0; i < rowView.getChildCount(); i++) {
-            if (!(rowView.getChildAt(i) instanceof KeyCapView)) continue;
-            ((KeyCapView) rowView.getChildAt(i)).setUniformTextSizeSp(uniformSp);
-        }
     }
 
     /** The leading profile-switch cap: tap cycles the active profile, long-press chooses. */
@@ -300,28 +270,13 @@ public class ExtraKeysView extends LinearLayout {
     }
 
     private void addKey(ExtraKey key, LinearLayout row) {
-        KeyCapView view = new KeyCapView(getContext());
-        view.setText(key.label);
-        // setMaxLines (not setSingleLine, which enables horizontal scrolling and
-        // defeats auto-size) so KeyCapView can shrink a long label to fit.
-        view.setMaxLines(1);
-        view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        view.setTextColor(palette.textPrimary);
-        view.setGravity(Gravity.CENTER);
-        view.setPadding(Chrome.dp(getContext(), R.dimen.key_pad_h),
-                keyPaddingV,
-                Chrome.dp(getContext(), R.dimen.key_pad_h),
-                keyPaddingV);
-        view.setBackground(keyBg());
-        view.setClickable(true);
-        // Render arrows and other symbol glyphs as vectors, not font glyphs, so
-        // they look the same on every device (combo labels keep their ASCII
-        // prefix as text and only the glyph parts become icons).
-        Glyphs.applyTo(view);
+        CharSequence secondaryHint = null;
         if (key.hasSecondary()) {
             ExtraKey sec = ExtraKeysConfig.resolve(getContext(), key.secondaryId);
-            if (sec != null) view.setSecondaryHint(sec.label);
+            if (sec != null) secondaryHint = sec.label;
         }
+        KeyCapView view = KeyCaps.make(getContext(), palette, key.label,
+                secondaryHint, keyPaddingV);
         switch (key.kind) {
             case MODIFIER:
                 modButtons.add(new ModButton(view, key.modifier));

@@ -20,6 +20,7 @@
         android:importantForAccessibility="no" />
 
     <LinearLayout
+        android:id="@+id/onb_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical">
@@ -254,54 +255,67 @@
                 </LinearLayout>
             </ScrollView>
 
-            <!-- Step 3: install progress / done / failure. -->
-            <LinearLayout
+            <!-- Step 3: install progress / done / failure. Scrollable so a
+                 long failure detail never clips on short screens. -->
+            <ScrollView
                 android:id="@+id/step_install"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:paddingLeft="@dimen/space_8"
-                android:paddingRight="@dimen/space_8"
+                android:fillViewport="true"
+                android:scrollbars="none"
                 android:visibility="gone">
 
-                <TextView
-                    android:id="@+id/install_badge"
-                    android:layout_width="76dp"
-                    android:layout_height="76dp"
-                    android:gravity="center"
-                    android:textSize="32sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:importantForAccessibility="no" />
-
-                <TextView
-                    android:id="@+id/install_title"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_6"
-                    android:gravity="center"
-                    android:textColor="@color/text_primary"
-                    android:textSize="20sp"
-                    android:fontFamily="sans-serif-medium" />
-
-                <ProgressBar
-                    android:id="@+id/install_bar"
-                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_6"
-                    android:max="100"
-                    android:indeterminate="true" />
-
-                <TextView
-                    android:id="@+id/install_detail"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/space_3"
+                    android:orientation="vertical"
                     android:gravity="center"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
-            </LinearLayout>
+                    android:paddingStart="@dimen/space_8"
+                    android:paddingEnd="@dimen/space_8"
+                    android:paddingTop="@dimen/space_6"
+                    android:paddingBottom="@dimen/space_6">
+
+                    <TextView
+                        android:id="@+id/install_badge"
+                        android:layout_width="76dp"
+                        android:layout_height="76dp"
+                        android:gravity="center"
+                        android:textSize="32sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:importantForAccessibility="no" />
+
+                    <TextView
+                        android:id="@+id/install_title"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_6"
+                        android:gravity="center"
+                        android:textColor="@color/text_primary"
+                        android:textSize="20sp"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <ProgressBar
+                        android:id="@+id/install_bar"
+                        style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_6"
+                        android:minHeight="@dimen/progress_height"
+                        android:maxHeight="@dimen/progress_height"
+                        android:progressDrawable="@drawable/progress_horizontal"
+                        android:max="100"
+                        android:indeterminate="true" />
+
+                    <TextView
+                        android:id="@+id/install_detail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_3"
+                        android:gravity="center"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </ScrollView>
         </FrameLayout>
 
         <!-- Shared bottom bar: step dots + primary/secondary actions. -->

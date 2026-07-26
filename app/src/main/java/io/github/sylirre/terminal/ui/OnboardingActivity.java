@@ -56,12 +56,6 @@ public final class OnboardingActivity extends Activity {
     private static final int STEP_CHOOSE = 1;
     private static final int STEP_INSTALL = 2;
 
-    /** Per-distro chooser card branding: monogram tile + letter colors. */
-    private static final int ALPINE_TILE = 0x2E2F9ED9;
-    private static final int ALPINE_TEXT = 0xFF8FD4F5;
-    private static final int DEBIAN_TILE = 0x2EE04A6F;
-    private static final int DEBIAN_TEXT = 0xFFFF7D9C;
-
     private AppSettings settings;
     private boolean setupOnly;
     private List<UserlandDistro> distros;
@@ -116,13 +110,17 @@ public final class OnboardingActivity extends Activity {
         setupOnly = getIntent().getBooleanExtra(EXTRA_SETUP_ONLY, false);
         distros = UserlandDistro.bundled(this);
 
+        // Pad the content, not the root: the decorative glow keeps its full
+        // bleed with its bright center at the true top of the screen.
         View root = findViewById(R.id.onb_root);
+        View content = findViewById(R.id.onb_content);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             if (Build.VERSION.SDK_INT >= 30) {
-                Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                Insets bars = insets.getInsets(WindowInsets.Type.systemBars()
+                        | WindowInsets.Type.displayCutout());
+                content.setPadding(bars.left, bars.top, bars.right, bars.bottom);
             } else {
-                v.setPadding(insets.getSystemWindowInsetLeft(),
+                content.setPadding(insets.getSystemWindowInsetLeft(),
                         insets.getSystemWindowInsetTop(),
                         insets.getSystemWindowInsetRight(),
                         insets.getSystemWindowInsetBottom());
@@ -146,6 +144,12 @@ public final class OnboardingActivity extends Activity {
         btnSecondary.setBackground(Chrome.rippleTransparent(this, pill));
         btnPrimary.setOnClickListener(v -> onPrimary());
         btnSecondary.setOnClickListener(v -> onSecondary());
+        // The active step dot stretches into a pill; animate that instead of
+        // rebuilding the row.
+        android.animation.LayoutTransition dotsTransition =
+                new android.animation.LayoutTransition();
+        dotsTransition.enableTransitionType(android.animation.LayoutTransition.CHANGING);
+        dots.setLayoutTransition(dotsTransition);
 
         buildChooserCards();
         // The suggested starting point is the first bundled distro — the list
@@ -211,8 +215,13 @@ public final class OnboardingActivity extends Activity {
     }
 
     private void onSecondary() {
-        if (step == STEP_CHOOSE && !setupOnly) {
-            showStep(STEP_WELCOME);
+        if (step == STEP_CHOOSE) {
+            if (setupOnly) {
+                setResult(RESULT_CANCELED);
+                finish();
+            } else {
+                showStep(STEP_WELCOME);
+            }
         } else if (step == STEP_INSTALL && installFailed) {
             showStep(STEP_CHOOSE);
         }
@@ -242,19 +251,32 @@ public final class OnboardingActivity extends Activity {
     private void updateChrome() {
         int count = setupOnly ? 2 : 3;
         int active = step - (setupOnly ? 1 : 0);
-        dots.removeAllViews();
-        int dot = Math.round(8 * getResources().getDisplayMetrics().density);
+        int dot = Chrome.dp(this, R.dimen.space_2);
+        if (dots.getChildCount() != count) {
+            dots.removeAllViews();
+            for (int i = 0; i < count; i++) {
+                View v = new View(this);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dot, dot);
+                lp.setMarginStart(dot / 2);
+                lp.setMarginEnd(dot / 2);
+                dots.addView(v, lp);
+            }
+        }
+        // Update in place: the container's LayoutTransition slides the active
+        // pill's width change instead of the row popping rebuilt.
         for (int i = 0; i < count; i++) {
-            View v = new View(this);
+            View v = dots.getChildAt(i);
             boolean isActive = i == active;
             GradientDrawable bg = new GradientDrawable();
             bg.setCornerRadius(dot);
             bg.setColor(Chrome.color(this, isActive ? R.color.accent : R.color.surface_4));
             v.setBackground(bg);
-            LinearLayout.LayoutParams lp =
-                    new LinearLayout.LayoutParams(isActive ? dot * 5 / 2 : dot, dot);
-            lp.leftMargin = lp.rightMargin = dot / 2;
-            dots.addView(v, lp);
+            LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) v.getLayoutParams();
+            int width = isActive ? dot * 5 / 2 : dot;
+            if (lp.width != width) {
+                lp.width = width;
+                v.setLayoutParams(lp);
+            }
         }
 
         if (step == STEP_WELCOME) {
@@ -266,8 +288,10 @@ public final class OnboardingActivity extends Activity {
             btnPrimary.setText(selected == null
                     ? getString(R.string.onb_use_shell_button)
                     : getString(R.string.onb_install_button, distroTitle(selected)));
-            btnSecondary.setText(R.string.onb_back);
-            btnSecondary.setVisibility(setupOnly ? View.INVISIBLE : View.VISIBLE);
+            // Setup-only mode has no welcome step to go back to, but still
+            // deserves a visible way out.
+            btnSecondary.setText(setupOnly ? R.string.action_cancel : R.string.onb_back);
+            btnSecondary.setVisibility(View.VISIBLE);
         } else if (installing) {
             btnPrimary.setVisibility(View.INVISIBLE);
             btnSecondary.setVisibility(View.INVISIBLE);
@@ -305,8 +329,8 @@ public final class OnboardingActivity extends Activity {
     private int distroTileColor(UserlandDistro d) {
         if (d == null) return Chrome.color(this, R.color.surface_3);
         switch (d.id) {
-            case "alpine": return ALPINE_TILE;
-            case "debian": return DEBIAN_TILE;
+            case "alpine": return Chrome.color(this, R.color.onb_alpine_tile);
+            case "debian": return Chrome.color(this, R.color.onb_debian_tile);
             default: return Chrome.color(this, R.color.accent_soft);
         }
     }
@@ -314,8 +338,8 @@ public final class OnboardingActivity extends Activity {
     private int distroTextColor(UserlandDistro d) {
         if (d == null) return Chrome.color(this, R.color.text_secondary);
         switch (d.id) {
-            case "alpine": return ALPINE_TEXT;
-            case "debian": return DEBIAN_TEXT;
+            case "alpine": return Chrome.color(this, R.color.onb_alpine_ink);
+            case "debian": return Chrome.color(this, R.color.onb_debian_ink);
             default: return Chrome.color(this, R.color.accent);
         }
     }
@@ -461,7 +485,9 @@ public final class OnboardingActivity extends Activity {
                             ? Chrome.dp(this, R.dimen.stroke_hairline) * 2
                             : Chrome.dp(this, R.dimen.stroke_hairline),
                     Chrome.color(this, isSelected ? R.color.accent : R.color.border));
-            holder.card.setBackground(bg);
+            // Rippled: this is the wizard's primary control and it used to
+            // give no press feedback at all.
+            holder.card.setBackground(Chrome.rippleOver(this, bg, radius));
 
             GradientDrawable ring = new GradientDrawable();
             ring.setShape(GradientDrawable.OVAL);
@@ -554,8 +580,10 @@ public final class OnboardingActivity extends Activity {
         } else {
             installFailed = true;
             installTitle.setText(R.string.onb_failed_title);
-            installDetail.setText(error.getMessage());
-            installBar.setVisibility(View.INVISIBLE);
+            // Actionable guidance first; the raw cause below it for reporting.
+            installDetail.setText(getString(R.string.onb_failed_detail,
+                    String.valueOf(error.getMessage())));
+            installBar.setVisibility(View.GONE);
         }
         updateChrome();
     }
