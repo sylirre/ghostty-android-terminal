@@ -674,6 +674,8 @@ public class TerminalUiTest {
                 () -> SessionManager.get().sessions().size() == 2,
                 this::diagnose);
         clickTabControl(R.string.tab_close_description);
+        // Closing asks first (the default close guard); confirm it.
+        onView(withText(R.string.session_close_confirm_button)).perform(click());
         waitFor("one session", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 1,
                 this::diagnose);

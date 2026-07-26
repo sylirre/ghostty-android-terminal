@@ -229,7 +229,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
             @Override
             public void onTabClosed(int index) {
-                closeTab(sessions.sessions().get(index));
+                confirmCloseTab(sessions.sessions().get(index));
             }
 
             @Override
@@ -567,6 +567,24 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             return;
         }
         super.onBackPressed();
+    }
+
+    /**
+     * Gate in front of {@link #closeTab}: closing kills the shell
+     * irrecoverably (and closing the last tab exits the app), and with a
+     * close button on every pill a stray tap while scrolling the strip is
+     * easy — so ask first, unless the user turned the guard off in Settings.
+     */
+    private void confirmCloseTab(TerminalSession s) {
+        if (!settings.confirmSessionClose()) {
+            closeTab(s);
+            return;
+        }
+        int index = sessions.indexOf(s);
+        if (index < 0) return; // already gone (e.g. the shell exited)
+        Dialogs.confirmDanger(this, getString(R.string.session_close_confirm_title),
+                getString(R.string.session_close_confirm_message, tabTitle(s, index)),
+                R.string.session_close_confirm_button, () -> closeTab(s));
     }
 
     private void closeTab(TerminalSession s) {
@@ -997,6 +1015,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         }
     }
 
+    /** A session's tab label: its OSC title, or "label:position" while unnamed. */
+    private static String tabTitle(TerminalSession s, int index) {
+        String t = s.title();
+        return t == null || t.isEmpty() ? s.label() + ":" + (index + 1) : t;
+    }
+
     private void updateTabs() {
         List<String> titles = new ArrayList<>();
         List<TabStripView.TabProgress> progress = new ArrayList<>();
@@ -1004,8 +1028,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         boolean showProgress = settings.showProgress();
         for (int i = 0; i < all.size(); i++) {
             TerminalSession s = all.get(i);
-            String t = s.title();
-            titles.add(t == null || t.isEmpty() ? s.label() + ":" + (i + 1) : t);
+            titles.add(tabTitle(s, i));
             progress.add(showProgress
                     ? new TabStripView.TabProgress(s.progressState(), s.progressValue())
                     : TabStripView.TabProgress.NONE);

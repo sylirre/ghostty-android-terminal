@@ -226,6 +226,11 @@ public final class SettingsActivity extends Activity {
                 settings::immersiveMode,
                 settings::setImmersiveMode));
         terminal.add(new Setting.Toggle(
+                getString(R.string.setting_confirm_close_title),
+                getString(R.string.setting_confirm_close_summary),
+                settings::confirmSessionClose,
+                settings::setConfirmSessionClose));
+        terminal.add(new Setting.Toggle(
                 getString(R.string.setting_terminate_processes_title),
                 getString(R.string.setting_terminate_processes_summary),
                 settings::terminateProcessesOnExit,

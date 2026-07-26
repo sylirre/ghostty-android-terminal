@@ -107,6 +107,11 @@
     <string name="setting_userland_jit_mb_value">%1$d MB</string>
 
     <!-- Settings: Session close behavior -->
+    <string name="setting_confirm_close_title">Confirm closing sessions</string>
+    <string name="setting_confirm_close_summary">Ask before a tab\'s close button ends its session, so a stray tap while scrolling the tabs can\'t kill a shell.</string>
+    <string name="session_close_confirm_title">Close session</string>
+    <string name="session_close_confirm_message">Close \"%1$s\"? Anything still running in it will be terminated.</string>
+    <string name="session_close_confirm_button">Close</string>
     <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
     <string name="setting_terminate_processes_summary">Processes in session that is being closed will receive the kill signal.</string>
 

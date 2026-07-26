@@ -48,6 +48,7 @@ public final class AppSettings {
     private static final String KEY_BIND_EXTERNAL_STORAGE = "bind_external_storage";
     private static final String KEY_TERMINATE_PROCESSES_ON_EXIT =
             "terminate_processes_on_exit";
+    private static final String KEY_CONFIRM_SESSION_CLOSE = "confirm_session_close";
     private static final String KEY_TERMINAL_BELL_LEGACY = "terminal_bell";
     private static final String KEY_TERMINAL_BELL_MODE = "terminal_bell_mode";
     private static final String KEY_USERLAND_LOGIN_SHELL = "userland_shell";
@@ -483,6 +484,20 @@ public final class AppSettings {
 
     public void setTerminateProcessesOnExit(boolean enabled) {
         prefs.edit().putBoolean(KEY_TERMINATE_PROCESSES_ON_EXIT, enabled).apply();
+    }
+
+    /**
+     * Whether tapping a tab's close button asks before killing the session.
+     * Default on: every tab carries a close button, a stray tap while
+     * scrolling the strip would otherwise end the session irrecoverably, and
+     * closing the last tab also exits the app.
+     */
+    public boolean confirmSessionClose() {
+        return prefs.getBoolean(KEY_CONFIRM_SESSION_CLOSE, true);
+    }
+
+    public void setConfirmSessionClose(boolean enabled) {
+        prefs.edit().putBoolean(KEY_CONFIRM_SESSION_CLOSE, enabled).apply();
     }
 
     /** BEL feedback mode for the active terminal session. Defaults to haptic feedback. */
