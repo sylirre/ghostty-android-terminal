@@ -525,11 +525,6 @@ static jint pack_rgb(GhosttyColorRgb c) {
    underline-shape field, so this lands at bit 8. The renderer underlines
    these cells as a tap-to-open affordance. */
 #define ATTR_HYPERLINK 256
-/* The cell sits on a primary shell-prompt line (OSC 133 semantic prompt,
-   GHOSTTY_ROW_SEMANTIC_PROMPT). Set on every cell of such a row so the
-   renderer can draw a left-edge prompt mark; continuation lines don't get it.
-   Bit 9. */
-#define ATTR_PROMPT 512
 
 /* Selection flag bits in meta[9], mirrored in ScreenSnapshot. */
 #define SEL_ACTIVE 1
@@ -746,7 +741,6 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
          * case. Both hang off the same raw row, so fetch it once. */
         bool row_has_graphemes = false;
         bool row_has_links = false;
-        bool row_is_prompt = false;
         {
             GhosttyRow raw_row = 0;
             if (ghostty_render_state_row_get(
@@ -758,12 +752,6 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
                 /* May false-positive; the per-cell probe below confirms. */
                 ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_HYPERLINK,
                                 &row_has_links);
-                /* OSC 133 semantic prompt state: mark only primary prompt lines
-                   (not continuations) so the renderer draws one mark per prompt. */
-                GhosttyRowSemanticPrompt sp = GHOSTTY_ROW_SEMANTIC_NONE;
-                if (ghostty_row_get(raw_row, GHOSTTY_ROW_DATA_SEMANTIC_PROMPT,
-                                    &sp) == GHOSTTY_SUCCESS)
-                    row_is_prompt = sp == GHOSTTY_ROW_SEMANTIC_PROMPT;
             }
         }
         GhosttyRenderStateRowSelection rsel =
@@ -890,9 +878,6 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSnapshot(
             row_bg[x] = selected ? meta[8] : meta[7];
             row_attr[x] = 0;
         }
-        /* Tag the whole prompt row so the renderer can find it by any cell. */
-        if (row_is_prompt)
-            for (int rx = 0; rx < cols; rx++) row_attr[rx] |= ATTR_PROMPT;
         jsize off = (jsize)y * cols;
         (*env)->SetIntArrayRegion(env, jcp, off, cols, row_cp);
         (*env)->SetIntArrayRegion(env, jfg, off, cols, row_fg);

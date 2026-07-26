@@ -38,13 +38,6 @@ public final class TerminalNative {
     public static final int ATTR_HYPERLINK = 256;
 
     /**
-     * The cell sits on a primary shell-prompt line (OSC 133 semantic prompt).
-     * Bit 9, set on every cell of such a row so the renderer can draw a
-     * left-edge prompt mark; continuation lines don't carry it.
-     */
-    public static final int ATTR_PROMPT = 512;
-
-    /**
      * Underline shape: a 3-bit field in the attrs int (bits 5-7) holding one
      * of the {@code UNDERLINE_*} values. {@link #ATTR_UNDERLINE} is set
      * whenever this field is non-zero.

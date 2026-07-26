@@ -58,9 +58,9 @@
     <string name="setting_tap_open_links_title">Tap to open links</string>
     <string name="setting_tap_open_links_summary">Underline OSC 8 hyperlinks and open them on tap. A preview shows the full address first so you can check where it leads.</string>
 
-    <!-- Settings: Shell prompt marks -->
-    <string name="setting_prompt_marks_title">Shell prompt marks</string>
-    <string name="setting_prompt_marks_summary">Mark shell prompt lines (OSC 133) in the left gutter and show top-bar buttons to jump between them. Needs shell integration that emits the sequences.</string>
+    <!-- Settings: Shell prompt navigation -->
+    <string name="setting_prompt_nav_title">Shell prompt navigation</string>
+    <string name="setting_prompt_nav_summary">Show top-bar buttons to jump between shell prompt lines (OSC 133) while scrolled into history. Needs shell integration that emits the sequences.</string>
 
     <!-- Settings: Progress reporting -->
     <string name="setting_progress_title">Progress reporting</string>

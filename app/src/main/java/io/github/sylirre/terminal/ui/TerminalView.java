@@ -248,13 +248,6 @@ public class TerminalView extends View {
     // AppSettings toggle by MainActivity.
     private boolean tapToOpenLinks = true;
 
-    // --- OSC 133 shell-prompt marks. When enabled, primary prompt lines carry a
-    // thin left-edge mark and jumpTo{Prev,Next}Prompt walk between them. Colored
-    // with the effective cursor color so it tracks the theme. Pushed in from the
-    // AppSettings toggle by MainActivity.
-    private boolean promptMarks = true;
-    private final Paint promptMarkPaint = new Paint();
-
     // --- Fling/momentum scrolling. A flick over scrollback hands its velocity
     // to an OverScroller, whose decelerating position is sampled once per
     // animation frame and converted to whole-row scrollBy() calls (the engine
@@ -613,18 +606,6 @@ public class TerminalView extends View {
     public void setTapToOpenLinks(boolean enabled) {
         if (tapToOpenLinks == enabled) return;
         tapToOpenLinks = enabled;
-        invalidate();
-    }
-
-    /**
-     * Master switch for OSC 133 prompt marks. When on, primary shell-prompt
-     * lines carry a left-edge mark and {@link #jumpToPrevPrompt}/{@link
-     * #jumpToNextPrompt} navigate between them. Repaints so the marks appear or
-     * disappear immediately.
-     */
-    public void setPromptMarks(boolean enabled) {
-        if (promptMarks == enabled) return;
-        promptMarks = enabled;
         invalidate();
     }
 
@@ -1448,7 +1429,6 @@ public class TerminalView extends View {
         if (haveAbove) {
             drawRowText(canvas, aboveSnapshot, 0, aboveSnapshot.cols, -cellHeight);
         }
-        drawPromptMarks(canvas, sr, haveAbove);
         drawImages(canvas, false); // z >= 0: above text (the Kitty default)
         canvas.restore();
 
@@ -1472,29 +1452,6 @@ public class TerminalView extends View {
                     if (actionMode != null) actionMode.invalidateContentRect();
                 });
             }
-        }
-    }
-
-    /**
-     * Draws a thin left-edge mark on each visible primary shell-prompt line
-     * (OSC 133). Runs inside the smooth-scroll-translated canvas region, so the
-     * marks ride with the rows; {@code haveAbove} covers the partial row exposed
-     * above the viewport top. Colored with the effective cursor color so it
-     * tracks the theme.
-     */
-    private void drawPromptMarks(Canvas canvas, int rowsToDraw, boolean haveAbove) {
-        if (!promptMarks) return;
-        int color = snapshot.cursorColor();
-        if (color == 0) color = snapshot.defaultFg();
-        promptMarkPaint.setColor(color);
-        float w = Math.max(2f, cellWidth * 0.18f);
-        if (haveAbove && aboveSnapshot.isPromptRow(0)) {
-            canvas.drawRect(0, -cellHeight, w, 0, promptMarkPaint);
-        }
-        for (int y = 0; y < rowsToDraw; y++) {
-            if (!snapshot.isPromptRow(y)) continue;
-            float top = y * cellHeight;
-            canvas.drawRect(0, top, w, top + cellHeight, promptMarkPaint);
         }
     }
 

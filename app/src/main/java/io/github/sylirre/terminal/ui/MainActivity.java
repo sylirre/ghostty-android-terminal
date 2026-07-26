@@ -172,7 +172,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         // where jumping between prompts is useful — so the tab strip keeps the
         // full top-bar width during normal typing at the live bottom.
         terminal.setScrollStateListener(atBottom -> updatePromptNav(atBottom));
-        applyPromptMarks();
+        applyPromptNav();
 
         View root = findViewById(R.id.root);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -297,7 +297,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         terminal.setSmoothScroll(settings.smoothScroll());
         terminal.setMouseTracking(settings.mouseTracking());
         terminal.setTapToOpenLinks(settings.tapToOpenLinks());
-        applyPromptMarks();
+        applyPromptNav();
         applyTerminateProcessesOnExit(settings.terminateProcessesOnExit());
         extraKeys.setShowSwitch(settings.showExtraKeysSwitch());
         extraKeys.setRowEnabled(settings.extraKeysEnabled());
@@ -841,22 +841,20 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     /**
-     * Pushes the prompt-marks preference to the view. The navigation buttons
-     * follow the current scroll position (they show only while scrolled into
-     * history), so re-evaluate their visibility for the current state.
+     * Re-evaluates the prompt-navigation buttons' visibility for the current
+     * scroll position (they show only while scrolled into history).
      */
-    private void applyPromptMarks() {
-        terminal.setPromptMarks(settings.promptMarks());
+    private void applyPromptNav() {
         updatePromptNav(terminal.isAtBottom());
     }
 
     /**
-     * Shows the prompt-navigation buttons only when prompt marks are enabled and
-     * the terminal is scrolled into history; hidden at the live bottom so the tab
-     * strip keeps the full top-bar width.
+     * Shows the prompt-navigation (OSC 133) buttons only when the feature is
+     * enabled and the terminal is scrolled into history; hidden at the live
+     * bottom so the tab strip keeps the full top-bar width.
      */
     private void updatePromptNav(boolean atBottom) {
-        boolean show = settings.promptMarks() && !atBottom;
+        boolean show = settings.promptNav() && !atBottom;
         int vis = show ? View.VISIBLE : View.GONE;
         promptPrevButton.setVisibility(vis);
         promptNextButton.setVisibility(vis);

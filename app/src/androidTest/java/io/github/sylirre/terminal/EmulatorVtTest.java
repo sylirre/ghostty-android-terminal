@@ -231,31 +231,16 @@ public class EmulatorVtTest {
     }
 
     @Test
-    public void osc133PromptMarks() {
-        // Plain output carries no prompt mark.
-        feed("plain\r\n");
-        assertFalse(snapshot().isPromptRow(0));
-        // OSC 133;A starts a prompt, B ends it / starts the command, C starts
-        // command output. The prompt line is marked; the output line is not.
-        feed("\u001b]133;A\u001b\\user$ \u001b]133;B\u001b\\ls\r\n");
-        feed("\u001b]133;C\u001b\\output\r\n");
-        ScreenSnapshot s = snapshot();
-        assertTrue("prompt row should be marked", s.isPromptRow(1));
-        assertFalse("output row should not be marked", s.isPromptRow(2));
-    }
-
-    @Test
     public void osc133PromptNavigation() {
         // Two prompts with the first pushed into scrollback by intervening
-        // output; the terminal is 20x5 (see setUp).
+        // output; the terminal is 20x5 (see setUp). OSC 133;A starts a prompt,
+        // B ends it / starts the command, C starts command output.
         feed("\u001b]133;A\u001b\\P1$ first\r\n");
         feed("a\r\nb\r\nc\r\nd\r\ne\r\n");
         feed("\u001b]133;A\u001b\\P2$ second\r\n");
         // At the live bottom, jumping back lands the first prompt at the top.
         assertTrue(term.promptNav(-1));
-        ScreenSnapshot s = snapshot();
-        assertTrue(s.isPromptRow(0));
-        assertTrue(s.rowText(0).startsWith("P1$"));
+        assertTrue(snapshot().rowText(0).startsWith("P1$"));
         // No prompt earlier than the first.
         assertFalse(term.promptNav(-1));
     }

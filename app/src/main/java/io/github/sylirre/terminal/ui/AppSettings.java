@@ -41,7 +41,7 @@ public final class AppSettings {
     private static final String KEY_SMOOTH_SCROLL = "smooth_scroll";
     private static final String KEY_MOUSE_TRACKING = "mouse_tracking";
     private static final String KEY_TAP_OPEN_LINKS = "tap_open_links";
-    private static final String KEY_PROMPT_MARKS = "prompt_marks";
+    private static final String KEY_PROMPT_NAV = "prompt_nav";
     private static final String KEY_CLIPBOARD_WRITE = "clipboard_write";
     private static final String KEY_CLIPBOARD_READ = "clipboard_read";
     private static final String KEY_SHOW_PROGRESS = "show_progress";
@@ -376,16 +376,16 @@ public final class AppSettings {
     }
 
     /**
-     * When true (default), primary shell-prompt lines reported via OSC 133 are
-     * marked in the left gutter and the prompt-navigation buttons in the top bar
-     * jump between them. Applied to the view by {@code MainActivity}.
+     * When true (default), the top-bar prompt-navigation buttons appear while
+     * scrolled into history and jump between primary shell-prompt lines reported
+     * via OSC 133. Applied to the view by {@code MainActivity}.
      */
-    public boolean promptMarks() {
-        return prefs.getBoolean(KEY_PROMPT_MARKS, true);
+    public boolean promptNav() {
+        return prefs.getBoolean(KEY_PROMPT_NAV, true);
     }
 
-    public void setPromptMarks(boolean enabled) {
-        prefs.edit().putBoolean(KEY_PROMPT_MARKS, enabled).apply();
+    public void setPromptNav(boolean enabled) {
+        prefs.edit().putBoolean(KEY_PROMPT_NAV, enabled).apply();
     }
 
     /**

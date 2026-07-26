@@ -204,10 +204,10 @@ public final class SettingsActivity extends Activity {
                 settings::tapToOpenLinks,
                 settings::setTapToOpenLinks));
         terminal.add(new Setting.Toggle(
-                getString(R.string.setting_prompt_marks_title),
-                getString(R.string.setting_prompt_marks_summary),
-                settings::promptMarks,
-                settings::setPromptMarks));
+                getString(R.string.setting_prompt_nav_title),
+                getString(R.string.setting_prompt_nav_summary),
+                settings::promptNav,
+                settings::setPromptNav));
         terminal.add(new Setting.Toggle(
                 getString(R.string.setting_progress_title),
                 getString(R.string.setting_progress_summary),

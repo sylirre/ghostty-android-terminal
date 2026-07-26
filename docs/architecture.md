@@ -407,17 +407,17 @@ gated on the **Tap to open links** setting (`AppSettings.tapToOpenLinks` →
 
 libghostty-vt parses OSC 133 semantic-prompt sequences itself and tags each row
 with its prompt state, so this is read-only from the engine — no custom parsing.
-The snapshot builder reads `GHOSTTY_ROW_DATA_SEMANTIC_PROMPT` off the raw row
-(alongside the grapheme/hyperlink row hints) and, on a primary prompt line
-(`GHOSTTY_ROW_SEMANTIC_PROMPT`, not a continuation), ORs an `ATTR_PROMPT` bit
-(bit 9) into every cell of the row. `ScreenSnapshot.isPromptRow` answers off the
-first cell, and `TerminalView` draws a thin left-edge mark colored with the
-effective cursor color. Navigation (`terminalPromptNav`) walks screen rows via
-`GHOSTTY_POINT_TAG_SCREEN` + `ghostty_grid_ref_row` looking for the nearest
-primary prompt above/below the viewport top and scrolls it to the top — the same
-screen-scan and delta-scroll shape as search's `show_match`. The top-bar
-prompt-navigation buttons and the marks are both gated on the **Shell prompt
-marks** setting (`AppSettings.promptMarks`, default on). Command exit status
+The feature is navigation-only: no inline mark is drawn (an early left-gutter bar
+read as a stray `|` glyph against the first column, so it was dropped).
+Navigation (`terminalPromptNav`) walks screen rows via `GHOSTTY_POINT_TAG_SCREEN`
++ `ghostty_grid_ref_row`, checking each row's `GHOSTTY_ROW_DATA_SEMANTIC_PROMPT`
+(via the `screen_row_is_prompt` helper) for the nearest primary prompt
+(`GHOSTTY_ROW_SEMANTIC_PROMPT`, not a continuation) above/below the viewport top,
+and scrolls it to the top — the same screen-scan and delta-scroll shape as
+search's `show_match`. The top-bar ⌃/⌄ buttons drive it; they surface only while
+scrolled into history (via `TerminalView.ScrollStateListener`, so the tab strip
+keeps full width at the live bottom) and are gated on the **Shell prompt
+navigation** setting (`AppSettings.promptNav`, default on). Command exit status
 (OSC 133;D) is deliberately not surfaced: the row/cell API exposes prompt regions
 but not exit codes, which would need a separate parser.
 
