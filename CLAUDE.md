@@ -73,6 +73,9 @@ Java  app/src/main/java/io/github/sylirre/terminal/
   ui/    TerminalView (Canvas grid renderer + TYPE_NULL InputConnection)
          ExtraKeysView, TabStripView, MainActivity
          OnboardingActivity (first-run intro + distro chooser + install)
+         Chrome/ChromePalette/TopBarView/EdgeInsets/Dialogs/KeyCaps (shared
+         chrome: drawable factories + design tokens, theme-derived main-screen
+         palette, secondary-screen top bar + insets, dialog kit, keycap factory)
 JNI   app/src/main/cpp/   → libterm.so (CMake, NDK)
   pty_jni.c       openpt/fork + execve(sh) or arm64chroot_main(), TIOCSWINSZ, waitpid/kill
   terminal_jni.c  libghostty-vt bindings, snapshot flattening, key encoding
@@ -101,7 +104,10 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
   palette lookups). The default fg/bg/cursor/palette are themeable:
   `TerminalEmulator.setColors` pushes them into libghostty-vt and the render
   state resolves cells through them (UI in `ui/TerminalTheme` +
-  `ThemeActivity`). The `meta[]` array is 16 ints (`[15]` = effective cursor
+  `ThemeActivity`). The main screen's chrome (bars, tabs, keycaps, search)
+  recolors from the theme background via `ui/ChromePalette` — dark themes
+  resolve to the stock token chrome, light ones derive a light chrome; the
+  secondary screens keep the fixed dark tokens. The `meta[]` array is 16 ints (`[15]` = effective cursor
   color, 0 = unset); its layout is defined in `terminal_jni.c` and mirrored by
   `ScreenSnapshot` accessors; `ATTR_*`/`EVENT_*`/`MOD_*`/`SEL_*` constants
   must stay in sync between `terminal_jni.c` and `TerminalNative`.

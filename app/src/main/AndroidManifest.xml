@@ -25,6 +25,7 @@
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Terminal"
+        android:supportsRtl="true"
         android:requestLegacyExternalStorage="true">
 
         <activity
