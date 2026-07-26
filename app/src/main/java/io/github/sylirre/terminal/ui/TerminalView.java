@@ -209,9 +209,11 @@ public class TerminalView extends View {
 
     private static final float MIN_FONT_SP = 8f;
     private static final float MAX_FONT_SP = 40f;
-    private static final float DEFAULT_FONT_SP = 14f;
-    private static final String PREFS = "terminal";
-    private static final String PREF_FONT_SP = "font_size_sp";
+    // Package-visible so ThemePreviewView can render at the user's real font
+    // size instead of guessing (its preview would otherwise lie about density).
+    static final float DEFAULT_FONT_SP = 14f;
+    static final String PREFS = "terminal";
+    static final String PREF_FONT_SP = "font_size_sp";
 
     private final GestureDetector gestures;
     private final ScaleGestureDetector scaleGestures;

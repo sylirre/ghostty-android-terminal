@@ -182,6 +182,8 @@
     <string name="theme_section_fonts">Fonts</string>
     <string name="theme_section_theme">Theme &amp; colors</string>
     <string name="theme_picker_label">Theme</string>
+    <string name="theme_picker_presets">Presets</string>
+    <string name="theme_picker_user">My themes</string>
     <string name="theme_save">Save</string>
     <string name="theme_save_as">Save as…</string>
     <string name="theme_revert">Revert</string>

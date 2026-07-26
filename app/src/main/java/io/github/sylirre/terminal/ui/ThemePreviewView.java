@@ -6,12 +6,16 @@ package io.github.sylirre.terminal.ui;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
+import android.util.TypedValue;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 
+import io.github.sylirre.terminal.R;
 import io.github.sylirre.terminal.term.TerminalNative;
 
 /**
@@ -71,7 +75,24 @@ public final class ThemePreviewView extends View {
     public ThemePreviewView(Context context, AttributeSet attrs) {
         super(context, attrs);
         textPaint.setTypeface(Typeface.MONOSPACE);
-        textPaint.setTextSize(13f * getResources().getDisplayMetrics().scaledDensity);
+        // The user's real terminal font size (clamped so the preview always
+        // fits its card), not a hardcoded guess — the preview should be honest
+        // about text density.
+        float sp = context.getSharedPreferences(TerminalView.PREFS, Context.MODE_PRIVATE)
+                .getFloat(TerminalView.PREF_FONT_SP, TerminalView.DEFAULT_FONT_SP);
+        sp = Math.max(10f, Math.min(18f, sp));
+        textPaint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp,
+                getResources().getDisplayMetrics()));
+        // Rounded to sit flush inside its rounded card instead of poking
+        // square corners into it.
+        setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(),
+                        Chrome.dimen(view.getContext(), R.dimen.radius_sm));
+            }
+        });
+        setClipToOutline(true);
         theme = ThemePresets.DEFAULT;
     }
 

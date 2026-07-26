@@ -69,6 +69,13 @@ final class Dialogs {
     static void prompt(Context context, int titleRes, String initial, String hint,
             boolean monospacePath, Function<String, String> validate,
             Consumer<String> onOk, Runnable onUseDefault) {
+        prompt(context, context.getText(titleRes), initial, hint, monospacePath,
+                validate, onOk, onUseDefault);
+    }
+
+    static void prompt(Context context, CharSequence title, String initial, String hint,
+            boolean monospacePath, Function<String, String> validate,
+            Consumer<String> onOk, Runnable onUseDefault) {
         EditText input = field(context, initial, hint, monospacePath);
 
         TextView error = new TextView(context);
@@ -87,7 +94,7 @@ final class Dialogs {
         box.addView(error);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context)
-                .setTitle(titleRes)
+                .setTitle(title)
                 .setView(box)
                 .setPositiveButton(R.string.action_ok, null) // listener installed after show()
                 .setNegativeButton(R.string.action_cancel, null);

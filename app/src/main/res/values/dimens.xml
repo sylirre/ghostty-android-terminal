@@ -72,4 +72,10 @@
     <dimen name="progress_height">6dp</dimen>
     <!-- Oversized hero tiles (onboarding art). -->
     <dimen name="radius_hero">22dp</dimen>
+
+    <!-- Color picker geometry. -->
+    <dimen name="picker_field_height">180dp</dimen>
+    <dimen name="picker_bar_height">20dp</dimen>
+    <dimen name="picker_swatch_height">40dp</dimen>
+    <dimen name="picker_chip">28dp</dimen>
 </resources>

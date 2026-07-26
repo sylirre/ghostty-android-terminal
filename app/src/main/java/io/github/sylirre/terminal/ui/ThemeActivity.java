@@ -202,10 +202,17 @@ public final class ThemeActivity extends Activity {
             e.getValue().setBackground(swatchFill(colorOf(e.getKey())));
         }
         boolean userTheme = !store.isPreset(basedOn) && store.findByName(basedOn) != null;
-        btnSave.setVisibility(userTheme && dirty ? View.VISIBLE : View.GONE);
-        btnRevert.setVisibility(dirty ? View.VISIBLE : View.GONE);
-        btnRename.setVisibility(userTheme ? View.VISIBLE : View.GONE);
-        btnDelete.setVisibility(userTheme ? View.VISIBLE : View.GONE);
+        // Enabled state, not visibility: the action row keeps a stable layout
+        // instead of reflowing/jumping every time the dirty flag flips.
+        setActionEnabled(btnSave, userTheme && dirty);
+        setActionEnabled(btnRevert, dirty);
+        setActionEnabled(btnRename, userTheme);
+        setActionEnabled(btnDelete, userTheme);
+    }
+
+    private static void setActionEnabled(View v, boolean on) {
+        v.setEnabled(on);
+        v.setAlpha(on ? 1f : 0.35f);
     }
 
     // --- Background image (global wallpaper) ---
@@ -533,11 +540,12 @@ public final class ThemeActivity extends Activity {
         View item = inf.inflate(R.layout.theme_swatch, grid, false);
         ((TextView) item.findViewById(R.id.swatch_label)).setText(label);
         boxes.put(code, item.findViewById(R.id.swatch_color));
-        item.setOnClickListener(v -> ColorPickerDialog.show(this, label, colorOf(code), c -> {
-            setColorOf(code, c);
-            dirty = true;
-            refresh();
-        }));
+        item.setOnClickListener(v -> ColorPickerDialog.show(this, label, colorOf(code),
+                workingColors(), c -> {
+                    setColorOf(code, c);
+                    dirty = true;
+                    refresh();
+                }));
         GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
         lp.width = 0;
         lp.height = GridLayout.LayoutParams.WRAP_CONTENT;
@@ -549,23 +557,19 @@ public final class ThemeActivity extends Activity {
 
     // --- Theme management ---
 
+    /** The working copy's colors, for the picker's quick-pick chip row. */
+    private int[] workingColors() {
+        int[] out = new int[3 + ansi.length];
+        out[0] = fg;
+        out[1] = bg;
+        out[2] = cursor;
+        System.arraycopy(ansi, 0, out, 3, ansi.length);
+        return out;
+    }
+
     private void showThemePicker() {
-        List<TerminalTheme> all = store.all();
-        String[] names = new String[all.size()];
-        int checked = -1;
-        for (int i = 0; i < all.size(); i++) {
-            names[i] = all.get(i).name;
-            if (names[i].equals(basedOn)) checked = i;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.theme_picker_label)
-                .setSingleChoiceItems(names, checked, (d, which) -> {
-                    d.dismiss();
-                    TerminalTheme sel = all.get(which);
-                    confirmIfDirty(() -> loadInto(sel));
-                })
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
+        ThemePickerDialog.show(this, store, basedOn,
+                sel -> confirmIfDirty(() -> loadInto(sel)));
     }
 
     private void saveOverwrite() {
@@ -578,87 +582,52 @@ public final class ThemeActivity extends Activity {
 
     private void saveAs() {
         String base = store.isPreset(basedOn) ? getString(R.string.theme_custom_default) : basedOn;
-        promptName(getString(R.string.theme_save_as), store.suggestName(base), name -> {
-            if (store.isPreset(name)) {
-                toast(R.string.theme_name_taken);
-                return;
-            }
-            TerminalTheme t = working().withName(name);
-            store.saveUserTheme(t);
-            store.setSelected(name);
-            loadInto(t);
-            toast(R.string.theme_saved);
-        });
+        Dialogs.prompt(this, getString(R.string.theme_save_as),
+                store.suggestName(base), null, false,
+                name -> name.isEmpty() ? getString(R.string.theme_name_empty)
+                        : store.isPreset(name) ? getString(R.string.theme_name_taken) : null,
+                name -> {
+                    TerminalTheme t = working().withName(name);
+                    store.saveUserTheme(t);
+                    store.setSelected(name);
+                    loadInto(t);
+                    toast(R.string.theme_saved);
+                }, null);
     }
 
     private void renameCurrent() {
-        promptName(getString(R.string.theme_rename), basedOn, name -> {
-            if (name.equals(basedOn)) return;
-            if (store.nameExists(name)) {
-                toast(R.string.theme_name_taken);
-                return;
-            }
-            store.renameUserTheme(basedOn, name);
-            basedOn = name;
-            refresh();
-        });
+        Dialogs.prompt(this, getString(R.string.theme_rename), basedOn, null, false,
+                name -> name.isEmpty() ? getString(R.string.theme_name_empty)
+                        : !name.equals(basedOn) && store.nameExists(name)
+                                ? getString(R.string.theme_name_taken) : null,
+                name -> {
+                    if (name.equals(basedOn)) return;
+                    store.renameUserTheme(basedOn, name);
+                    basedOn = name;
+                    refresh();
+                }, null);
     }
 
     private void deleteCurrent() {
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.theme_delete)
-                .setMessage(getString(R.string.theme_delete_confirm, basedOn))
-                .setPositiveButton(R.string.theme_delete, (d, w) -> {
+        Dialogs.confirmDanger(this, getString(R.string.theme_delete),
+                getString(R.string.theme_delete_confirm, basedOn),
+                R.string.theme_delete, () -> {
                     store.deleteUserTheme(basedOn);
                     loadInto(store.current());
                     toast(R.string.theme_deleted);
-                })
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
+                });
     }
 
     // --- Helpers ---
-
-    private void promptName(String title, String initial, Consumer<String> onName) {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        input.setSingleLine(true);
-        input.setText(initial);
-        input.setSelection(input.getText().length());
-
-        LinearLayout container = new LinearLayout(this);
-        int p = (int) (20 * getResources().getDisplayMetrics().density);
-        container.setPadding(p, p / 2, p, 0);
-        container.addView(input, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setView(container)
-                .setPositiveButton(R.string.action_ok, (d, w) -> {
-                    String name = input.getText().toString().trim();
-                    if (name.isEmpty()) {
-                        toast(R.string.theme_name_empty);
-                        return;
-                    }
-                    onName.accept(name);
-                })
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
-    }
 
     private void confirmIfDirty(Runnable proceed) {
         if (!dirty) {
             proceed.run();
             return;
         }
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.theme_discard_title)
-                .setMessage(R.string.theme_discard_message)
-                .setPositiveButton(R.string.theme_discard, (d, w) -> proceed.run())
-                .setNegativeButton(R.string.action_cancel, null)
-                .show();
+        Dialogs.confirmDanger(this, getString(R.string.theme_discard_title),
+                getString(R.string.theme_discard_message),
+                R.string.theme_discard, proceed);
     }
 
     private void toast(int resId) {

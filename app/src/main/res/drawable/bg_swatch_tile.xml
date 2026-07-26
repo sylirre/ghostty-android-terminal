@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tappable color-swatch tile: a transparent rounded ripple, so the press
+     highlight follows the tile's corners instead of a full-bleed rectangle. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/accent_translucent">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/on_accent" />
+            <corners android:radius="@dimen/radius_md" />
+        </shape>
+    </item>
+</ripple>
