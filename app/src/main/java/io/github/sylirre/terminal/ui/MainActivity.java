@@ -168,6 +168,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         promptNextButton = findViewById(R.id.prompt_next_button);
         promptPrevButton.setOnClickListener(v -> terminal.jumpToPrevPrompt());
         promptNextButton.setOnClickListener(v -> terminal.jumpToNextPrompt());
+        Glyphs.applyTo(promptPrevButton);  // ▲ ▼ → the same vector arrows as the extra keys
+        Glyphs.applyTo(promptNextButton);
         // The prompt-navigation buttons appear only while scrolled into history —
         // where jumping between prompts is useful — so the tab strip keeps the
         // full top-bar width during normal typing at the live bottom.

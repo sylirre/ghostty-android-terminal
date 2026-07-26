@@ -75,9 +75,10 @@
     <!-- Clipboard set via OSC 52 -->
     <string name="clipboard_set">Copied to clipboard</string>
 
-    <!-- Prompt navigation buttons (top bar) -->
-    <string name="prompt_prev_icon">⌃</string>
-    <string name="prompt_next_icon">⌄</string>
+    <!-- Prompt navigation buttons (top bar). Same arrow glyphs as the extra
+         keys (key_up/key_down); Glyphs swaps them for vector icons. -->
+    <string name="prompt_prev_icon">&#9650;</string>
+    <string name="prompt_next_icon">&#9660;</string>
     <string name="prompt_prev_description">Previous shell prompt</string>
     <string name="prompt_next_description">Next shell prompt</string>
 
