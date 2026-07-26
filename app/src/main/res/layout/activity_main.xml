@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Root paints the bar surface so the status/nav-bar bands read as
+     extensions of the top bar and extra-keys toolbar (their fills match);
+     MainActivity re-colors all chrome from the terminal theme's palette. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface_base">
+    android:background="@color/surface_1">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -12,14 +15,16 @@
 
         <!-- Top bar: scrolling tab strip plus fixed search + settings buttons. -->
         <LinearLayout
+            android:id="@+id/main_top_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:minHeight="52dp"
-            android:paddingLeft="4dp"
-            android:paddingRight="4dp"
-            android:background="@color/surface_1">
+            android:minHeight="@dimen/top_bar_height"
+            android:paddingStart="@dimen/space_1"
+            android:paddingEnd="@dimen/space_1"
+            android:elevation="@dimen/elevation_bar"
+            android:background="@drawable/bg_top_bar">
 
             <io.github.sylirre.terminal.ui.TabStripView
                 android:id="@+id/tabs"
@@ -31,12 +36,12 @@
                 android:id="@+id/prompt_prev_button"
                 android:layout_width="@dimen/icon_button"
                 android:layout_height="@dimen/icon_button"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="@dimen/space_1"
                 android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/prompt_prev_icon"
                 android:textColor="@color/text_secondary"
-                android:textSize="18sp"
+                android:textSize="@dimen/text_icon_glyph"
                 android:background="@drawable/bg_chip"
                 android:contentDescription="@string/prompt_prev_description"
                 android:clickable="true"
@@ -47,12 +52,12 @@
                 android:id="@+id/prompt_next_button"
                 android:layout_width="@dimen/icon_button"
                 android:layout_height="@dimen/icon_button"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="@dimen/space_1"
                 android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/prompt_next_icon"
                 android:textColor="@color/text_secondary"
-                android:textSize="18sp"
+                android:textSize="@dimen/text_icon_glyph"
                 android:background="@drawable/bg_chip"
                 android:contentDescription="@string/prompt_next_description"
                 android:clickable="true"
@@ -63,12 +68,12 @@
                 android:id="@+id/search_button"
                 android:layout_width="@dimen/icon_button"
                 android:layout_height="@dimen/icon_button"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="@dimen/space_1"
                 android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/search_button_icon"
                 android:textColor="@color/text_secondary"
-                android:textSize="18sp"
+                android:textSize="@dimen/text_icon_glyph"
                 android:background="@drawable/bg_chip"
                 android:contentDescription="@string/search_button_description"
                 android:clickable="true"
@@ -78,12 +83,12 @@
                 android:id="@+id/settings_button"
                 android:layout_width="@dimen/icon_button"
                 android:layout_height="@dimen/icon_button"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="@dimen/space_1"
                 android:layout_gravity="center_vertical"
                 android:gravity="center"
                 android:text="@string/settings_button_icon"
                 android:textColor="@color/text_secondary"
-                android:textSize="18sp"
+                android:textSize="@dimen/text_icon_glyph"
                 android:background="@drawable/bg_chip"
                 android:contentDescription="@string/settings_button_description"
                 android:clickable="true"
@@ -91,25 +96,14 @@
 
         </LinearLayout>
 
-        <!-- Hairline separating the top bar from the terminal surface. -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="@color/divider" />
-
-        <!-- Find bar; hidden until the search button is tapped. -->
-        <io.github.sylirre.terminal.ui.SearchBarView
-            android:id="@+id/search_bar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:visibility="gone" />
-
         <io.github.sylirre.terminal.ui.TerminalView
             android:id="@+id/terminal"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:scrollbars="vertical" />
+            android:scrollbars="vertical"
+            android:scrollbarThumbVertical="@drawable/scrollbar_thumb"
+            android:scrollbarSize="@dimen/scrollbar_width" />
 
         <io.github.sylirre.terminal.ui.ExtraKeysView
             android:id="@+id/extra_keys"
@@ -117,5 +111,16 @@
             android:layout_height="wrap_content" />
 
     </LinearLayout>
+
+    <!-- Find bar: an overlay hanging under the top bar, so opening it never
+         resizes the terminal (no SIGWINCH to the shell); hidden until the
+         search button is tapped. -->
+    <io.github.sylirre.terminal.ui.SearchBarView
+        android:id="@+id/search_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginTop="@dimen/top_bar_height"
+        android:visibility="gone" />
 
 </FrameLayout>

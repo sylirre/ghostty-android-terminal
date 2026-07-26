@@ -32,6 +32,7 @@ import android.provider.Settings;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.view.View;
+import android.view.ViewOutlineProvider;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
@@ -100,6 +101,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private TextView searchButton;
     private TextView promptPrevButton;
     private TextView promptNextButton;
+    private View mainTopBar;
+    /** Active chrome palette, derived from the terminal theme (see applyChrome). */
+    private ChromePalette chrome;
     private long lastClipToastUptime;
     private ExtraKeysView extraKeys;
     private TerminalSession current;
@@ -130,6 +134,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         forceShell = getIntent().getBooleanExtra(EXTRA_FORCE_SHELL, false);
         extraKeys = findViewById(R.id.extra_keys);
         extraKeys.attachTerminal(terminal);
+        mainTopBar = findViewById(R.id.main_top_bar);
+        mainTopBar.setOutlineProvider(ViewOutlineProvider.BOUNDS);
+        chrome = ChromePalette.from(this, 0xFF000000);
 
         settings = new AppSettings(this);
         // Existing installs never see the intro: a rootfs on disk means the
@@ -196,7 +203,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             boolean imeVisible;
             if (Build.VERSION.SDK_INT >= 30) {
                 android.graphics.Insets bars = insets.getInsets(
-                        WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.ime()
+                                | WindowInsets.Type.displayCutout());
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
                 imeVisible = insets.isVisible(WindowInsets.Type.ime());
             } else {
@@ -354,7 +362,50 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             s.emulator.setCursorStyle(cursorStyle, cursorBlink);
             s.emulator.setGraphemeClustering(grapheme);
         }
+        terminal.setDefaultBackground(theme.background);
+        applyChrome(ChromePalette.from(this, theme.background));
         terminal.invalidate();
+    }
+
+    /**
+     * Recolors the main-screen chrome from the terminal theme's palette: the
+     * bars, tab strip, keycaps, search bar, the system-bar bands (the root
+     * fill) and the status/nav icon appearance. Dark themes resolve to the
+     * stock token chrome, so the default look is unchanged; light themes get
+     * a light chrome instead of a black frame.
+     */
+    private void applyChrome(ChromePalette p) {
+        chrome = p;
+        findViewById(R.id.root).setBackgroundColor(p.surface1);
+        mainTopBar.setBackground(p.barSurface(true));
+        styleTopBarButton(promptPrevButton);
+        styleTopBarButton(promptNextButton);
+        styleTopBarButton(findViewById(R.id.settings_button));
+        setSearchButtonActive(searchBar.isOpen());
+        tabs.applyPalette(p);
+        extraKeys.applyPalette(p);
+        searchBar.applyPalette(p);
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(p.isLight ? mask : 0, mask);
+            }
+        } else {
+            View decor = getWindow().getDecorView();
+            int vis = decor.getSystemUiVisibility();
+            int flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            decor.setSystemUiVisibility(p.isLight ? vis | flags : vis & ~flags);
+        }
+    }
+
+    private void styleTopBarButton(TextView b) {
+        b.setBackground(chrome.ripple(chrome.surface2,
+                Chrome.dimen(this, R.dimen.radius_md), chrome.border));
+        b.setTextColor(chrome.textSecondary);
+        Glyphs.applyTo(b);  // re-tint the vector glyph from the new ink
     }
 
     /**
@@ -496,13 +547,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     /** Swaps the search button between the idle chip and the accent-fill active look. */
     private void setSearchButtonActive(boolean active) {
+        float r = Chrome.dimen(this, R.dimen.radius_md);
         if (active) {
-            float r = Chrome.dimen(this, R.dimen.radius_md);
-            searchButton.setBackground(Chrome.rounded(this, R.color.accent, r, 0));
-            searchButton.setTextColor(Chrome.color(this, R.color.on_accent));
+            searchButton.setBackground(chrome.ripple(chrome.accent, r, 0));
+            searchButton.setTextColor(chrome.onAccent);
         } else {
-            searchButton.setBackground(getDrawable(R.drawable.bg_chip));
-            searchButton.setTextColor(Chrome.color(this, R.color.text_secondary));
+            searchButton.setBackground(chrome.ripple(chrome.surface2, r, chrome.border));
+            searchButton.setTextColor(chrome.textSecondary);
         }
         // Glyphs bakes the icon tint from the current text color, so re-span
         // the 🔍 to pick up the new color.
@@ -874,9 +925,31 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
      */
     private void updatePromptNav(boolean atBottom) {
         boolean show = settings.promptNav() && !atBottom;
-        int vis = show ? View.VISIBLE : View.GONE;
-        promptPrevButton.setVisibility(vis);
-        promptNextButton.setVisibility(vis);
+        animateContextualChip(promptPrevButton, show);
+        animateContextualChip(promptNextButton, show);
+    }
+
+    /** Fades/scales a contextual top-bar chip in or out instead of snapping. */
+    private static void animateContextualChip(View v, boolean show) {
+        Boolean desired = (Boolean) v.getTag();
+        if (desired != null && desired == show) return;
+        v.setTag(show);
+        v.animate().cancel();
+        if (show) {
+            v.setVisibility(View.VISIBLE);
+            v.setAlpha(0f);
+            v.setScaleX(0.8f);
+            v.setScaleY(0.8f);
+            v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).start();
+        } else {
+            v.animate().alpha(0f).scaleX(0.8f).scaleY(0.8f).setDuration(120)
+                    .withEndAction(() -> {
+                        v.setVisibility(View.GONE);
+                        v.setAlpha(1f);
+                        v.setScaleX(1f);
+                        v.setScaleY(1f);
+                    }).start();
+        }
     }
 
     private void applyTextMargins() {

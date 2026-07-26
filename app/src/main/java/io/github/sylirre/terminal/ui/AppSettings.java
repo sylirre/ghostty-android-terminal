@@ -245,10 +245,10 @@ public final class AppSettings {
     /**
      * Left text margin in dp. A gap between the left screen edge and the
      * start of terminal text, useful on devices where the screen edge is
-     * obscured by the case. Default 0.
+     * obscured by the case. Default 4.
      */
     public int textMarginLeft() {
-        return prefs.getInt(KEY_TEXT_MARGIN_LEFT, 0);
+        return prefs.getInt(KEY_TEXT_MARGIN_LEFT, 4);
     }
 
     public void setTextMarginLeft(int dp) {
@@ -257,10 +257,10 @@ public final class AppSettings {
 
     /**
      * Right text margin in dp. A gap between the end of terminal text and
-     * the right screen edge. Default 0.
+     * the right screen edge. Default 4.
      */
     public int textMarginRight() {
-        return prefs.getInt(KEY_TEXT_MARGIN_RIGHT, 0);
+        return prefs.getInt(KEY_TEXT_MARGIN_RIGHT, 4);
     }
 
     public void setTextMarginRight(int dp) {

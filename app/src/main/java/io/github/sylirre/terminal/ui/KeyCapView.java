@@ -28,13 +28,32 @@ final class KeyCapView extends TextView {
     /** Corner hint size relative to the cap's own text size. */
     private static final float HINT_SCALE = 0.62f;
 
+    /** Label size bounds (sp) for both per-cap autosizing and row uniforming. */
+    static final float TEXT_SP_MIN = 8;
+    static final float TEXT_SP_MAX = 15;
+
     private Layout hint;  // pre-laid-out corner hint, or null
+    private CharSequence secondaryLabel;  // kept so a resize can re-lay the hint
 
     KeyCapView(Context context) {
         super(context);
         // Auto-shrink long labels (CTRL, HOME, combo prefixes) so they fit a
-        // narrow flex cap instead of clipping; short/glyph caps stay at max size.
-        setAutoSizeTextTypeUniformWithConfiguration(8, 15, 1, TypedValue.COMPLEX_UNIT_SP);
+        // narrow flex cap instead of clipping; short/glyph caps stay at max
+        // size. ExtraKeysView later pins one uniform size per row (see
+        // setUniformTextSizeSp) so neighbours never mix label sizes.
+        setAutoSizeTextTypeUniformWithConfiguration(
+                (int) TEXT_SP_MIN, (int) TEXT_SP_MAX, 1, TypedValue.COMPLEX_UNIT_SP);
+    }
+
+    /**
+     * Replaces per-cap autosizing with one fixed size, computed by the row
+     * so every cap in it shares a label size. Re-lays the corner hint, which
+     * scales with the label.
+     */
+    void setUniformTextSizeSp(float sp) {
+        setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE);
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        if (secondaryLabel != null) setSecondaryHint(secondaryLabel);
     }
 
     /**
@@ -45,10 +64,12 @@ final class KeyCapView extends TextView {
      */
     void setSecondaryHint(CharSequence label) {
         if (label == null || label.length() == 0) {
+            secondaryLabel = null;
             hint = null;
             invalidate();
             return;
         }
+        secondaryLabel = label;
         float size = getTextSize() * HINT_SCALE;
         int color = Chrome.color(getContext(), R.color.text_secondary);
         TextPaint p = new TextPaint(Paint.ANTI_ALIAS_FLAG);

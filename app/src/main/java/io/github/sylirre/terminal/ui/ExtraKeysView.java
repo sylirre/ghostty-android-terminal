@@ -56,6 +56,7 @@ public class ExtraKeysView extends LinearLayout {
     private TerminalView terminal;
     private final TerminalView.StickyModifiers sticky = new TerminalView.StickyModifiers();
     private ExtraKeysConfig config;
+    private ChromePalette palette;
 
     // When false the toolbar is hidden regardless of the configured keys; the
     // keys themselves are untouched, so flipping this back shows them as before.
@@ -98,13 +99,23 @@ public class ExtraKeysView extends LinearLayout {
     public ExtraKeysView(Context context, AttributeSet attrs) {
         super(context, attrs);
         setOrientation(VERTICAL);
-        setBackground(context.getDrawable(R.drawable.bg_toolbar_top));
-        int pad = Chrome.dp(context, R.dimen.key_gap);
+        palette = ChromePalette.from(context, android.graphics.Color.BLACK);
+        setBackground(palette.barSurface(false));
+        // Half the cap gap: each cap carries key_gap/2 margins on every side,
+        // so this makes the outer gutters equal the 4dp inner ones.
+        int pad = Chrome.dp(context, R.dimen.key_gap) / 2;
         setPadding(pad, pad, pad, pad);
         swipeThresholdPx = Math.max(ViewConfiguration.get(context).getScaledTouchSlop() * 2,
                 Chrome.dp(context, R.dimen.space_5));
         keyPaddingV = Chrome.dp(context, R.dimen.key_pad_v);
         sticky.onChanged = this::updateToggles;
+    }
+
+    /** Re-derives the toolbar's colors from a new chrome palette. */
+    public void applyPalette(ChromePalette p) {
+        palette = p;
+        setBackground(palette.barSurface(false));
+        reload();
     }
 
     /** Must be called before the toolbar is used. */
@@ -199,6 +210,12 @@ public class ExtraKeysView extends LinearLayout {
             LinearLayout rowView = new LinearLayout(getContext());
             rowView.setOrientation(HORIZONTAL);
             for (ExtraKey key : row) addKey(key, rowView);
+            // Once the row has real widths, pin every cap in it to one label
+            // size (the narrowest cap's fitted size) — per-cap autosizing
+            // otherwise mixes label sizes within a row.
+            rowView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                if (r - l != or - ol) uniformizeRow((LinearLayout) v);
+            });
             rowsContainer.addView(rowView,
                     new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         }
@@ -206,14 +223,45 @@ public class ExtraKeysView extends LinearLayout {
         updateToggles();
     }
 
+    /**
+     * Applies one shared label size to every cap in a row: the size at which
+     * the row's most cramped label still fits its cap. Glyph caps measure by
+     * their original characters, which tracks the vector spans closely enough.
+     */
+    private void uniformizeRow(LinearLayout rowView) {
+        float maxPx = android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_SP, KeyCapView.TEXT_SP_MAX,
+                getResources().getDisplayMetrics());
+        float uniformSp = KeyCapView.TEXT_SP_MAX;
+        for (int i = 0; i < rowView.getChildCount(); i++) {
+            if (!(rowView.getChildAt(i) instanceof KeyCapView)) continue;
+            KeyCapView cap = (KeyCapView) rowView.getChildAt(i);
+            int avail = cap.getWidth() - cap.getPaddingLeft() - cap.getPaddingRight();
+            CharSequence text = cap.getText();
+            if (avail <= 0 || text.length() == 0) continue;
+            android.text.TextPaint p = new android.text.TextPaint(cap.getPaint());
+            p.setTextSize(maxPx);
+            float w = p.measureText(text.toString());
+            if (w > avail) {
+                uniformSp = Math.min(uniformSp, Math.max(
+                        KeyCapView.TEXT_SP_MIN, KeyCapView.TEXT_SP_MAX * avail / w));
+            }
+        }
+        for (int i = 0; i < rowView.getChildCount(); i++) {
+            if (!(rowView.getChildAt(i) instanceof KeyCapView)) continue;
+            ((KeyCapView) rowView.getChildAt(i)).setUniformTextSizeSp(uniformSp);
+        }
+    }
+
     /** The leading profile-switch cap: tap cycles the active profile, long-press chooses. */
     private View buildSwitchColumn() {
         ImageView v = new ImageView(getContext());
         v.setImageResource(R.drawable.ic_glyph_layers);
-        v.setImageTintList(ColorStateList.valueOf(Chrome.color(getContext(), R.color.accent)));
+        v.setImageTintList(ColorStateList.valueOf(palette.accent));
         v.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int pad = Chrome.dp(getContext(), R.dimen.key_pad_h);
-        v.setPadding(pad, pad, pad, pad);
+        // Vertical padding follows the row-height setting like the caps do.
+        v.setPadding(pad, keyPaddingV, pad, keyPaddingV);
         v.setBackground(keyBg());
         v.setContentDescription(getContext().getString(R.string.extra_keys_switch_chooser_title));
         v.setClickable(true);
@@ -258,7 +306,7 @@ public class ExtraKeysView extends LinearLayout {
         // defeats auto-size) so KeyCapView can shrink a long label to fit.
         view.setMaxLines(1);
         view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        view.setTextColor(Color.WHITE);
+        view.setTextColor(palette.textPrimary);
         view.setGravity(Gravity.CENTER);
         view.setPadding(Chrome.dp(getContext(), R.dimen.key_pad_h),
                 keyPaddingV,
@@ -342,6 +390,9 @@ public class ExtraKeysView extends LinearLayout {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     view.setPressed(true);
+                    // The keyboard-style tick every soft keyboard gives on
+                    // press-down (system haptic settings still gate it).
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                     longPressed[0] = false;
                     consumed[0] = false;
                     downY[0] = event.getY();
@@ -421,21 +472,22 @@ public class ExtraKeysView extends LinearLayout {
         }
     }
 
-    // Rounded keycaps drawn from the design tokens. The idle cap carries a
-    // hairline border; the accent (active) and deep-accent (locked) states drop
-    // it so the fill reads as the whole key.
+    // Rounded keycaps drawn from the chrome palette: an immediate pressed-fill
+    // swap with the app-wide accent ripple layered on top. The idle cap
+    // carries a hairline border; the accent (active) and deep-accent (locked)
+    // states drop it so the fill reads as the whole key.
     private Drawable keyBg() {
-        return Chrome.stateful(getContext(), R.color.surface_2, R.color.surface_4,
-                keyRadius(), R.color.border);
+        return palette.pressRipple(palette.surface2, palette.surface4,
+                keyRadius(), palette.border);
     }
 
     private Drawable keyBgActive() {
-        return Chrome.stateful(getContext(), R.color.accent, R.color.accent_pressed,
+        return palette.pressRipple(palette.accent, palette.accentPressed,
                 keyRadius(), 0);
     }
 
     private Drawable keyBgLocked() {
-        return Chrome.stateful(getContext(), R.color.accent_deep, R.color.accent,
+        return palette.pressRipple(palette.accentDeep, palette.accent,
                 keyRadius(), 0);
     }
 

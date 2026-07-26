@@ -26,6 +26,7 @@ import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
 import android.util.AttributeSet;
+import android.util.TypedValue;
 import android.view.ActionMode;
 import android.view.GestureDetector;
 import android.view.HapticFeedbackConstants;
@@ -163,6 +164,13 @@ public class TerminalView extends View {
     private int cols = 80, rows = 24;
     private int textMarginLeft;
     private int textMarginRight;
+
+    /**
+     * Painted when there is no session or no snapshot (launch, restore,
+     * teardown) so the empty state matches the theme background instead of
+     * flashing hard black under a non-black theme.
+     */
+    private int emptyBackground = 0xFF000000;
 
     // --- Grid-size HUD. A transient COLSxROWS chip drawn in onDraw while
     // pinch-zooming and held briefly after. Drawn in-view (rather than as a
@@ -811,7 +819,8 @@ public class TerminalView extends View {
     }
 
     private float spToPx(float sp) {
-        return sp * getResources().getDisplayMetrics().scaledDensity;
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp,
+                getResources().getDisplayMetrics());
     }
 
     /** Sets the font size (clamped) and persists it; reflows the grid. */
@@ -849,6 +858,14 @@ public class TerminalView extends View {
      * Useful on devices where a few pixels of the screen edge are hidden by the
      * case.
      */
+    /** Sets the theme background painted while no snapshot is available. */
+    public void setDefaultBackground(int color) {
+        int opaque = color | 0xFF000000;
+        if (emptyBackground == opaque) return;
+        emptyBackground = opaque;
+        invalidate();
+    }
+
     public void setTextMargins(int leftPx, int rightPx) {
         textMarginLeft = leftPx;
         textMarginRight = rightPx;
@@ -1494,11 +1511,11 @@ public class TerminalView extends View {
         boolean haveAbove = false;
         if (session != null && smoothScroll && pixelScrollOffset > 0) {
             int rc = session.emulator.snapshotSmooth(snapshot, aboveSnapshot);
-            if (rc == 0) { canvas.drawColor(0xFF000000); return; }
+            if (rc == 0) { canvas.drawColor(emptyBackground); return; }
             haveAbove = rc == 2;
             if (!haveAbove) pixelScrollOffset = 0; // at the top: nothing above
         } else if (session == null || !session.emulator.snapshot(snapshot)) {
-            canvas.drawColor(0xFF000000);
+            canvas.drawColor(emptyBackground);
             return;
         }
         float offsetPx = haveAbove ? pixelScrollOffset : 0;
