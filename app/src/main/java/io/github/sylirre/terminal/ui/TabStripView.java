@@ -269,10 +269,13 @@ public class TabStripView extends LinearLayout {
     }
 
     /**
-     * A pill's foreground overlay: the accent active-tab underline along the
-     * bottom edge, with the OSC 9;4 progress line drawn just above it — an
-     * accent fill scaled to the percentage for normal progress, danger for
-     * error, warning for paused, and a full bar for indeterminate.
+     * A pill's foreground overlay along the bottom edge. At rest the active
+     * tab draws its accent underline there. While the tab reports OSC 9;4
+     * progress, the progress bar owns that edge instead — a faint full-width
+     * track under a fill scaled to the percentage (accent for normal, danger
+     * for error, warning for paused, full for indeterminate). The two never
+     * stack: both are accent-colored, and drawing the fill on top of the
+     * underline read as a lumpy, broken bar.
      */
     private final class TabLines extends Drawable {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -306,11 +309,13 @@ public class TabStripView extends LinearLayout {
             Rect b = getBounds();
             float left = b.left + inset;
             float right = b.right - inset;
-            if (active) {
-                paint.setColor(palette.accent);
-                canvas.drawRect(left, b.bottom - indicatorPx, right, b.bottom, paint);
+            if (state == TerminalSession.PROGRESS_NONE) {
+                if (active) {
+                    paint.setColor(palette.accent);
+                    canvas.drawRect(left, b.bottom - indicatorPx, right, b.bottom, paint);
+                }
+                return;
             }
-            if (state == TerminalSession.PROGRESS_NONE) return;
             int color;
             float frac;
             switch (state) {
@@ -331,10 +336,11 @@ public class TabStripView extends LinearLayout {
                     frac = value / 100f;
                     break;
             }
-            float bottom = b.bottom - (active ? indicatorPx : 0);
+            paint.setColor(palette.border);
+            canvas.drawRect(left, b.bottom - progressPx, right, b.bottom, paint);
             paint.setColor(color);
-            canvas.drawRect(left, bottom - progressPx,
-                    left + (right - left) * frac, bottom, paint);
+            canvas.drawRect(left, b.bottom - progressPx,
+                    left + (right - left) * frac, b.bottom, paint);
         }
 
         @Override
