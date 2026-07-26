@@ -8,8 +8,12 @@ Android terminal emulator backed by Ghostty's VT engine (`libghostty-vt`).
 Runs a Linux userland under `arm64chroot` — a bundled from-scratch AArch64
 Linux user-space emulator (qemu-user-style ISA emulation + proot-style rootfs
 containment, optional `--jit`) — so the aarch64 rootfs runs on both arm64-v8a
-(JIT arm64→arm64) and x86_64 (JIT arm64→x86_64) hosts. Rootfs bundled as an
-optional, gitignored APK asset from `UserlandRootfs/`. Also `/system/bin/sh` with
+(JIT arm64→arm64) and x86_64 (JIT arm64→x86_64) hosts. Rootfs tarballs are
+optional, gitignored APK assets from `UserlandRootfs/` — one per distro,
+named `<id>_<version>_aarch64_rootfs.tar.xz` (built by
+`scripts/build-alpine-rootfs.sh` / `scripts/build-debian-rootfs.sh`; aarch64
+only, always); a first-run onboarding wizard (`OnboardingActivity`) explains
+the app and installs the chosen distro. Also `/system/bin/sh` with
 `PATH=/system/bin`; session tabs; extra-keys toolbar above the soft keyboard.
 minSdk 29, targetSdk 36, ABIs arm64-v8a + x86_64.
 
@@ -62,11 +66,13 @@ Java  app/src/main/java/io/github/sylirre/terminal/
          TerminalEmulator (owns the native handle, all calls synchronized)
          TerminalSession (PTY + shell pid + reader thread)
          SessionCommand (execve command or arm64chroot argv + env + tab label)
+         UserlandDistro (bundled rootfs asset discovery for the distro chooser)
          UserlandRootfs (rootfs asset → tar.xz install → arm64chroot command line)
          SessionManager (process singleton: sessions survive Activity recreation)
          ScreenSnapshot (flat viewport arrays for rendering)
   ui/    TerminalView (Canvas grid renderer + TYPE_NULL InputConnection)
          ExtraKeysView, TabStripView, MainActivity
+         OnboardingActivity (first-run intro + distro chooser + install)
 JNI   app/src/main/cpp/   → libterm.so (CMake, NDK)
   pty_jni.c       openpt/fork + execve(sh) or arm64chroot_main(), TIOCSWINSZ, waitpid/kill
   terminal_jni.c  libghostty-vt bindings, snapshot flattening, key encoding
@@ -150,9 +156,12 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 
 - Suites: `EmulatorVtTest` (deterministic VT/encoder through JNI, no
   shell), `ShellSessionTest` (real `sh` over a PTY), `UserlandSessionTest`
-  (bash under arm64chroot; skips itself when no rootfs asset is bundled),
-  `TerminalUiTest` (ActivityScenario + Espresso; launches with
-  `MainActivity.EXTRA_FORCE_SHELL` so it always tests plain sh).
+  (bash under arm64chroot; skips itself when no Debian rootfs asset is
+  bundled or another distro is installed), `TerminalUiTest`
+  (ActivityScenario + Espresso; launches with
+  `MainActivity.EXTRA_FORCE_SHELL` so it always tests plain sh and never
+  sees onboarding), `OnboardingActivityTest` (wizard flows that install
+  nothing; skips itself when a rootfs is already installed).
 - Shell output is asynchronous: poll with `TestUtil.waitFor`, never fixed
   sleeps. Pass the optional diagnostic supplier so timeouts dump the screen.
 - Write escape sequences as `\u001b` string escapes, never raw control
@@ -165,9 +174,12 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 
 ## CI
 
-`.github/workflows/ci.yml`: a build job uploads the debug APK artifact; an
-emulator job (KVM, animations off) runs the full instrumented suite and
-uploads test reports on failure. Zig is not needed in CI — the Ghostty
-prebuilts are committed. The userland rootfs tarballs are NOT in the repo,
-so CI builds without userland assets and `UserlandSessionTest` is skipped;
-run it locally with the tarballs in `UserlandRootfs/` (docs/testing.md).
+`.github/workflows/ci.yml`: a build job builds both rootfs tarballs (Debian
+via mmdebstrap, Alpine via the minirootfs repackage) and uploads a debug APK
+bundling them; an emulator job (KVM, animations off) runs the full
+instrumented suite and uploads test reports on failure. Zig is not needed in
+CI — the Ghostty prebuilts are committed. The rootfs tarballs are NOT in the
+repo (built fresh per run); the emulator job bundles only the small Alpine
+one, so `UserlandAlpineSessionTest` boots the userland in CI while the
+Debian `UserlandSessionTest` skips there — run that one locally with the
+tarball in `UserlandRootfs/` (docs/testing.md).

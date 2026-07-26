@@ -30,11 +30,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * The Linux distribution userland: rootfs install state, the tar.xz
  * installer, and the arm64chroot command line for {@link TerminalSession}.
  *
- * The rootfs rides in the APK as an optional asset
- * (debian_trixie_aarch64_rootfs.tar.xz, bundled from UserlandRootfs/ when
- * present at build time — never committed) and is extracted once into
- * filesDir/userland. It is always the aarch64 rootfs: arm64chroot emulates an
- * AArch64 guest on every host ABI. The tar reader is deliberately minimal: the
+ * The rootfs rides in the APK as an optional asset (one tarball per bundled
+ * distribution — see {@link UserlandDistro} for the naming pattern; bundled
+ * from UserlandRootfs/ when present at build time, never committed) and is
+ * extracted once into filesDir/userland. It is always an aarch64 rootfs:
+ * arm64chroot emulates an AArch64 guest on every host ABI. The tar reader is
+ * deliberately minimal: the
  * rootfs tarballs contain only regular files, directories, symlinks and
  * (potentially) hard links; device nodes etc. are skipped because arm64chroot
  * passes a /dev whitelist through to the host anyway.
@@ -44,6 +45,17 @@ public final class UserlandRootfs {
     /** Cumulative uncompressed bytes; called from the install thread. */
     public interface ProgressListener {
         void onProgress(long bytesExtracted);
+    }
+
+    /**
+     * First-install progress. {@code compressedRead}/{@code compressedTotal}
+     * track the xz asset itself, so they yield a true completion fraction
+     * (unlike the uncompressed byte count, whose total is unknown until the
+     * end); {@code compressedTotal} is 0 when the asset size could not be
+     * determined. Called from the install thread.
+     */
+    public interface InstallListener {
+        void onProgress(long bytesExtracted, long compressedRead, long compressedTotal);
     }
 
     private UserlandRootfs() {}
@@ -84,36 +96,90 @@ public final class UserlandRootfs {
 
     /** True when a login shell ({@code /bin/bash} or {@code /bin/sh}) resolves inside root. */
     private static boolean hasShell(File root) {
-        // exists() follows the usrmerge bin -> usr/bin symlink; check both
-        // layouts so a non-usrmerge rootfs is recognized too. Either bash or sh
-        // is enough — command() derives/falls back to whichever is present.
-        return new File(root, "bin/bash").exists()
-                || new File(root, "usr/bin/bash").exists()
-                || new File(root, "bin/sh").exists()
-                || new File(root, "usr/bin/sh").exists();
+        // Resolved with the guest-rooted walker (not File.exists()) so both
+        // Debian's relative usrmerge links (bin -> usr/bin) and Alpine's
+        // absolute busybox links (/bin/sh -> /bin/busybox) count. Either bash
+        // or sh is enough — command() derives/falls back to whichever exists.
+        return resolveInGuest(root, "/bin/bash", 0) != null
+                || resolveInGuest(root, "/usr/bin/bash", 0) != null
+                || resolveInGuest(root, "/bin/sh", 0) != null
+                || resolveInGuest(root, "/usr/bin/sh", 0) != null;
     }
 
     /**
-     * Asset file name — always the aarch64 rootfs. arm64chroot emulates an
-     * AArch64 guest on every host ABI, so an x86_64 device runs this same
-     * aarch64 rootfs under emulation.
+     * Resolves a guest-absolute path against the rootfs the way the emulator
+     * will: symlink targets are interpreted <em>inside the guest</em>, so an
+     * absolute target (Alpine's {@code /bin/sh -> /bin/busybox}) is re-rooted
+     * at the rootfs instead of the host {@code /}, where a plain
+     * {@code File.exists()} would chase and miss it. Relative targets and
+     * {@code ..} are normalized textually; a path that escapes the root or
+     * chains too deep (loop guard) resolves to null. Returns the host file of
+     * the final, non-symlink target when it exists, else null.
      */
-    public static String assetName() {
-        return "debian_trixie_aarch64_rootfs.tar.xz";
-    }
-
-    /** True when this build bundles the userland rootfs asset. */
-    public static boolean assetAvailable(Context ctx) {
-        try (InputStream in = ctx.getAssets().open(assetName())) {
-            return true;
-        } catch (IOException e) {
-            return false;
+    private static File resolveInGuest(File root, String path, int depth) {
+        if (path == null || depth > 40) return null;
+        String p = path.trim();
+        if (p.isEmpty() || !p.startsWith("/")) return null;
+        List<String> walked = new ArrayList<>();
+        String[] parts = p.split("/");
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            if (part.isEmpty() || part.equals(".")) continue;
+            if (part.equals("..")) {
+                if (walked.isEmpty()) return null; // escapes the guest root
+                walked.remove(walked.size() - 1);
+                continue;
+            }
+            walked.add(part);
+            String link = readlinkOrNull(new File(root, String.join("/", walked)));
+            if (link != null) {
+                StringBuilder next = new StringBuilder();
+                if (link.startsWith("/")) {
+                    next.append(link);
+                } else {
+                    walked.remove(walked.size() - 1); // relative to the link's dir
+                    next.append('/').append(String.join("/", walked));
+                    if (next.charAt(next.length() - 1) != '/') next.append('/');
+                    next.append(link);
+                }
+                for (int j = i + 1; j < parts.length; j++) {
+                    if (!parts[j].isEmpty()) next.append('/').append(parts[j]);
+                }
+                return resolveInGuest(root, next.toString(), depth + 1);
+            }
+        }
+        File host = walked.isEmpty() ? root : new File(root, String.join("/", walked));
+        try {
+            Os.lstat(host.getAbsolutePath());
+            return host;
+        } catch (ErrnoException e) {
+            return null;
         }
     }
 
+    /** The symlink target of {@code file}, or null when it is not a symlink. */
+    private static String readlinkOrNull(File file) {
+        try {
+            if (!OsConstants.S_ISLNK(Os.lstat(file.getAbsolutePath()).st_mode)) {
+                return null;
+            }
+            return Os.readlink(file.getAbsolutePath());
+        } catch (ErrnoException e) {
+            return null; // doesn't exist / can't stat: not a link we can follow
+        }
+    }
+
+    /** True when this build bundles at least one userland rootfs asset. */
+    public static boolean assetAvailable(Context ctx) {
+        return !UserlandDistro.bundled(ctx).isEmpty();
+    }
+
     /**
-     * Extracts the bundled rootfs into {@link #dir}. Idempotent: returns
-     * immediately when already installed. Extraction happens in a staging
+     * Extracts the bundled rootfs asset {@code assetName} (one of
+     * {@link UserlandDistro#bundled}) into {@link #dir}. Idempotent: returns
+     * immediately when a rootfs is already installed — whichever distribution
+     * it is; there is deliberately no "switch distro" path, because the
+     * installed tree holds the user's data. Extraction happens in a staging
      * directory that is renamed onto {@link #dir} only once complete, so the
      * rootfs directory — which is the install marker — appears atomically; a
      * crash mid-extract leaves only the staging dir, which the next attempt
@@ -123,24 +189,69 @@ public final class UserlandRootfs {
      * callers fall back to the Android shell instead. Blocking — call from a
      * background thread.
      */
-    public static synchronized void install(Context ctx, ProgressListener progress)
-            throws IOException {
+    public static synchronized void install(Context ctx, String assetName,
+            InstallListener progress) throws IOException {
         if (isInstalled(ctx)) return;
-        String asset = assetName();
 
         File staging = stagingDir(ctx);
         deleteRecursively(staging); // drop any aborted previous attempt
         if (!staging.mkdirs()) throw new IOException("cannot create " + staging);
 
-        try (InputStream raw = ctx.getAssets().open(asset);
-                XZInputStream xz = new XZInputStream(new BufferedInputStream(raw, 1 << 16))) {
-            // The bundled asset is trusted (we built it) and unwrapped, so skip
-            // both the per-entry path-escape guard and the strip heuristic that
-            // restore applies to arbitrary picked files.
-            extractTar(xz, staging, progress, null, false, 0);
+        // Total compressed size for a determinate fraction; the tarballs are
+        // stored uncompressed in the APK (noCompress 'xz'), so openFd works.
+        long compressedTotal;
+        try (android.content.res.AssetFileDescriptor fd =
+                ctx.getAssets().openFd(assetName)) {
+            compressedTotal = Math.max(0, fd.getLength());
+        } catch (IOException e) {
+            compressedTotal = 0;
+        }
+        final long total = compressedTotal;
+
+        try (InputStream raw = ctx.getAssets().open(assetName)) {
+            CountingInputStream counted = new CountingInputStream(raw);
+            try (XZInputStream xz = new XZInputStream(
+                    new BufferedInputStream(counted, 1 << 16))) {
+                // The bundled asset is trusted (we built it) and unwrapped, so
+                // skip both the per-entry path-escape guard and the strip
+                // heuristic that restore applies to arbitrary picked files.
+                ProgressListener adapter = progress == null ? null
+                        : extracted -> progress.onProgress(extracted, counted.count, total);
+                extractTar(xz, staging, adapter, null, false, 0);
+            }
         }
         writeGuestDefaults(staging);
         publish(ctx, staging);
+    }
+
+    /** Counts bytes consumed from the underlying stream (the xz asset). */
+    private static final class CountingInputStream extends java.io.FilterInputStream {
+        long count;
+
+        CountingInputStream(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b >= 0) count++;
+            return b;
+        }
+
+        @Override
+        public int read(byte[] buf, int off, int len) throws IOException {
+            int n = super.read(buf, off, len);
+            if (n > 0) count += n;
+            return n;
+        }
+
+        @Override
+        public long skip(long n) throws IOException {
+            long skipped = super.skip(n);
+            count += skipped;
+            return skipped;
+        }
     }
 
     /**
@@ -335,7 +446,7 @@ public final class UserlandRootfs {
         if (path == null) return null;
         String p = path.trim();
         if (p.isEmpty() || !p.startsWith("/")) return null;
-        File target = resolve(root, p); // null on a ".." escape
+        File target = resolveInGuest(root, p, 0); // null on escape or absence
         if (target == null || !target.isDirectory()) return null;
         return p;
     }
@@ -371,11 +482,7 @@ public final class UserlandRootfs {
 
     /** True when {@code path} is an absolute path that exists inside the rootfs. */
     private static boolean shellExists(File root, String path) {
-        if (path == null) return false;
-        String p = path.trim();
-        if (p.isEmpty() || !p.startsWith("/")) return false;
-        File f = resolve(root, p);
-        return f != null && f.exists();
+        return resolveInGuest(root, path, 0) != null;
     }
 
     // --- tar extraction ---
@@ -600,7 +707,7 @@ public final class UserlandRootfs {
             }
 
             extracted += size;
-            if (progress != null && extracted - lastReport >= (8 << 20)) {
+            if (progress != null && extracted - lastReport >= (2 << 20)) {
                 lastReport = extracted;
                 progress.onProgress(extracted);
             }

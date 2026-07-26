@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- First-run intro and userland setup. Three steps live in one FrameLayout
+     (welcome / choose / install) and OnboardingActivity cross-fades between
+     them; the bottom bar (step dots + primary/secondary buttons) is shared.
+     Distro cards are built in code from the bundled rootfs assets. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/onb_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_base">
+
+    <!-- Decorative accent glow behind the content. Height matches the
+         gradient radius so the fade reaches zero alpha exactly at the view's
+         bottom edge (shorter would show a visible seam). -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="420dp"
+        android:layout_gravity="top"
+        android:background="@drawable/bg_onboarding_glow"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/onb_steps"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <!-- Step 1: welcome hero + feature highlights. -->
+            <ScrollView
+                android:id="@+id/step_welcome"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:orientation="vertical"
+                    android:paddingLeft="@dimen/space_6"
+                    android:paddingRight="@dimen/space_6"
+                    android:paddingTop="@dimen/space_8"
+                    android:paddingBottom="@dimen/space_6">
+
+                    <FrameLayout
+                        android:layout_width="76dp"
+                        android:layout_height="76dp"
+                        android:layout_gravity="center_horizontal"
+                        android:background="@drawable/bg_onboarding_hero">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_stat_terminal"
+                            android:tint="@color/on_accent"
+                            android:importantForAccessibility="no" />
+                    </FrameLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:text="@string/app_name"
+                        android:textColor="@color/text_primary"
+                        android:textSize="30sp"
+                        android:letterSpacing="0.02"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:layout_marginTop="@dimen/space_1"
+                        android:gravity="center"
+                        android:text="@string/onb_tagline"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="15sp" />
+
+                    <!-- Feature highlights. -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_8"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="9dp"
+                            android:background="@drawable/bg_icon_tile"
+                            android:src="@drawable/ic_onb_cube"
+                            android:tint="@color/accent"
+                            android:importantForAccessibility="no" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="@dimen/space_4"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/onb_feat_userland_title"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:fontFamily="sans-serif-medium" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/onb_feat_userland_body"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:lineSpacingMultiplier="1.2" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="9dp"
+                            android:background="@drawable/bg_icon_tile"
+                            android:src="@drawable/ic_stat_terminal"
+                            android:tint="@color/accent"
+                            android:importantForAccessibility="no" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="@dimen/space_4"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/onb_feat_terminal_title"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:fontFamily="sans-serif-medium" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/onb_feat_terminal_body"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:lineSpacingMultiplier="1.2" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:padding="9dp"
+                            android:background="@drawable/bg_icon_tile"
+                            android:src="@drawable/ic_onb_touch"
+                            android:tint="@color/accent"
+                            android:importantForAccessibility="no" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="@dimen/space_4"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/onb_feat_touch_title"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:fontFamily="sans-serif-medium" />
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="@string/onb_feat_touch_body"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:lineSpacingMultiplier="1.2" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </ScrollView>
+
+            <!-- Step 2: distribution chooser (cards populated in code). -->
+            <ScrollView
+                android:id="@+id/step_choose"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:fillViewport="true"
+                android:scrollbars="none"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingLeft="@dimen/space_6"
+                    android:paddingRight="@dimen/space_6"
+                    android:paddingTop="@dimen/space_8"
+                    android:paddingBottom="@dimen/space_6">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/onb_choose_title"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_2"
+                        android:text="@string/onb_choose_subtitle"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="14sp"
+                        android:lineSpacingMultiplier="1.2" />
+
+                    <LinearLayout
+                        android:id="@+id/distro_cards"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/space_5"
+                        android:orientation="vertical" />
+                </LinearLayout>
+            </ScrollView>
+
+            <!-- Step 3: install progress / done / failure. -->
+            <LinearLayout
+                android:id="@+id/step_install"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingLeft="@dimen/space_8"
+                android:paddingRight="@dimen/space_8"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/install_badge"
+                    android:layout_width="76dp"
+                    android:layout_height="76dp"
+                    android:gravity="center"
+                    android:textSize="32sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:importantForAccessibility="no" />
+
+                <TextView
+                    android:id="@+id/install_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_6"
+                    android:gravity="center"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <ProgressBar
+                    android:id="@+id/install_bar"
+                    style="@android:style/Widget.Material.ProgressBar.Horizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_6"
+                    android:max="100"
+                    android:indeterminate="true" />
+
+                <TextView
+                    android:id="@+id/install_detail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_3"
+                    android:gravity="center"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- Shared bottom bar: step dots + primary/secondary actions. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="@dimen/space_6"
+            android:paddingRight="@dimen/space_6"
+            android:paddingBottom="@dimen/space_4">
+
+            <LinearLayout
+                android:id="@+id/onb_dots"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="@dimen/space_4"
+                android:orientation="horizontal" />
+
+            <TextView
+                android:id="@+id/btn_primary"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:gravity="center"
+                android:textColor="@color/on_accent"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/btn_secondary"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="@dimen/space_1"
+                android:gravity="center"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                android:fontFamily="sans-serif-medium"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

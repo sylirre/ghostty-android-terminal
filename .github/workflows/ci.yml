@@ -36,6 +36,11 @@ jobs:
       - name: Build Debian rootfs
         run: ./scripts/build-debian-rootfs.sh
 
+      # Needs only curl + xz (preinstalled on the runner); the published APK
+      # then bundles both distros for the onboarding chooser.
+      - name: Build Alpine rootfs
+        run: ./scripts/build-alpine-rootfs.sh
+
       # ndkVersion from app/build.gradle is auto-installed by AGP via
       # sdkmanager (licenses are pre-accepted on hosted runners).
       - name: Build debug APK
@@ -71,6 +76,15 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+      # Bundle the Alpine rootfs (~3 MB asset, curl + xz only) so the suite
+      # covers the bundled-asset paths — distro discovery, the onboarding
+      # chooser cards, and a real Alpine login session under arm64chroot
+      # (UserlandAlpineSessionTest). Debian is deliberately NOT built here:
+      # mmdebstrap plus the ~33 MB asset would slow the job, so
+      # UserlandSessionTest remains a local-run suite (docs/testing.md).
+      - name: Build Alpine rootfs
+        run: ./scripts/build-alpine-rootfs.sh
 
       - name: Run integration tests
         uses: reactivecircus/android-emulator-runner@v2

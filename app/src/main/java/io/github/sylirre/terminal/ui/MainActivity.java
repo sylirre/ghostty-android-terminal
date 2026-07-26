@@ -70,9 +70,11 @@ import io.github.sylirre.terminal.term.UserlandOptions;
  * IME (the window is edge-to-edge on targetSdk 36+).
  *
  * New tabs default to a userland login shell once the rootfs is
- * installed (extracted from an optional APK asset on first launch);
- * long-pressing + opens the other session type. Builds without the rootfs
- * asset behave as before: plain /system/bin/sh.
+ * installed; long-pressing + opens the other session type. First launch
+ * (no rootfs, onboarding never completed) runs {@link OnboardingActivity},
+ * which explains the app, lets the user pick a bundled distribution and
+ * extracts it; the first session spawns when it returns. Builds without
+ * rootfs assets end up with the plain /system/bin/sh.
  */
 public class MainActivity extends Activity implements TerminalSession.Listener {
 
@@ -86,6 +88,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private static final int REQ_BACKUP = 100;
     private static final int REQ_RESTORE = 101;
     private static final int REQ_SETTINGS = 102;
+    private static final int REQ_ONBOARDING = 103;
     private static final String PREF_ASKED_BATTERY_OPT = "asked_ignore_battery_opt";
     private static final long BELL_VIBRATION_MS = 300;
     private static final long BELL_THROTTLE_MS = BELL_VIBRATION_MS;
@@ -99,12 +102,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private TextView promptNextButton;
     private long lastClipToastUptime;
     private ExtraKeysView extraKeys;
-    private TextView installStatus;
     private TerminalSession current;
     private AppSettings settings;
     private ThemeStore themeStore;
     private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
+    /** First-session spawn is held back while the onboarding wizard runs. */
+    private boolean awaitingOnboarding;
     private long lastBellUptime;
 
     /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
@@ -123,12 +127,23 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
         terminal = findViewById(R.id.terminal);
         tabs = findViewById(R.id.tabs);
-        installStatus = findViewById(R.id.install_status);
         forceShell = getIntent().getBooleanExtra(EXTRA_FORCE_SHELL, false);
         extraKeys = findViewById(R.id.extra_keys);
         extraKeys.attachTerminal(terminal);
 
         settings = new AppSettings(this);
+        // Existing installs never see the intro: a rootfs on disk means the
+        // user was set up before onboarding existed.
+        if (!settings.onboardingCompleted() && UserlandRootfs.isInstalled(this)) {
+            settings.setOnboardingCompleted(true);
+        }
+        if (!forceShell && !settings.onboardingCompleted() && sessions.isEmpty()) {
+            // First run: the wizard picks the session type (and installs the
+            // rootfs); the first session spawns when it returns.
+            awaitingOnboarding = true;
+            startActivityForResult(
+                    new Intent(this, OnboardingActivity.class), REQ_ONBOARDING);
+        }
         themeStore = new ThemeStore(this);
         extraKeysConfig = new ExtraKeysConfig(this);
         extraKeys.setConfig(extraKeysConfig);
@@ -216,12 +231,13 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
             @Override
             public void onNewTabLongPress() {
-                // Only ever extract when nothing is installed yet; an installed
-                // but broken rootfs is left alone (createSession falls back to
-                // a shell) rather than wiped and rebuilt behind the user's back.
+                // Only ever offer setup when nothing is installed yet; an
+                // installed but broken rootfs is left alone (createSession
+                // falls back to a shell) rather than wiped and rebuilt behind
+                // the user's back.
                 if (!UserlandRootfs.isInstalled(MainActivity.this)
                         && UserlandRootfs.assetAvailable(MainActivity.this)) {
-                    installUserlandThenCreateSession();
+                    startOnboardingSetup();
                 } else {
                     createSession(!userlandByDefault());
                 }
@@ -240,11 +256,10 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 public void onLayoutChange(View v, int l, int t, int r, int b,
                         int ol, int ot, int or, int ob) {
                     terminal.removeOnLayoutChangeListener(this);
-                    // Defer past the current layout traversal: createFirstSession
-                    // may make the install_status overlay VISIBLE, and a
-                    // requestLayout() issued from inside layout() is dropped until
-                    // the next traversal — which otherwise only arrives on the
-                    // first touch, so the message appeared only after a tap.
+                    // Defer past the current layout traversal: spawning can
+                    // toggle view state, and a requestLayout() issued from
+                    // inside layout() is dropped until the next traversal —
+                    // which otherwise only arrives on the first touch.
                     terminal.post(() -> {
                         if (sessions.isEmpty()) createFirstSession();
                     });
@@ -260,9 +275,17 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         } else {
             registerReceiver(exitReceiver, filter);
         }
-        // Needed (33+) for the foreground-service notification to be visible;
-        // the service still runs if denied. Skipped under the test seam so
-        // the system dialog never lands on top of Espresso.
+        // Deferred while onboarding runs — the system dialog must not land on
+        // top of the wizard's first impression; re-requested when it returns.
+        if (!awaitingOnboarding) maybeRequestNotificationsPermission();
+    }
+
+    /**
+     * Asks for POST_NOTIFICATIONS (33+), needed for the foreground-service
+     * notification to be visible; the service still runs if denied. Skipped
+     * under the test seam so the system dialog never lands on top of Espresso.
+     */
+    private void maybeRequestNotificationsPermission() {
         if (!forceShell && Build.VERSION.SDK_INT >= 33 && checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
@@ -380,19 +403,16 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         return !forceShell && UserlandRootfs.isUsable(this);
     }
 
-    /** First tab: userland when usable, install flow when bundled but never installed. */
+    /**
+     * First tab: userland when usable, else a plain Android shell (no asset,
+     * an installed-but-unusable rootfs we won't wipe, or a skipped setup;
+     * createSession also falls back to the shell if a userland spawn fails).
+     * Held back while the onboarding wizard is on top — install and the
+     * distro choice happen there, and {@code onActivityResult} re-enters here.
+     */
     private void createFirstSession() {
-        if (userlandByDefault()) {
-            createSession(true);
-        } else if (!forceShell && !UserlandRootfs.isInstalled(this)
-                && UserlandRootfs.assetAvailable(this)) {
-            installUserlandThenCreateSession();
-        } else {
-            // No asset, or an installed-but-unusable rootfs we won't wipe:
-            // a plain Android shell. createSession also falls back here if a
-            // userland spawn fails.
-            createSession(false);
-        }
+        if (awaitingOnboarding) return;
+        createSession(userlandByDefault());
     }
 
     private void createSession(boolean userland) {
@@ -432,35 +452,14 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     }
 
     /**
-     * One-time rootfs extraction on a background thread; the overlay shows
-     * progress. Install is idempotent/synchronized, so a racing second
-     * activity instance at worst waits and then finds it installed.
+     * Opens the onboarding wizard in setup-only mode (distro chooser +
+     * install, no intro) — the path for adding a userland after it was
+     * skipped or never bundled-and-installed. The result opens the first
+     * userland tab.
      */
-    private void installUserlandThenCreateSession() {
-        installStatus.setText(R.string.installing_userland);
-        installStatus.setVisibility(View.VISIBLE);
-        new Thread(() -> {
-            IOException failure = null;
-            try {
-                UserlandRootfs.install(getApplicationContext(), bytes ->
-                        runOnUiThread(() -> installStatus.setText(
-                                getString(R.string.installing_userland_progress, bytes >> 20))));
-            } catch (IOException e) {
-                failure = e;
-            }
-            final IOException error = failure;
-            runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) return;
-                installStatus.setVisibility(View.GONE);
-                if (error == null) {
-                    createSession(true);
-                } else {
-                    Toast.makeText(this, getString(R.string.toast_userland_install_failed,
-                            error.getMessage()), Toast.LENGTH_LONG).show();
-                    if (sessions.isEmpty()) createSession(false);
-                }
-            });
-        }, "userland-install").start();
+    private void startOnboardingSetup() {
+        startActivityForResult(new Intent(this, OnboardingActivity.class)
+                .putExtra(OnboardingActivity.EXTRA_SETUP_ONLY, true), REQ_ONBOARDING);
     }
 
     private void switchTo(TerminalSession s) {
@@ -634,6 +633,22 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_ONBOARDING) {
+            awaitingOnboarding = false;
+            maybeRequestNotificationsPermission(); // deferred from onCreate
+            if (sessions.isEmpty()) {
+                // First run: the deferred first spawn was held back while the
+                // wizard ran. The layout pass usually happened underneath it —
+                // spawn now; otherwise the pending layout listener does it.
+                // A canceled wizard leaves the pref unset (it re-shows next
+                // launch) but still gets a shell for this run.
+                if (terminal.getWidth() > 0) createFirstSession();
+            } else if (resultCode == RESULT_OK && UserlandRootfs.isUsable(this)) {
+                // Setup-only mode: open a tab into the fresh userland.
+                createSession(true);
+            }
+            return;
+        }
         // Settings hands back the terminal-coupled userland flows to run here.
         if (requestCode == REQ_SETTINGS) {
             if (resultCode == RESULT_OK && data != null) {
@@ -642,6 +657,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                     startBackup();
                 } else if (SettingsActivity.ACTION_RESTORE.equals(action)) {
                     confirmRestore();
+                } else if (SettingsActivity.ACTION_SETUP_USERLAND.equals(action)) {
+                    startOnboardingSetup();
                 }
             }
             return;

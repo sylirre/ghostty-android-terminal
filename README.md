@@ -10,8 +10,9 @@ Features:
 - All or almost all features of Ghostty VT engine, including Kitty graphics
   protocol, etc
 - Fast terminal rendering
-- 2 session modes: Linux userland (Debian via the bundled arm64chroot
-  emulator, default) and standard Android `/system/bin/sh`
+- 2 session modes: Linux userland (Alpine or Debian via the bundled
+  arm64chroot emulator, default) and standard Android `/system/bin/sh`
+- First-run onboarding: feature intro + offline distribution setup
 - Pinch-zoom to change font size
 - Terminal text search
 - Userland backup/restore via tar archives
@@ -75,20 +76,29 @@ If the NDK is not installed inside the SDK, set `ndkPath` via
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### Bundling the Debian userland
+### Bundling the Linux userland
 
 Place rootfs tarballs in `UserlandRootfs/` at the repo root before building
-(the directory is gitignored — the tarballs are never committed):
+(the directory is gitignored — the tarballs are never committed). The
+build scripts produce them:
 
-```
+```sh
+scripts/build-alpine-rootfs.sh    # needs curl + xz; repackages the official
+                                  # aarch64 minirootfs (sha256-verified)
+scripts/build-debian-rootfs.sh    # needs mmdebstrap
+
+UserlandRootfs/alpine_3.24.1_aarch64_rootfs.tar.xz
 UserlandRootfs/debian_trixie_aarch64_rootfs.tar.xz
 ```
 
-When present they ship as APK assets and the app extracts the one matching
-the device ABI on first launch (a few seconds, with on-screen progress).
-Without them the app builds and runs as a plain Android-shell terminal.
-The tarballs must contain a Debian root directory tree made of regular
-files, directories and links only (e.g. produced by debootstrap).
+Only aarch64 rootfs are packaged — arm64chroot emulates an AArch64 guest on
+both device ABIs. Tarballs present at build time ship as APK assets and
+appear in the first-run onboarding chooser, which extracts the selected one
+offline (with on-screen progress). Without them the app builds and runs as
+a plain Android-shell terminal. Any asset named
+`<id>_<version>_aarch64_rootfs.tar.xz` is offered, so other distributions
+can be bundled the same way; a tarball must contain a root directory tree
+made of regular files, directories and links only.
 
 ## Usage
 
@@ -97,12 +107,13 @@ files, directories and links only (e.g. produced by debootstrap).
 - **Toolbar**: `CTRL` and `ALT` are sticky — tap `CTRL`, then `c` to send
   Ctrl-C. Other keys (ESC, TAB, arrows, HOME/END, PGUP/PGDN) send
   immediately.
-- **Tabs**: `+` opens a new session (Debian when installed, Android shell
-  otherwise); **long-press `+`** opens the other kind. Tap a tab to
+- **Tabs**: `+` opens a new session (Linux userland when installed, Android
+  shell otherwise); **long-press `+`** opens the other kind — or the
+  distribution setup when none is installed yet. Tap a tab to
   switch; `×` closes the current one. Closing the last tab exits the app.
-- **Debian**: you are (fake) root; `apt update && apt install …` works.
-  Networking uses the app's permissions; everything actually runs as the
-  app's unprivileged uid.
+- **Userland**: you are (fake) root; `apk add …` (Alpine) or
+  `apt update && apt install …` (Debian) works. Networking uses the app's
+  permissions; everything actually runs as the app's unprivileged uid.
 - **Scrollback**: drag vertically on the terminal. Any key press snaps back
   to the bottom.
 - **Font size**: pinch to zoom (8–40 sp, persisted across restarts); the

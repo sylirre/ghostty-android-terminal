@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Soft accent radial glow behind the onboarding hero; purely decorative. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="radial"
+        android:centerX="0.5"
+        android:centerY="0"
+        android:gradientRadius="420dp"
+        android:startColor="#3D7C6CF6"
+        android:centerColor="#147C6CF6"
+        android:endColor="#007C6CF6" />
+</shape>

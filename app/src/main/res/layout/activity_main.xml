@@ -118,15 +118,4 @@
 
     </LinearLayout>
 
-    <!-- One-time userland rootfs extraction status; gone otherwise. -->
-    <TextView
-        android:id="@+id/install_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:textColor="@color/text_primary"
-        android:textSize="16sp"
-        android:fontFamily="monospace"
-        android:visibility="gone" />
-
 </FrameLayout>

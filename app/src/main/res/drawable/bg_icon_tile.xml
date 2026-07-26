@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small rounded accent-tinted tile behind onboarding feature icons. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/accent_soft" />
+    <corners android:radius="@dimen/radius_md" />
+</shape>

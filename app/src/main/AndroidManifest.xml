@@ -39,6 +39,15 @@
             </intent-filter>
         </activity>
 
+        <!-- First-run intro & userland setup wizard, launched by MainActivity
+             for the first session and again (setup-only mode) on demand. -->
+        <activity
+            android:name=".ui.OnboardingActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
+
         <!-- App settings screen, launched from the top-bar gear. -->
         <activity
             android:name=".ui.SettingsActivity"

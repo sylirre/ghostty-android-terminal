@@ -263,6 +263,10 @@
     <string name="setting_userland_path_not_absolute">Path must be absolute (start with /).</string>
     <string name="setting_userland_path_missing">Path does not exist in the userland environment.</string>
 
+    <!-- Settings: Userland setup -->
+    <string name="setting_install_userland_title">Install Linux</string>
+    <string name="setting_install_userland_summary">Set up a bundled Linux distribution for userland sessions.</string>
+
     <!-- Settings: Userland backup & restore -->
     <string name="setting_backup_title">Back up Userland</string>
     <string name="setting_backup_summary">Save the environment as archive (tar.gz).</string>
@@ -285,13 +289,39 @@
     <string name="restore_failed">Restore failed: %s</string>
     <string name="backup_no_picker">No app available to pick a file location.</string>
 
-    <!-- Userland install progress overlay -->
-    <string name="installing_userland">Extracting Userland…</string>
-    <string name="installing_userland_progress">Extracting Userland… %d MB</string>
+    <!-- Onboarding (first-run intro & userland setup) -->
+    <string name="onb_tagline">A complete Linux terminal for Android</string>
+    <string name="onb_feat_userland_title">Full Linux, no root</string>
+    <string name="onb_feat_userland_body">A real Linux userland running on a built-in AArch64 emulator. No root, no downloads — your device stays untouched.</string>
+    <string name="onb_feat_terminal_title">A serious terminal</string>
+    <string name="onb_feat_terminal_body">Ghostty\'s VT engine under the hood: fast, accurate rendering, true color, scrollback search and text selection.</string>
+    <string name="onb_feat_touch_title">Made for touch</string>
+    <string name="onb_feat_touch_body">Session tabs, an extra-keys row above the keyboard, themes, custom fonts and gestures.</string>
+    <string name="onb_continue">Continue</string>
+    <string name="onb_back">Back</string>
+    <string name="onb_choose_title">Choose your Linux</string>
+    <string name="onb_choose_subtitle">Installed offline from an image bundled with the app. You can back it up or replace it later from Settings.</string>
+    <string name="onb_distro_alpine">Alpine Linux</string>
+    <string name="onb_distro_alpine_blurb">Lightweight and quick to set up. BusyBox tools plus the apk package manager.</string>
+    <string name="onb_distro_debian">Debian</string>
+    <string name="onb_distro_debian_blurb">The classic full-size distribution: apt and a vast package archive.</string>
+    <string name="onb_distro_size">%1$d MB image</string>
+    <string name="onb_shell_title">Android shell only</string>
+    <string name="onb_shell_blurb">Just /system/bin/sh — no Linux userland. You can set one up later from Settings.</string>
+    <string name="onb_none_bundled">This build includes no Linux images, so the terminal starts with the plain Android shell.</string>
+    <string name="onb_install_button">Install %1$s</string>
+    <string name="onb_use_shell_button">Use Android shell</string>
+    <string name="onb_installing_title">Setting up %1$s…</string>
+    <string name="onb_installing_detail">%1$d MB unpacked</string>
+    <string name="onb_installing_detail_pct">%1$d%% · %2$d MB unpacked</string>
+    <string name="onb_done_title">All set</string>
+    <string name="onb_done_detail">%1$s is ready.</string>
+    <string name="onb_failed_title">Setup failed</string>
+    <string name="onb_retry">Retry</string>
+    <string name="onb_start">Start</string>
 
     <!-- Toasts -->
     <string name="toast_shell_start_failed">Failed to start shell: %s</string>
-    <string name="toast_userland_install_failed">Userland install failed: %s</string>
     <string name="toast_userland_unavailable">Userland unavailable (%s); starting the Android shell instead.</string>
     <string name="toast_userland_session_failed">Userland session failed to start; starting the Android shell instead.</string>
 

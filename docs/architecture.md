@@ -93,10 +93,14 @@ arm64→x86_64) hosts. The integration:
    all — the old `libproot-loader.so` / `useLegacyPackaging` machinery is
    gone. The `--jit` code cache is W^X-aware: RWX anon → `memfd` dual-map under
    SELinux `execmem` → interpreter fallback.
-3. **The rootfs is an optional APK asset.** `UserlandRootfs` extracts
-   `debian_trixie_aarch64_rootfs.tar.xz` (bundled from `UserlandRootfs/` at the
-   repo root when present; never committed) on first launch with a minimal tar
-   reader over `org.tukaani:xz`. It is always the aarch64 rootfs — the x86_64
+3. **The rootfs is an optional APK asset — one per bundled distro.**
+   Tarballs named `<id>_<version>_aarch64_rootfs.tar.xz` (produced by
+   `scripts/build-debian-rootfs.sh` / `scripts/build-alpine-rootfs.sh` into
+   `UserlandRootfs/` at the repo root; never committed) ride along as assets
+   when present. `UserlandDistro` maps the asset names back to choosable
+   distributions for the onboarding chooser, and `UserlandRootfs.install`
+   extracts the chosen one with a minimal tar reader over `org.tukaani:xz`.
+   It is always an aarch64 rootfs — the x86_64
    host runs it emulated. Hard-link entries are copied (apps cannot `link(2)`);
    device nodes are skipped. At runtime `--link2symlink` translates guest hard
    links and `--fake-id` fakes uid 0, which keeps dpkg/apt working; arm64chroot
@@ -159,6 +163,7 @@ into the guest when it lies inside the rootfs, else `/`).
 | `TerminalEmulator` | Owns the native terminal handle; feed/resize/snapshot/encode under one lock |
 | `ScreenSnapshot` | Reusable flat-array copy of the viewport + cursor for rendering |
 | `SessionCommand` | What to spawn: execve command or arm64chroot argv, env, cwd, tab label |
+| `UserlandDistro` | Maps bundled rootfs asset names (`<id>_<version>_aarch64_rootfs.tar.xz`) to choosable distributions |
 | `UserlandRootfs` | Rootfs asset detection + tar.xz install + atomic publish + arm64chroot command construction |
 | `RootfsBackup` | Streams the rootfs to/from a gzip-tar file (Settings backup/restore), reusing `UserlandRootfs`'s tar reader/publish |
 | `TerminalSession` | PTY fd + shell pid + reader thread; writes input; reports exit |
@@ -167,6 +172,7 @@ into the guest when it lies inside the rootfs, else `/`).
 | `ExtraKeysView` | ESC/CTRL/ALT/TAB/arrows… toolbar; CTRL/ALT are sticky modifiers |
 | `TabStripView` | Horizontal session tabs + new-tab button |
 | `MainActivity` | Wires the above, handles window insets |
+| `OnboardingActivity` | First-run intro + distro chooser + rootfs install wizard (also reachable later in setup-only mode) |
 
 ### Data flow
 
@@ -521,11 +527,25 @@ finishes the activity.
 
 When a userland rootfs is installed, new tabs default to userland and
 long-pressing `+` opens an Android `/system/bin/sh` tab (and vice versa
-when it isn't). On first launch with a bundled-but-uninstalled rootfs,
-`MainActivity` extracts it on a background thread behind a progress
-overlay, then opens the first userland tab. `MainActivity.EXTRA_FORCE_SHELL`
-pins the default to the Android shell — a test seam so UI tests don't
-depend on whether a rootfs is bundled.
+when it isn't). On first launch (no rootfs installed, onboarding never
+completed) `MainActivity` holds the first spawn back and runs
+`OnboardingActivity`: an intro, a chooser over the bundled distro assets
+(`UserlandDistro.bundled`, Alpine preselected) plus an "Android shell only"
+opt-out, and an install step with determinate progress (tracked against the
+compressed asset size, which is known — the uncompressed total isn't). The
+wizard persists the outcome (`AppSettings.onboardingCompleted`, the chosen
+asset, and the derived login shell/home — e.g. `/bin/ash -l` on Alpine) the
+moment the install finishes, and `MainActivity` spawns the first session on
+its result. Completing with "shell only" is remembered; backing out is not,
+so the intro returns next launch. The same wizard reopens in setup-only mode
+(chooser + install, no intro) from long-pressing `+` or the Settings
+"Install Linux" row while no rootfs is installed and assets are bundled.
+A rootfs already on disk marks onboarding done — existing installs never see
+the intro, and there is deliberately no switch-distro path over an installed
+rootfs (it holds user data; backup/restore covers replacement).
+`MainActivity.EXTRA_FORCE_SHELL` pins the default to the Android shell and
+skips onboarding — a test seam so UI tests don't depend on whether a rootfs
+is bundled.
 
 The rootfs directory itself is the install marker: `install` extracts into a
 staging dir (`debian.tmp`) and renames it onto `debian/` only once complete,

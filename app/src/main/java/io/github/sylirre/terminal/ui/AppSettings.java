@@ -58,6 +58,8 @@ public final class AppSettings {
     private static final String KEY_USERLAND_PATH = "userland_path";
     private static final String KEY_USERLAND_JIT = "userland_jit";
     private static final String KEY_USERLAND_JIT_MB = "userland_jit_mb";
+    private static final String KEY_ONBOARDING_COMPLETED = "onboarding_completed";
+    private static final String KEY_USERLAND_DISTRO_ASSET = "userland_distro_asset";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
     private static final String KEY_TERMINAL_ITALIC_FONT_PATH = "terminal_italic_font_path";
     private static final String KEY_TERMINAL_BOLD_FONT_PATH = "terminal_bold_font_path";
@@ -584,6 +586,35 @@ public final class AppSettings {
 
     public void setUserlandPath(String path) {
         prefs.edit().putString(KEY_USERLAND_PATH, path.trim()).apply();
+    }
+
+    /**
+     * True once the first-run onboarding flow finished (a distro installed or
+     * "Android shell only" explicitly chosen). Also set when a rootfs is
+     * already installed — pre-onboarding installs never see the intro. While
+     * false, {@code MainActivity} shows {@code OnboardingActivity} before the
+     * first session.
+     */
+    public boolean onboardingCompleted() {
+        return prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false);
+    }
+
+    public void setOnboardingCompleted(boolean completed) {
+        prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETED, completed).apply();
+    }
+
+    /**
+     * Asset file name of the distribution the user chose in onboarding (see
+     * {@code UserlandDistro}), or null when none was ever installed from an
+     * asset. Informational — the installed rootfs itself is the source of
+     * truth for sessions.
+     */
+    public String userlandDistroAsset() {
+        return prefs.getString(KEY_USERLAND_DISTRO_ASSET, null);
+    }
+
+    public void setUserlandDistroAsset(String assetName) {
+        setNullableString(KEY_USERLAND_DISTRO_ASSET, assetName);
     }
 
     /** Absolute path to the custom regular terminal font, or null for default monospace. */

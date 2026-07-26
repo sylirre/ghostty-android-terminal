@@ -30,6 +30,7 @@
     <color name="accent_pressed">#9384F8</color>
     <color name="accent_deep">#4C3FB0</color>
     <color name="accent_translucent">#337C6CF6</color>
+    <color name="accent_soft">#1F7C6CF6</color>
 
     <!-- Semantic. -->
     <color name="danger">#FF6B7A</color>

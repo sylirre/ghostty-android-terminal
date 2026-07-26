@@ -27,6 +27,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import io.github.sylirre.terminal.term.UserlandDistro;
 import io.github.sylirre.terminal.term.UserlandRootfs;
 import io.github.sylirre.terminal.term.ScreenSnapshot;
 import io.github.sylirre.terminal.term.TerminalSession;
@@ -36,9 +37,11 @@ import io.github.sylirre.terminal.term.TerminalSession;
  * the PTY child emulating the aarch64 guest, and a real bash login shell
  * asserted through the Ghostty screen.
  *
- * Skipped (assumption failure) when the build doesn't bundle the rootfs
- * asset — the tarballs live in UserlandRootfs/ at the repo root and are
- * never committed, so CI builds skip this suite.
+ * Skipped (assumption failure) when the build doesn't bundle the Debian
+ * rootfs asset — the tarballs live in UserlandRootfs/ at the repo root and
+ * are never committed, so CI builds skip this suite. Also skipped when the
+ * device already has a different distro installed (install() never replaces
+ * an existing rootfs), since the assertions are Debian-specific.
  */
 @RunWith(AndroidJUnit4.class)
 public class UserlandSessionTest {
@@ -62,11 +65,13 @@ public class UserlandSessionTest {
     @Before
     public void setUp() throws IOException {
         Context ctx = ApplicationProvider.getApplicationContext();
-        assumeTrue("no userland rootfs asset bundled in this build",
-                UserlandRootfs.assetAvailable(ctx));
+        String asset = debianAsset(ctx);
+        assumeTrue("no Debian rootfs asset bundled in this build", asset != null);
         // One-time per device state: extracts the rootfs on the first test
         // of the run, no-ops afterwards (the rootfs directory already exists).
-        UserlandRootfs.install(ctx, null);
+        UserlandRootfs.install(ctx, asset, null);
+        assumeTrue("installed rootfs is not Debian",
+                new File(UserlandRootfs.dir(ctx), "etc/debian_version").exists());
         session = new TerminalSession(80, 24, 8, 16, 10_000,
                 UserlandRootfs.command(ctx, "/bin/bash -l"), listener);
         waitForOnScreen("~#"); // root login prompt: "root@host:~#"
@@ -75,6 +80,14 @@ public class UserlandSessionTest {
     @After
     public void tearDown() {
         if (session != null) session.close();
+    }
+
+    /** The bundled Debian rootfs asset, or null when this build carries none. */
+    private static String debianAsset(Context ctx) {
+        for (UserlandDistro d : UserlandDistro.bundled(ctx)) {
+            if ("debian".equals(d.id)) return d.assetName;
+        }
+        return null;
     }
 
     private String screen() {
@@ -166,7 +179,7 @@ public class UserlandSessionTest {
             }
 
             // install() must short-circuit on the existing rootfs dir, not rebuild.
-            UserlandRootfs.install(ctx, null);
+            UserlandRootfs.install(ctx, debianAsset(ctx), null);
             assertTrue("install() did not wipe the rootfs", bashHidden.exists());
             assertFalse("install() did not rebuild", UserlandRootfs.isUsable(ctx));
         } finally {

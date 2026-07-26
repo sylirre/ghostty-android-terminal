@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import io.github.sylirre.terminal.R;
+import io.github.sylirre.terminal.term.UserlandDistro;
 import io.github.sylirre.terminal.term.UserlandIdentity;
 import io.github.sylirre.terminal.term.UserlandOptions;
 import io.github.sylirre.terminal.term.UserlandRootfs;
@@ -54,6 +55,7 @@ public final class SettingsActivity extends Activity {
     static final String EXTRA_ACTION = "io.github.sylirre.terminal.SETTINGS_ACTION";
     static final String ACTION_BACKUP = "backup";
     static final String ACTION_RESTORE = "restore";
+    static final String ACTION_SETUP_USERLAND = "setup_userland";
 
     private static final int REQ_STORAGE_PERMISSION = 2;
 
@@ -243,6 +245,17 @@ public final class SettingsActivity extends Activity {
         // Userland-specific settings: arm64chroot runs the aarch64 rootfs on
         // every host ABI, so these always apply.
         List<Setting> userland = new ArrayList<>();
+        // Setup entry, only while there is something to set up: a bundled
+        // distro image and no installed rootfs (an installed one — even a
+        // broken one — is user data and is never reinstalled over).
+        if (!UserlandRootfs.isInstalled(this)
+                && !UserlandDistro.bundled(this).isEmpty()) {
+            userland.add(new Setting.Action(
+                    getString(R.string.setting_install_userland_title),
+                    getString(R.string.setting_install_userland_summary),
+                    () -> "",
+                    () -> delegateAndFinish(ACTION_SETUP_USERLAND)));
+        }
         userland.add(new Setting.Action(
                 getString(R.string.setting_userland_identity_title),
                 getString(R.string.setting_userland_identity_summary),
