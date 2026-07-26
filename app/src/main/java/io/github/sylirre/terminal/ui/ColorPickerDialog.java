@@ -150,9 +150,9 @@ final class ColorPickerDialog {
         new AlertDialog.Builder(ctx)
                 .setTitle(title)
                 .setView(root)
-                .setPositiveButton(R.string.theme_color_ok,
+                .setPositiveButton(R.string.action_ok,
                         (d, w) -> onPicked.accept(colorFrom(bars)))
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 

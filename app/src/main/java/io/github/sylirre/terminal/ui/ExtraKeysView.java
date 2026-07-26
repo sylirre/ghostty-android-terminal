@@ -242,7 +242,7 @@ public class ExtraKeysView extends LinearLayout {
                     reload();
                     d.dismiss();
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 

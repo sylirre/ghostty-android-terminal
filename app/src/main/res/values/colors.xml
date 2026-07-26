@@ -36,6 +36,7 @@
     <color name="danger">#FF6B7A</color>
     <color name="danger_pressed">#FF8A96</color>
     <color name="success">#4CD964</color>
+    <color name="warning">#D9A441</color>
 
     <!-- Dialog scrim. -->
     <color name="scrim">#99000000</color>

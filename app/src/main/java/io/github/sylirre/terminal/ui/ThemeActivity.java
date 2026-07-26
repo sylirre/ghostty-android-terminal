@@ -109,21 +109,13 @@ public final class ThemeActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_theme);
 
-        // Edge-to-edge like MainActivity: keep content out from under the bars.
-        View root = findViewById(R.id.root);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars =
-                        insets.getInsets(WindowInsets.Type.systemBars());
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            } else {
-                v.setPadding(insets.getSystemWindowInsetLeft(),
-                        insets.getSystemWindowInsetTop(),
-                        insets.getSystemWindowInsetRight(),
-                        insets.getSystemWindowInsetBottom());
-            }
-            return WindowInsets.CONSUMED;
-        });
+        TopBarView topBar = findViewById(R.id.top_bar);
+        topBar.setTitle(getString(R.string.theme_activity_title));
+        topBar.setOnBack(this::onBackPressed);
+        topBar.addTextAction(R.string.theme_done, true)
+                .setOnClickListener(v -> confirmIfDirty(this::finish));
+        EdgeInsets.apply(findViewById(R.id.root), topBar,
+                findViewById(R.id.theme_scroll));
 
         store = new ThemeStore(this);
         settings = new AppSettings(this);
@@ -134,7 +126,6 @@ public final class ThemeActivity extends Activity {
         btnRename = findViewById(R.id.theme_rename);
         btnDelete = findViewById(R.id.theme_delete);
 
-        findViewById(R.id.theme_done).setOnClickListener(v -> confirmIfDirty(this::finish));
         themeName.setOnClickListener(v -> showThemePicker());
         btnSave.setOnClickListener(v -> saveOverwrite());
         findViewById(R.id.theme_save_as).setOnClickListener(v -> saveAs());
@@ -374,7 +365,7 @@ public final class ThemeActivity extends Activity {
                     applyCursorToPreview();
                     d.dismiss();
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -573,7 +564,7 @@ public final class ThemeActivity extends Activity {
                     TerminalTheme sel = all.get(which);
                     confirmIfDirty(() -> loadInto(sel));
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -622,7 +613,7 @@ public final class ThemeActivity extends Activity {
                     loadInto(store.current());
                     toast(R.string.theme_deleted);
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -645,7 +636,7 @@ public final class ThemeActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(container)
-                .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
+                .setPositiveButton(R.string.action_ok, (d, w) -> {
                     String name = input.getText().toString().trim();
                     if (name.isEmpty()) {
                         toast(R.string.theme_name_empty);
@@ -653,7 +644,7 @@ public final class ThemeActivity extends Activity {
                     }
                     onName.accept(name);
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -666,7 +657,7 @@ public final class ThemeActivity extends Activity {
                 .setTitle(R.string.theme_discard_title)
                 .setMessage(R.string.theme_discard_message)
                 .setPositiveButton(R.string.theme_discard, (d, w) -> proceed.run())
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 

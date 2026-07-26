@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Screen top-bar fill with a hairline bottom edge separating it from the
+     content below (the mirror of bg_toolbar_top, which edges upward). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="@color/surface_1" />
+    </item>
+    <item android:gravity="bottom" android:height="1dp">
+        <color android:color="@color/divider" />
+    </item>
+</layer-list>

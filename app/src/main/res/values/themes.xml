@@ -28,6 +28,8 @@
              the window background rather than an opaque band. -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Draw into the cutout area too; insets keep content clear of it. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
 
         <!-- Restyle every android.app.AlertDialog app-wide in one place. -->
         <item name="android:alertDialogTheme">@style/Theme.Terminal.Dialog</item>

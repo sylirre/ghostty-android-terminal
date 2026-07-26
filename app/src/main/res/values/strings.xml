@@ -2,6 +2,12 @@
 <resources>
     <string name="app_name">A-SH</string>
 
+    <!-- Shared action labels (dialog buttons, top bars) -->
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_use_default">Use default</string>
+    <string name="top_bar_back_description">Back</string>
+
     <!-- Settings button in the top bar -->
     <string name="settings_button_icon">⚙</string>
     <string name="settings_button_description">Settings</string>
@@ -23,8 +29,6 @@
 
     <!-- Settings screen -->
     <string name="settings_dialog_title">Settings</string>
-    <string name="settings_dialog_close">Close</string>
-    <string name="settings_back_description">Back</string>
     <string name="settings_group_appearance">Appearance</string>
     <string name="settings_group_keyboard">Keyboard &amp; input</string>
     <string name="settings_group_terminal">Terminal</string>
@@ -193,8 +197,6 @@
     <string name="theme_discard_title">Discard changes?</string>
     <string name="theme_discard_message">You have unsaved color changes. Save the theme first to keep them.</string>
     <string name="theme_discard">Discard</string>
-    <string name="theme_color_ok">OK</string>
-    <string name="theme_color_cancel">Cancel</string>
     <string name="theme_color_foreground">Foreground</string>
     <string name="theme_color_background">Background</string>
     <string name="theme_color_cursor">Cursor</string>

@@ -97,21 +97,17 @@ public final class ExtraKeysActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_extra_keys);
 
-        // Edge-to-edge like MainActivity/ThemeActivity: pad content past the bars.
-        View root = findViewById(R.id.root);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars =
-                        insets.getInsets(WindowInsets.Type.systemBars());
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            } else {
-                v.setPadding(insets.getSystemWindowInsetLeft(),
-                        insets.getSystemWindowInsetTop(),
-                        insets.getSystemWindowInsetRight(),
-                        insets.getSystemWindowInsetBottom());
-            }
-            return WindowInsets.CONSUMED;
-        });
+        TopBarView topBar = findViewById(R.id.top_bar);
+        topBar.setTitle(getString(R.string.extra_keys_title));
+        topBar.setOnBack(this::finish);
+        TextView reset = topBar.addTextAction(R.string.extra_keys_reset, false);
+        reset.setId(R.id.extra_keys_reset);
+        reset.setOnClickListener(v -> resetActiveProfile());
+        TextView done = topBar.addTextAction(R.string.extra_keys_done, true);
+        done.setId(R.id.extra_keys_done);
+        done.setOnClickListener(v -> finish());
+        EdgeInsets.apply(findViewById(R.id.root), topBar,
+                findViewById(R.id.page_scroll));
 
         config = new ExtraKeysConfig(this);
         settings = new AppSettings(this);
@@ -119,9 +115,6 @@ public final class ExtraKeysActivity extends Activity {
         rowHeightBar = findViewById(R.id.row_height_bar);
         grid = findViewById(R.id.grid);
         addRowButton = findViewById(R.id.extra_keys_add_row);
-
-        findViewById(R.id.extra_keys_done).setOnClickListener(v -> finish());
-        findViewById(R.id.extra_keys_reset).setOnClickListener(v -> resetActiveProfile());
         addRowButton.setOnClickListener(v -> addRow());
         grid.setOnDragListener(this::onGridDrag);
 
@@ -428,7 +421,7 @@ public final class ExtraKeysActivity extends Activity {
                     loadRows();
                     render();
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -446,12 +439,12 @@ public final class ExtraKeysActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(container)
-                .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
+                .setPositiveButton(R.string.action_ok, (d, w) -> {
                     String name = input.getText().toString().trim();
                     if (name.isEmpty()) { toast(R.string.extra_keys_profile_name_empty); return; }
                     onName.accept(name);
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -585,7 +578,7 @@ public final class ExtraKeysActivity extends Activity {
         holder[0] = new AlertDialog.Builder(this)
                 .setTitle(R.string.extra_keys_pick_title)
                 .setView(wrapScroll(container))
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .create();
         holder[0].show();
     }
@@ -623,12 +616,12 @@ public final class ExtraKeysActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.extra_keys_add_custom_title)
                 .setView(container)
-                .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
+                .setPositiveButton(R.string.action_ok, (d, w) -> {
                     String text = expandEscapes(input.getText().toString());
                     if (text.isEmpty()) { toast(R.string.extra_keys_custom_empty); return; }
                     onPicked.accept(ExtraKeysConfig.literalId(text));
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 
@@ -714,7 +707,7 @@ public final class ExtraKeysActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.extra_keys_add_combo_title)
                 .setView(container)
-                .setPositiveButton(R.string.theme_color_ok, (d, w) -> {
+                .setPositiveButton(R.string.action_ok, (d, w) -> {
                     int mods = (ctrl.isChecked() ? TerminalNative.MOD_CTRL : 0)
                             | (alt.isChecked() ? TerminalNative.MOD_ALT : 0)
                             | (shift.isChecked() ? TerminalNative.MOD_SHIFT : 0);
@@ -733,7 +726,7 @@ public final class ExtraKeysActivity extends Activity {
                     }
                     onPicked.accept(ExtraKeysConfig.comboId(mods, base));
                 })
-                .setNegativeButton(R.string.theme_color_cancel, null)
+                .setNegativeButton(R.string.action_cancel, null)
                 .show();
     }
 

@@ -70,26 +70,16 @@ public final class SettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
-        // Edge-to-edge like the other screens: keep content clear of the bars.
-        View root = findViewById(R.id.root);
-        root.setOnApplyWindowInsetsListener((v, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
-                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            } else {
-                v.setPadding(insets.getSystemWindowInsetLeft(),
-                        insets.getSystemWindowInsetTop(),
-                        insets.getSystemWindowInsetRight(),
-                        insets.getSystemWindowInsetBottom());
-            }
-            return WindowInsets.CONSUMED;
-        });
+        TopBarView topBar = findViewById(R.id.top_bar);
+        topBar.setTitle(getString(R.string.settings_dialog_title));
+        topBar.setOnBack(this::finish);
+        EdgeInsets.apply(findViewById(R.id.root), topBar,
+                findViewById(R.id.settings_scroll));
 
         settings = new AppSettings(this);
         themeStore = new ThemeStore(this);
         extraKeysConfig = new ExtraKeysConfig(this);
         container = findViewById(R.id.settings_container);
-        findViewById(R.id.settings_back).setOnClickListener(v -> finish());
 
         render(buildSections());
     }

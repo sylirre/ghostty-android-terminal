@@ -47,4 +47,27 @@
     <dimen name="text_row_title">16sp</dimen>
     <dimen name="text_row_summary">13sp</dimen>
     <dimen name="text_section">13sp</dimen>
+    <!-- Top-bar text actions (Done, Reset) and dialog fields. -->
+    <dimen name="text_action">15sp</dimen>
+    <!-- Current-value read-out on settings rows. -->
+    <dimen name="text_row_value">14sp</dimen>
+    <!-- Session tab labels. -->
+    <dimen name="text_tab">14sp</dimen>
+    <!-- Glyph-only top-bar buttons (search, settings, prompt nav). -->
+    <dimen name="text_icon_glyph">18sp</dimen>
+    <!-- Smallest captions (swatch labels, inline errors). -->
+    <dimen name="text_caption">12sp</dimen>
+
+    <!-- Screen top bar (back + title + trailing actions). -->
+    <dimen name="top_bar_height">56dp</dimen>
+    <dimen name="elevation_bar">3dp</dimen>
+
+    <!-- Slider value read-out reserve, so digits don't jiggle the bar. -->
+    <dimen name="slider_readout_min">52dp</dimen>
+    <!-- Themed terminal scrollbar thumb width. -->
+    <dimen name="scrollbar_width">4dp</dimen>
+    <!-- Determinate progress track height (onboarding install). -->
+    <dimen name="progress_height">6dp</dimen>
+    <!-- Oversized hero tiles (onboarding art). -->
+    <dimen name="radius_hero">22dp</dimen>
 </resources>

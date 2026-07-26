@@ -225,7 +225,7 @@ abstract class Setting {
                         label.setText(labels[which]);
                         dialog.dismiss();
                     })
-                    .setNegativeButton("Cancel", null)
+                    .setNegativeButton(R.string.action_cancel, null)
                     .show();
         }
 

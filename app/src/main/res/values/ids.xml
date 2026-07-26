@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ids for views built in code (TopBarView action slots) that tests and
+     activities reference by R.id. -->
+<resources>
+    <item type="id" name="extra_keys_done" />
+    <item type="id" name="extra_keys_reset" />
+</resources>
