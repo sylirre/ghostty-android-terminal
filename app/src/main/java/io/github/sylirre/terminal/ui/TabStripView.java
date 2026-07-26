@@ -257,12 +257,12 @@ public class TabStripView extends LinearLayout {
         h.styledActive = active;
         h.styledGen = paletteGen;
         float r = Chrome.dimen(getContext(), R.dimen.radius_md);
-        // The active tab is marked by an accent border ring (tab_indicator
-        // thick); inactive pills keep the neutral hairline. Strokes draw
-        // inside the bounds, so pill widths stay stable across selection.
+        // The active tab is marked by an accent border ring; inactive pills
+        // keep the neutral hairline. Strokes draw inside the bounds, so pill
+        // widths stay stable across selection.
         h.pill.setBackground(active
                 ? palette.ripple(palette.surface3, r, palette.accent,
-                        dp(R.dimen.tab_indicator))
+                        dp(R.dimen.tab_active_border))
                 : palette.ripple(palette.surface2, r, palette.border));
         h.label.setTextColor(active ? palette.textPrimary : palette.textSecondary);
         h.label.setTypeface(active

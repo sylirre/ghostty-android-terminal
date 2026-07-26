@@ -38,10 +38,12 @@
 
     <!-- Session tab metrics. Sized so two labeled pills (each with a close
          button) plus the pinned + still fit the 320dp-wide floor device.
-         tab_indicator is both the active pill's accent border width and the
-         progress ring's stroke. -->
+         tab_active_border is the active pill's accent ring; tab_indicator is
+         the progress ring's stroke (kept heavier so the small circle stays
+         readable). -->
     <dimen name="tab_pad_h">12dp</dimen>
     <dimen name="tab_pad_v">9dp</dimen>
+    <dimen name="tab_active_border">1.5dp</dimen>
     <dimen name="tab_indicator">2dp</dimen>
     <dimen name="tab_max_width">132dp</dimen>
 
