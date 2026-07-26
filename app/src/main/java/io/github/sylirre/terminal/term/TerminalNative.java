@@ -278,6 +278,20 @@ public final class TerminalNative {
     public static native boolean terminalSelectWord(long handle, int x, int y);
 
     /**
+     * Selects the whole (soft-wrap-joined) line under viewport cell (x, y) —
+     * or just that cell when the line holds no selectable content — and makes
+     * it the active selection. Returns false if the coordinates don't resolve
+     * to a cell.
+     */
+    public static native boolean terminalSelectLine(long handle, int x, int y);
+
+    /**
+     * Selects all selectable content (scrollback + active area) and makes it
+     * the active selection. Returns false when the terminal is empty.
+     */
+    public static native boolean terminalSelectAll(long handle);
+
+    /**
      * Reorders the active selection so the grabbed visual endpoint
      * (0 = top-left, 1 = bottom-right) is the one {@link #terminalSelectionDrag}
      * moves; the other endpoint stays anchored for the drag.

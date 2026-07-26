@@ -315,9 +315,22 @@ math (`kitty_unicode.c`) is a direct port of ghostty's
 
 ### Selection and clipboard
 
-Long-press selects the word under the finger (Ghostty's
-`ghostty_terminal_select_word`; a blank cell falls back to selecting just
-that cell so the gesture always yields a paste anchor). The selection is
+Selection has several entry points, all landing on the same terminal-owned
+selection. **Long-press** selects the word under the finger and keeps the
+finger down to drag-extend it. **Double-tap** selects the word and **triple-tap**
+the whole (soft-wrap-joined) line — quick gestures with no drag (Ghostty's
+`ghostty_terminal_select_word` / `ghostty_terminal_select_line`; a blank
+cell/line falls back to selecting just that cell so the gesture always yields
+a paste anchor). Taps are counted in `TerminalView` itself — GestureDetector's
+own double-tap detection is disabled (`setOnDoubleTapListener(null)`) because it
+diverts the second tap's up to `onDoubleTapEvent`, hiding it from the counter;
+instead every `onSingleTapUp` advances a run of taps that are within the
+platform double-tap window and slop, and acts on each as it lands, so the
+single tap (keyboard / link) keeps its instant response and a third tap can
+upgrade word→line. A **Select all** toolbar action
+(`ghostty_terminal_select_all`) grows the selection to the whole buffer and
+leaves the toolbar up. Mouse-reporting taps bypass the counter entirely (a
+double click there is just two clicks). The selection is
 installed as the *terminal's* active selection
 (`GHOSTTY_TERMINAL_OPT_SELECTION`), where Ghostty converts it to tracked
 grid refs — so it stays glued to its text across scrolling, new output,
@@ -328,10 +341,11 @@ forward-ordered endpoint viewport coordinates in `meta[9..13]` for handle
 placement.
 
 `TerminalView` draws the system `textSelectHandleLeft/Right` drawables
-under the endpoints and shows a floating `ActionMode` toolbar: Copy
-always, Paste only when the clipboard advertises text (checked via
+under the endpoints and shows a floating `ActionMode` toolbar: Copy and
+Select all always, Paste only when the clipboard advertises text (checked via
 `ClipDescription` so the button itself doesn't trigger Android's
-clipboard-access toast). Dragging a handle first reorders the selection so
+clipboard-access toast). Select all keeps the toolbar open (it only grows the
+selection); Copy and Paste dismiss it. Dragging a handle first reorders the selection so
 the grabbed endpoint is the logical end (`terminalSelectionAnchor`), then
 moves only that end (`terminalSelectionDrag`) — dragging across the other
 endpoint flips the selection naturally, and dragging past the top/bottom

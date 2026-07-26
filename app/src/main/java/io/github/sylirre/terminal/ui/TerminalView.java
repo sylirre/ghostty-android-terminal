@@ -35,6 +35,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
@@ -300,6 +301,20 @@ public class TerminalView extends View {
     // onDraw reposition it (invalidateContentRect) only when it actually moves.
     private long toolbarSelGeom = Long.MIN_VALUE;
 
+    // --- Multi-tap selection. A single tap raises the keyboard (or opens a
+    // link); a double tap selects the word and a triple tap the line under the
+    // finger. GestureDetector's own double-tap detection is disabled (see the
+    // constructor) so onSingleTapUp fires for every tap and we count them here:
+    // consecutive taps within the platform double-tap window and slop advance
+    // the count, and the count drives the action immediately — no deferral, so
+    // the single-tap keyboard stays instant. Long-press keeps its own
+    // select-and-drag path; mouse-reporting taps bypass counting entirely.
+    private int tapCount;
+    private long lastTapTime;
+    private float lastTapX, lastTapY;
+    private final int tapTimeoutMs = ViewConfiguration.getDoubleTapTimeout();
+    private final int tapSlopPx;
+
     // --- Text search. The emulator owns the search state (query, matches,
     // current index) and reuses the selection slot to highlight/reveal the
     // current match; this view just relays the query and navigation and reports
@@ -316,6 +331,7 @@ public class TerminalView extends View {
 
     private static final int MENU_COPY = 1;
     private static final int MENU_PASTE = 2;
+    private static final int MENU_SELECT_ALL = 3;
 
     public TerminalView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -332,6 +348,8 @@ public class TerminalView extends View {
         overlayTextPaint.setTextSize(spToPx(16f));
         overlayPadding = spToPx(12f);
         overlayRadius = spToPx(8f);
+
+        tapSlopPx = ViewConfiguration.get(context).getScaledDoubleTapSlop();
 
         scroller = new OverScroller(context);
         // The vertical scrollbar is declared in the layout (android:scrollbars)
@@ -364,26 +382,17 @@ public class TerminalView extends View {
         gestures = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
-                if (selecting) {
-                    finishSelection();
-                    return true;
-                }
-                requestFocus();
-                // A program tracking the mouse gets the tap as a left click
-                // rather than a request for the keyboard.
+                // A program tracking the mouse gets the tap as a left click,
+                // and neither raises the keyboard nor drives selection — so it
+                // stays outside the tap counter (a "double click" there is just
+                // two clicks, which is what such programs expect).
                 if (mouseReporting()) {
+                    tapCount = 0;
+                    requestFocus();
                     sendMouseClick(e.getX(), e.getY());
                     return true;
                 }
-                // A tap that lands on an OSC 8 hyperlink opens it (with a
-                // preview) instead of raising the keyboard.
-                if (tapToOpenLinks && openLinkAt(e.getX(), e.getY())) {
-                    return true;
-                }
-                if (touchKeyboardEnabled) {
-                    InputMethodManager imm = getContext().getSystemService(InputMethodManager.class);
-                    imm.showSoftInput(TerminalView.this, 0);
-                }
+                handleTap(e);
                 return true;
             }
 
@@ -472,6 +481,11 @@ public class TerminalView extends View {
                 return true;
             }
         });
+        // Disable GestureDetector's own double-tap detection: with it on, the
+        // second tap's up is routed to onDoubleTapEvent instead of
+        // onSingleTapUp, hiding it from our tap counter. Off, onSingleTapUp
+        // fires for every tap and handleTap() counts double/triple itself.
+        gestures.setOnDoubleTapListener(null);
     }
 
     /** Flashes the terminal surface once for BEL when visual bell mode is enabled. */
@@ -1008,27 +1022,110 @@ public class TerminalView extends View {
 
     // --- Selection ---
 
+    /**
+     * Routes a (non-mouse) tap by its position in a rapid tap run: 1 = raise
+     * the keyboard or open a link, 2 = select the word, 3+ = select the line.
+     * Consecutive taps within the platform double-tap window and slop advance
+     * the run; anything else restarts it at one. Acts on each tap as it lands
+     * (no deferral), so the common single tap keeps its instant response.
+     */
+    private void handleTap(MotionEvent e) {
+        long now = e.getEventTime();
+        boolean continues = now - lastTapTime <= tapTimeoutMs
+                && Math.abs(e.getX() - lastTapX) <= tapSlopPx
+                && Math.abs(e.getY() - lastTapY) <= tapSlopPx;
+        tapCount = continues ? tapCount + 1 : 1;
+        lastTapTime = now;
+        lastTapX = e.getX();
+        lastTapY = e.getY();
+
+        if (tapCount == 1) {
+            if (selecting) {
+                // A lone tap dismisses the selection; don't let it also seed a
+                // double-tap run (a following quick tap should be a fresh tap).
+                finishSelection();
+                tapCount = 0;
+                return;
+            }
+            requestFocus();
+            // A tap that lands on an OSC 8 hyperlink opens it (with a preview)
+            // instead of raising the keyboard.
+            if (tapToOpenLinks && openLinkAt(e.getX(), e.getY())) return;
+            if (touchKeyboardEnabled) {
+                InputMethodManager imm =
+                        getContext().getSystemService(InputMethodManager.class);
+                imm.showSoftInput(TerminalView.this, 0);
+            }
+        } else if (tapCount == 2) {
+            selectWordAt(e.getX(), e.getY());
+        } else { // 3 or more
+            selectLineAt(e.getX(), e.getY());
+        }
+    }
+
     private void startSelection(float px, float py) {
-        if (session == null || selecting) return;
+        if (session == null) return;
+        if (!selectWordAt(px, py)) return;
+        // Keep dragging from the long-press to extend: pin the start so the
+        // drag moves the end (crossing back over the start flips naturally).
+        session.emulator.selectionAnchor(1);
+        longPressDragging = true;
+    }
+
+    /** Selects the word at viewport pixel (px, py); false if it didn't resolve. */
+    private boolean selectWordAt(float px, float py) {
+        if (session == null) return false;
         // Snap any smooth-scroll sub-row offset away so the grid is row-aligned
         // for the whole selection: hit-testing here and the handle/drag math all
         // map screen pixels through cellHeight assuming no sub-row translation.
         pixelScrollOffset = 0;
         int cx = clampToGrid((px - textMarginLeft) / cellWidth, cols);
         int cy = clampToGrid(py / (float) cellHeight, rows);
-        if (!session.emulator.selectWord(cx, cy)) return;
+        if (!session.emulator.selectWord(cx, cy)) return false;
+        showSelectionUi();
+        return true;
+    }
+
+    /** Selects the whole line at viewport pixel (px, py); false if it didn't resolve. */
+    private boolean selectLineAt(float px, float py) {
+        if (session == null) return false;
+        pixelScrollOffset = 0;
+        int cx = clampToGrid((px - textMarginLeft) / cellWidth, cols);
+        int cy = clampToGrid(py / (float) cellHeight, rows);
+        if (!session.emulator.selectLine(cx, cy)) return false;
+        showSelectionUi();
+        return true;
+    }
+
+    /** Selects all content (scrollback + screen) and shows the toolbar. */
+    private void selectAll() {
+        if (session == null || !session.emulator.selectAll()) return;
+        showSelectionUi();
+    }
+
+    /**
+     * Enters (or refreshes) selection mode around whatever selection the
+     * emulator now holds: haptic confirm, refresh the mirror so the toolbar's
+     * first (synchronous) onGetContentRect sees the new selection, and show or
+     * reposition the floating toolbar. Shared by the double-tap (word),
+     * triple-tap (line), long-press, and Select-all paths. Any in-progress
+     * handle/long-press drag from a prior selection is cleared — these entry
+     * points install a brand-new selection.
+     */
+    private void showSelectionUi() {
         selecting = true;
-        // Keep dragging from the long-press to extend: pin the start so the
-        // drag moves the end (crossing back over the start flips naturally).
-        session.emulator.selectionAnchor(1);
-        longPressDragging = true;
+        longPressDragging = false;
+        draggingHandle = -1;
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-        // Refresh the mirror so the toolbar's first (synchronous)
-        // onGetContentRect sees the new selection and anchors above the word
-        // instead of falling back to a whole-view rect.
         session.emulator.snapshot(snapshot);
         toolbarSelGeom = selectionGeometryKey();
-        actionMode = startActionMode(selectionActions, ActionMode.TYPE_FLOATING);
+        if (actionMode == null) {
+            actionMode = startActionMode(selectionActions, ActionMode.TYPE_FLOATING);
+        } else {
+            // A selection kind changed under a live toolbar (word→line, or
+            // Select all): reposition it over the new range right away.
+            reshowToolbar();
+        }
         invalidate();
     }
 
@@ -1308,8 +1405,9 @@ public class TerminalView extends View {
         @Override
         public boolean onCreateActionMode(ActionMode mode, Menu menu) {
             menu.add(Menu.NONE, MENU_COPY, 0, android.R.string.copy);
+            menu.add(Menu.NONE, MENU_SELECT_ALL, 1, android.R.string.selectAll);
             if (clipboardHasText()) {
-                menu.add(Menu.NONE, MENU_PASTE, 1, android.R.string.paste);
+                menu.add(Menu.NONE, MENU_PASTE, 2, android.R.string.paste);
             }
             return true;
         }
@@ -1325,6 +1423,11 @@ public class TerminalView extends View {
                 copySelection();
             } else if (item.getItemId() == MENU_PASTE) {
                 pasteClipboard();
+            } else if (item.getItemId() == MENU_SELECT_ALL) {
+                // Grow the selection to the whole buffer and keep the toolbar
+                // up so Copy is one more tap away.
+                selectAll();
+                return true;
             }
             mode.finish();
             return true;

@@ -490,6 +490,46 @@ public class EmulatorVtTest {
     }
 
     @Test
+    public void selectLineSelectsWholeLine() {
+        feed("hello world");
+        assertTrue(term.selectLine(3, 0));
+        assertEquals("hello world", term.selectionText());
+
+        ScreenSnapshot s = snapshot();
+        assertTrue(s.hasSelection());
+        assertTrue(s.selectionStartVisible());
+        assertEquals(0, s.selectionStartX());
+        assertEquals(0, s.selectionStartY());
+        assertEquals(10, s.selectionEndX());
+        assertEquals(0, s.selectionEndY());
+    }
+
+    @Test
+    public void selectLineJoinsSoftWrappedRows() {
+        // A token longer than the 80-col grid soft-wraps onto the next row;
+        // a line selection on either row yields the whole unwrapped line.
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 100; i++) sb.append('x');
+        feed(sb.toString());
+        assertTrue(term.selectLine(0, 1)); // the wrapped continuation row
+        assertEquals(sb.toString(), term.selectionText());
+    }
+
+    @Test
+    public void selectAllCoversScrollback() {
+        feed("alpha\r\n");
+        for (int i = 0; i < 8; i++) {
+            feed("filler" + i + "\r\n");
+        }
+        assertTrue(term.selectAll());
+        String all = term.selectionText();
+        // Both the scrolled-off first line and the latest one are included.
+        assertTrue(all.startsWith("alpha"));
+        assertTrue(all.contains("filler7"));
+        assertTrue(snapshot().hasSelection());
+    }
+
+    @Test
     public void selectWordOnBlankCellSelectsThatCell() {
         feed("a b");
         assertTrue(term.selectWord(1, 0)); // the space between the words

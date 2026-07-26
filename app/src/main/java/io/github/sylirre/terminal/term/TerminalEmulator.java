@@ -200,6 +200,16 @@ public final class TerminalEmulator implements AutoCloseable {
         return handle != 0 && TerminalNative.terminalSelectWord(handle, x, y);
     }
 
+    /** Selects the whole line (or blank cell) at viewport (x, y); false if out of range. */
+    public synchronized boolean selectLine(int x, int y) {
+        return handle != 0 && TerminalNative.terminalSelectLine(handle, x, y);
+    }
+
+    /** Selects all content (scrollback + screen); false when the terminal is empty. */
+    public synchronized boolean selectAll() {
+        return handle != 0 && TerminalNative.terminalSelectAll(handle);
+    }
+
     /** Pins the endpoint opposite the grabbed handle (0 = top-left, 1 = bottom-right). */
     public synchronized void selectionAnchor(int which) {
         if (handle != 0) TerminalNative.terminalSelectionAnchor(handle, which);

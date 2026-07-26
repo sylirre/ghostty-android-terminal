@@ -541,6 +541,87 @@ public class TerminalUiTest {
                 }, this::diagnose);
     }
 
+    /**
+     * Taps the center of cell (cx, cy) {@code taps} times in quick succession —
+     * each a fast down/up, spaced well under the double-tap window — to drive
+     * the double-tap (word) and triple-tap (line) selection gestures.
+     */
+    private static ViewAction multiTapAtCell(final int taps, final int cx, final int cy) {
+        return new ViewAction() {
+            @Override
+            public Matcher<View> getConstraints() {
+                return isDisplayed();
+            }
+
+            @Override
+            public String getDescription() {
+                return taps + "-tap at cell";
+            }
+
+            @Override
+            public void perform(UiController uc, View view) {
+                float[] precision = Press.FINGER.describePrecision();
+                float[] p = cellCenterOnScreen(view, cx, cy);
+                for (int i = 0; i < taps; i++) {
+                    MotionEvents.DownResultHolder down =
+                            MotionEvents.sendDown(uc, p, precision);
+                    uc.loopMainThreadForAtLeast(30); // brief, so it reads as a tap
+                    MotionEvents.sendUp(uc, down.down, p);
+                    if (i < taps - 1) uc.loopMainThreadForAtLeast(60); // within window
+                }
+            }
+        };
+    }
+
+    @Test
+    public void doubleTapSelectsWord() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        dispatchText("echo doubleme xyz\n");
+        waitFor("echoed output line", TIMEOUT_MS,
+                () -> screenRowWith("doubleme xyz") >= 0, this::diagnose);
+
+        int row = screenRowWith("doubleme xyz");
+        onView(withId(R.id.terminal)).perform(multiTapAtCell(2, 3, row));
+        waitFor("word selected by double-tap", TIMEOUT_MS,
+                () -> "doubleme".equals(selectionText()), this::diagnose);
+    }
+
+    @Test
+    public void tripleTapSelectsLine() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        dispatchText("echo tri one two\n");
+        waitFor("echoed output line", TIMEOUT_MS,
+                () -> screenRowWith("tri one two") >= 0, this::diagnose);
+
+        int row = screenRowWith("tri one two");
+        onView(withId(R.id.terminal)).perform(multiTapAtCell(3, 3, row));
+        waitFor("line selected by triple-tap", TIMEOUT_MS,
+                () -> "tri one two".equals(selectionText()), this::diagnose);
+    }
+
+    @Test
+    public void selectAllFromToolbarSelectsWholeBuffer() {
+        waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));
+        dispatchText("echo firstline\n");
+        waitFor("echoed output line", TIMEOUT_MS,
+                () -> screenRowWith("firstline") >= 0, this::diagnose);
+
+        int row = screenRowWith("firstline");
+        onView(withId(R.id.terminal)).perform(longPressAtCell(3, row));
+        waitFor("word selected", TIMEOUT_MS,
+                () -> "firstline".equals(selectionText()), this::diagnose);
+
+        // "Select all" grows the selection past the single word and keeps the
+        // toolbar up (so Copy is still reachable).
+        onView(withText("Select all")).inRoot(isPlatformPopup()).perform(click());
+        waitFor("selection grew to the whole buffer", TIMEOUT_MS,
+                () -> {
+                    String s = selectionText();
+                    return s != null && s.contains("firstline")
+                            && s.length() > "firstline".length();
+                }, this::diagnose);
+    }
+
     @Test
     public void pasteButtonTypesClipboardIntoShell() {
         waitFor("shell prompt", TIMEOUT_MS, () -> currentScreen().contains("$"));

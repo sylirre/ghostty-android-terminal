@@ -1500,6 +1500,51 @@ Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectWord(
 }
 
 /*
+ * Selects the whole (soft-wrap-joined) line under viewport cell (x, y) and
+ * installs it as the active selection. A blank line (no selectable content)
+ * falls back to just that cell, mirroring terminalSelectWord, so the gesture
+ * always yields handles and a paste anchor. Returns false only when the
+ * coordinates don't resolve.
+ */
+JNIEXPORT jboolean JNICALL
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectLine(
+    JNIEnv *env, jclass clazz, jlong h, jint x, jint y) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttyGridRef ref;
+    if (!viewport_ref(c, x, y, &ref)) return JNI_FALSE;
+
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    GhosttyTerminalSelectLineOptions opts =
+        GHOSTTY_INIT_SIZED(GhosttyTerminalSelectLineOptions);
+    opts.ref = ref;
+    if (ghostty_terminal_select_line(c->term, &opts, &sel) != GHOSTTY_SUCCESS) {
+        sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+        sel.start = ref;
+        sel.end = ref;
+    }
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+    return JNI_TRUE;
+}
+
+/*
+ * Selects all selectable terminal content (scrollback + active area) and
+ * installs it as the active selection. Returns false when there is nothing
+ * to select (an empty terminal).
+ */
+JNIEXPORT jboolean JNICALL
+Java_io_github_sylirre_terminal_term_TerminalNative_terminalSelectAll(
+    JNIEnv *env, jclass clazz, jlong h) {
+    (void)env; (void)clazz;
+    TermCtx *c = (TermCtx *)(intptr_t)h;
+    GhosttySelection sel = GHOSTTY_INIT_SIZED(GhosttySelection);
+    if (ghostty_terminal_select_all(c->term, &sel) != GHOSTTY_SUCCESS)
+        return JNI_FALSE;
+    ghostty_terminal_set(c->term, GHOSTTY_TERMINAL_OPT_SELECTION, &sel);
+    return JNI_TRUE;
+}
+
+/*
  * Prepares a handle drag: reorders the active selection so the grabbed
  * visual endpoint (which: 0 = top-left, 1 = bottom-right) becomes the
  * logical end, which is what terminalSelectionDrag moves. The other
