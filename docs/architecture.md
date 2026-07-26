@@ -94,7 +94,7 @@ arm64→x86_64) hosts. The integration:
    gone. The `--jit` code cache is W^X-aware: RWX anon → `memfd` dual-map under
    SELinux `execmem` → interpreter fallback.
 3. **The rootfs is an optional APK asset.** `UserlandRootfs` extracts
-   `debian_trixie_aarch64_rootfs.tar.xz` (bundled from `DebianRootfs/` at the
+   `debian_trixie_aarch64_rootfs.tar.xz` (bundled from `UserlandRootfs/` at the
    repo root when present; never committed) on first launch with a minimal tar
    reader over `org.tukaani:xz`. It is always the aarch64 rootfs — the x86_64
    host runs it emulated. Hard-link entries are copied (apps cannot `link(2)`);

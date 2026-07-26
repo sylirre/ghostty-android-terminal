@@ -45,7 +45,7 @@ Notes:
 - Espresso needs device animations off for reliable clicks:
   `adb shell settings put global window_animation_scale 0` (and the
   `transition_animation_scale`/`animator_duration_scale` equivalents).
-- `UserlandSessionTest` needs the rootfs tarballs in `DebianRootfs/` at the
+- `UserlandSessionTest` needs the rootfs tarballs in `UserlandRootfs/` at the
   repo root **at build time** (they are gitignored — obtain them
   separately). The first Debian test of a run pays the one-time rootfs
   extraction on the device (~15 s on an emulator); reruns reuse it until

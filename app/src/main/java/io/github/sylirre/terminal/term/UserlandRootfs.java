@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * installer, and the arm64chroot command line for {@link TerminalSession}.
  *
  * The rootfs rides in the APK as an optional asset
- * (debian_trixie_aarch64_rootfs.tar.xz, bundled from DebianRootfs/ when
+ * (debian_trixie_aarch64_rootfs.tar.xz, bundled from UserlandRootfs/ when
  * present at build time — never committed) and is extracted once into
  * filesDir/userland. It is always the aarch64 rootfs: arm64chroot emulates an
  * AArch64 guest on every host ABI. The tar reader is deliberately minimal: the

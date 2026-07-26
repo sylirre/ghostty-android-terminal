@@ -77,12 +77,11 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ### Bundling the Debian userland
 
-Place rootfs tarballs in `DebianRootfs/` at the repo root before building
+Place rootfs tarballs in `UserlandRootfs/` at the repo root before building
 (the directory is gitignored — the tarballs are never committed):
 
 ```
-DebianRootfs/debian_trixie_aarch64_rootfs.tar.xz
-DebianRootfs/debian_trixie_x86_64_rootfs.tar.xz
+UserlandRootfs/debian_trixie_aarch64_rootfs.tar.xz
 ```
 
 When present they ship as APK assets and the app extracts the one matching

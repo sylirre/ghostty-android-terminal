@@ -9,7 +9,7 @@ Runs a Linux userland under `arm64chroot` — a bundled from-scratch AArch64
 Linux user-space emulator (qemu-user-style ISA emulation + proot-style rootfs
 containment, optional `--jit`) — so the aarch64 rootfs runs on both arm64-v8a
 (JIT arm64→arm64) and x86_64 (JIT arm64→x86_64) hosts. Rootfs bundled as an
-optional, gitignored APK asset from `DebianRootfs/`. Also `/system/bin/sh` with
+optional, gitignored APK asset from `UserlandRootfs/`. Also `/system/bin/sh` with
 `PATH=/system/bin`; session tabs; extra-keys toolbar above the soft keyboard.
 minSdk 29, targetSdk 36, ABIs arm64-v8a + x86_64.
 
@@ -169,5 +169,5 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 emulator job (KVM, animations off) runs the full instrumented suite and
 uploads test reports on failure. Zig is not needed in CI — the Ghostty
 prebuilts are committed. The userland rootfs tarballs are NOT in the repo,
-so CI builds without userland assets and `DebianSessionTest` is skipped;
-run it locally with the tarballs in `DebianRootfs/` (docs/testing.md).
+so CI builds without userland assets and `UserlandSessionTest` is skipped;
+run it locally with the tarballs in `UserlandRootfs/` (docs/testing.md).

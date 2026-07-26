@@ -53,7 +53,7 @@ android {
 // Debian rootfs tarballs are bundled as assets when present (they are
 // never committed; see .gitignore). Without them the app still builds and
 // runs — Debian sessions are simply unavailable.
-def debianRootfs = rootProject.file("DebianRootfs")
+def debianRootfs = rootProject.file("UserlandRootfs")
 if (debianRootfs.isDirectory()) {
     android.sourceSets.main.assets.srcDirs += debianRootfs
 }
