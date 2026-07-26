@@ -1692,35 +1692,58 @@ public class TerminalView extends View {
         endHandleRect.setEmpty();
         if (!selecting || !snapshot.hasSelection()) return;
         if (snapshot.selectionStartVisible() && handleLeft != null) {
-            placeHandle(handleLeft, startHandleRect, true,
+            Drawable d = placeHandle(true,
                     textMarginLeft + snapshot.selectionStartX() * cellWidth,
-                    (snapshot.selectionStartY() + 1) * cellHeight);
-            handleLeft.draw(canvas);
+                    (snapshot.selectionStartY() + 1) * cellHeight, startHandleRect);
+            if (d != null) d.draw(canvas);
         }
         if (snapshot.selectionEndVisible() && handleRight != null) {
-            placeHandle(handleRight, endHandleRect, false,
+            Drawable d = placeHandle(false,
                     textMarginLeft + (snapshot.selectionEndX() + 1) * cellWidth,
-                    (snapshot.selectionEndY() + 1) * cellHeight);
-            handleRight.draw(canvas);
+                    (snapshot.selectionEndY() + 1) * cellHeight, endHandleRect);
+            if (d != null) d.draw(canvas);
         }
     }
 
     /**
-     * Anchors a handle drawable's pointer tip at (anchorX, anchorY) — the
-     * hotspot sits at 3/4 of the width for the left handle and 1/4 for the
-     * right, like TextView's — and records an enlarged touch target. The x
-     * position is clamped to the view so a handle at column 0 or the last
-     * column (e.g. a full-line selection) stays fully on-screen and grabbable.
+     * Positions the handle for one selection endpoint so its pointer tip sits on
+     * (tipX, tipY) and its bulb hangs just below the line — outward (left for the
+     * start endpoint, right for the end), like TextView's. When that would push
+     * the bulb off the near screen edge, the mirror-image drawable is used so the
+     * bulb hangs *inward* instead: the whole handle stays on-screen with its tip
+     * still exactly on the endpoint, rather than being shoved inward off the
+     * selected character (the previous behavior near borders). Records an
+     * enlarged touch target in {@code touchRect} and returns the drawable to
+     * draw, or null if the needed drawable is unavailable.
      */
-    private void placeHandle(Drawable d, RectF touchRect, boolean left,
-            float anchorX, float anchorY) {
-        int w = d.getIntrinsicWidth(), h = d.getIntrinsicHeight();
-        int x = (int) (anchorX - (left ? w * 3 / 4f : w / 4f));
-        x = Math.max(0, Math.min(x, getWidth() - w));
-        int y = (int) anchorY;
+    private Drawable placeHandle(boolean start, float tipX, float tipY, RectF touchRect) {
+        // The two system drawables are mirror images: the left one's tip is on
+        // its right (bulb hangs left, hotspot at 3/4 width), the right one's tip
+        // is on its left (bulb hangs right, hotspot at 1/4). So the "inward"
+        // drawable for either endpoint is simply the other one.
+        Drawable outward = start ? handleLeft : handleRight;
+        Drawable inward = start ? handleRight : handleLeft;
+        float outwardHotspot = start ? 0.75f : 0.25f;
+        float inwardHotspot = start ? 0.25f : 0.75f;
+
+        Drawable d = outward;
+        float hotspot = outwardHotspot;
+        int w = d.getIntrinsicWidth();
+        float leftEdge = tipX - hotspot * w;
+        boolean spills = start ? leftEdge < 0 : leftEdge + w > getWidth();
+        if (spills && inward != null) {
+            d = inward;
+            hotspot = inwardHotspot;
+            w = d.getIntrinsicWidth();
+            leftEdge = tipX - hotspot * w;
+        }
+        int h = d.getIntrinsicHeight();
+        int x = Math.round(leftEdge);
+        int y = (int) tipY;
         d.setBounds(x, y, x + w, y + h);
         touchRect.set(x, y, x + w, y + h);
         touchRect.inset(-w / 4f, -h / 4f);
+        return d;
     }
 
     private final StringBuilder runText = new StringBuilder(128);

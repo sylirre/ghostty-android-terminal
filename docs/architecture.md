@@ -341,7 +341,11 @@ forward-ordered endpoint viewport coordinates in `meta[9..13]` for handle
 placement.
 
 `TerminalView` draws the system `textSelectHandleLeft/Right` drawables
-under the endpoints and shows a floating `ActionMode` toolbar: Copy and
+under the endpoints — each with its pointer tip on the endpoint and its bulb
+hanging outward, but flipping to the mirror-image drawable so the bulb hangs
+*inward* when an endpoint sits against a screen edge, so the tip stays on the
+character instead of the whole handle being shoved inward — and shows a
+floating `ActionMode` toolbar: Copy and
 Select all always, Paste only when the clipboard advertises text (checked via
 `ClipDescription` so the button itself doesn't trigger Android's
 clipboard-access toast). Select all keeps the toolbar open (it only grows the
