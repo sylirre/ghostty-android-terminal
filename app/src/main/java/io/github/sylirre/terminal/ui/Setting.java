@@ -5,7 +5,9 @@ package io.github.sylirre.terminal.ui;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.LinearLayout;
@@ -49,6 +51,9 @@ abstract class Setting {
      */
     private BooleanSupplier enabledWhen;
 
+    /** Whether tapping this row opens another screen (drawn with a chevron). */
+    private boolean navigates;
+
     /**
      * Set by the dialog; a row calls it after mutating a value so the dialog
      * can re-apply enabled state across all rows. Null until hosted.
@@ -64,6 +69,17 @@ abstract class Setting {
     Setting enabledWhen(BooleanSupplier gate) {
         this.enabledWhen = gate;
         return this;
+    }
+
+    /** Marks this row as opening another screen; it gains a disclosure chevron. */
+    Setting navigates() {
+        this.navigates = true;
+        return this;
+    }
+
+    /** Whether the row opens another screen (see {@link #navigates()}). */
+    boolean isNavigation() {
+        return navigates;
     }
 
     /** Whether the row is currently interactive (ungated rows always are). */
@@ -116,6 +132,7 @@ abstract class Setting {
 
         @Override
         void onRowClick(View control) {
+            control.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
             ((Switch) control).toggle(); // fires the listener, which persists + applies
         }
     }
@@ -168,6 +185,7 @@ abstract class Setting {
 
         @Override
         void onRowClick(View control) {
+            control.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK);
             ((Switch) control).toggle();
         }
 
@@ -290,12 +308,13 @@ abstract class Setting {
     }
 
     /**
-     * An integer setting adjusted with a horizontal slider. The trailing
-     * control is a fixed-width {@link SeekBar} plus a live read-out label (e.g.
-     * "32 MB"). {@code min}, {@code max} and {@code step} bound the value; the
-     * SeekBar works in whole steps, so the value emitted through
-     * {@code onChange} is always {@code min + k*step}. The row body itself is
-     * inert — the bar owns its touch, so there is no {@code onRowClick}.
+     * An integer setting adjusted with a horizontal slider. Rendered into the
+     * row's full-width control slot: a flexible {@link SeekBar} plus a live
+     * read-out label (e.g. "32 MB"). {@code min}, {@code max} and {@code step}
+     * bound the value; the SeekBar works in whole steps, so the value emitted
+     * through {@code onChange} is always {@code min + k*step}. The row body
+     * itself is inert — the bar owns its touch, so there is no
+     * {@code onRowClick} and the screen draws no row ripple.
      */
     static final class Slider extends Setting {
 
@@ -320,15 +339,16 @@ abstract class Setting {
 
         @Override
         View createControl(Context context) {
-            float density = context.getResources().getDisplayMetrics().density;
             int current = value.getAsInt();
 
             TextView readout = new TextView(context);
             readout.setText(valueLabel.apply(current));
-            readout.setTextColor(Chrome.color(context, R.color.text_secondary));
-            readout.setTextSize(14);
+            readout.setTextColor(Chrome.color(context, R.color.text_primary));
+            readout.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                    Chrome.dimen(context, R.dimen.text_row_value));
             readout.setGravity(Gravity.END);
-            readout.setMinWidth(Math.round(52 * density));
+            // Reserve digits' width so the bar doesn't jiggle while dragging.
+            readout.setMinWidth(Chrome.dp(context, R.dimen.slider_readout_min));
 
             SeekBar bar = new SeekBar(context);
             // Seed progress before wiring the listener so this is silent.
@@ -347,8 +367,6 @@ abstract class Setting {
                 @Override public void onStopTrackingTouch(SeekBar s) {}
             });
 
-            // The trailing control slot is wrap_content, so pin the bar to a
-            // fixed width; a wrap_content SeekBar collapses to its thumb.
             LinearLayout box = new LinearLayout(context) {
                 @Override
                 public void setEnabled(boolean enabled) {
@@ -360,9 +378,9 @@ abstract class Setting {
             };
             box.setOrientation(LinearLayout.HORIZONTAL);
             box.setGravity(Gravity.CENTER_VERTICAL);
+            // Full-width slot: the bar flexes, the read-out keeps its reserve.
             box.addView(bar, new LinearLayout.LayoutParams(
-                    Math.round(120 * density),
-                    LinearLayout.LayoutParams.WRAP_CONTENT));
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             box.addView(readout);
             return box;
         }

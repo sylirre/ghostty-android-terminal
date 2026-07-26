@@ -5,23 +5,22 @@ package io.github.sylirre.terminal.ui;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.text.InputType;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.WindowInsets;
+import android.view.ViewGroup;
 import android.widget.CompoundButton;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -30,7 +29,6 @@ import android.widget.Toast;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 import io.github.sylirre.terminal.R;
 import io.github.sylirre.terminal.term.UserlandDistro;
@@ -100,7 +98,8 @@ public final class SettingsActivity extends Activity {
                 getString(R.string.setting_theme_title),
                 getString(R.string.setting_theme_summary),
                 () -> themeStore.current().name,
-                () -> startActivity(new Intent(this, ThemeActivity.class))));
+                () -> startActivity(new Intent(this, ThemeActivity.class)))
+                .navigates());
         appearance.add(new Setting.Choice(
                 getString(R.string.setting_terminal_bell_title),
                 getString(R.string.setting_terminal_bell_summary),
@@ -164,7 +163,8 @@ public final class SettingsActivity extends Activity {
                             : getResources().getQuantityString(R.plurals.extra_keys_count, keys, keys);
                 },
                 () -> startActivity(new Intent(this, ExtraKeysActivity.class)))
-                .enabledWhen(settings::extraKeysEnabled));
+                .enabledWhen(settings::extraKeysEnabled)
+                .navigates());
         sections.add(new SettingsSection(getString(R.string.settings_group_keyboard), keyboard));
 
         List<Setting> terminal = new ArrayList<>();
@@ -244,7 +244,8 @@ public final class SettingsActivity extends Activity {
                     getString(R.string.setting_install_userland_title),
                     getString(R.string.setting_install_userland_summary),
                     () -> "",
-                    () -> delegateAndFinish(ACTION_SETUP_USERLAND)));
+                    () -> delegateAndFinish(ACTION_SETUP_USERLAND))
+                    .navigates());
         }
         userland.add(new Setting.Action(
                 getString(R.string.setting_userland_identity_title),
@@ -312,12 +313,14 @@ public final class SettingsActivity extends Activity {
                 getString(R.string.setting_backup_summary),
                 () -> "",
                 () -> delegateAndFinish(ACTION_BACKUP))
-                .enabledWhen(() -> UserlandRootfs.isInstalled(this)));
+                .enabledWhen(() -> UserlandRootfs.isInstalled(this))
+                .navigates());
         userland.add(new Setting.Action(
                 getString(R.string.setting_restore_title),
                 getString(R.string.setting_restore_summary),
                 () -> "",
-                () -> delegateAndFinish(ACTION_RESTORE)));
+                () -> delegateAndFinish(ACTION_RESTORE))
+                .navigates());
         sections.add(new SettingsSection(getString(R.string.settings_group_userland), userland));
         return sections;
     }
@@ -347,32 +350,35 @@ public final class SettingsActivity extends Activity {
                 View row = inflater.inflate(R.layout.settings_row, card, false);
                 ((TextView) row.findViewById(R.id.setting_title)).setText(setting.title);
                 ((TextView) row.findViewById(R.id.setting_summary)).setText(setting.summary);
+                if (setting.isNavigation()) {
+                    row.findViewById(R.id.setting_chevron).setVisibility(View.VISIBLE);
+                }
 
                 View control = setting.createControl(this);
                 // A Switch is a TextView subclass, so exclude CompoundButtons here;
-                // this styling is only for the plain value labels (Choice / Action).
+                // plain TextViews are the value labels of Choice / Action rows.
                 if (control instanceof TextView && !(control instanceof CompoundButton)) {
-                    // Trailing value label (Choice / Action): a muted, compact read-out.
-                    TextView label = (TextView) control;
-                    label.setTextColor(Chrome.color(this, R.color.text_secondary));
-                    label.setTextSize(14);
-                    // Keep it to a single, width-bounded line. Free-text values
-                    // (e.g. the default PATH) can be long; the trailing slot is
-                    // wrap_content and measured before the weight-1 title column,
-                    // so without a cap a long value grabs the whole row and the
-                    // title/summary collapse to nothing. Ellipsize instead — the
-                    // full value is still shown/editable in the row's dialog.
-                    label.setSingleLine(true);
-                    label.setEllipsize(TextUtils.TruncateAt.END);
-                    label.setGravity(Gravity.END);
-                    label.setMaxWidth(getResources().getDisplayMetrics().widthPixels / 2);
+                    bindValueLabel(row, (TextView) control);
+                } else if (control != null) {
+                    // Wide controls (Slider) span the row under the summary;
+                    // compact ones (Switch) sit in the trailing slot.
+                    boolean wide = setting instanceof Setting.Slider;
+                    FrameLayout slot = row.findViewById(
+                            wide ? R.id.setting_control_wide : R.id.setting_control);
+                    slot.addView(control, new FrameLayout.LayoutParams(
+                            wide ? FrameLayout.LayoutParams.MATCH_PARENT
+                                 : FrameLayout.LayoutParams.WRAP_CONTENT,
+                            FrameLayout.LayoutParams.WRAP_CONTENT));
+                    slot.setVisibility(View.VISIBLE);
                 }
-                if (control != null) {
-                    ((FrameLayout) row.findViewById(R.id.setting_control)).addView(control);
+                if (setting instanceof Setting.Slider) {
+                    // The bar owns all interaction: no dead ripple on the row.
+                    row.setBackground(null);
+                } else {
+                    row.setOnClickListener(v -> {
+                        if (setting.isEnabled()) setting.onRowClick(control);
+                    });
                 }
-                row.setOnClickListener(v -> {
-                    if (setting.isEnabled()) setting.onRowClick(control);
-                });
                 setting.onChanged = refresh;
                 rows.add(new Row(setting, row, control));
                 card.addView(row);
@@ -390,14 +396,84 @@ public final class SettingsActivity extends Activity {
         View divider = new View(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, Chrome.dp(this, R.dimen.stroke_hairline));
-        lp.leftMargin = Chrome.dp(this, R.dimen.space_5);
+        // Inset to the row text start so dividers align with the content grid.
+        lp.setMarginStart(Chrome.dp(this, R.dimen.space_4));
         divider.setLayoutParams(lp);
         divider.setBackgroundColor(Chrome.color(this, R.color.divider));
         return divider;
     }
 
+    /**
+     * Hosts a Choice/Action value label in the row, placed adaptively: inline
+     * after the title when both fit on one line (and the value stays under
+     * ~45% of the row width), else on its own full-width line under the
+     * summary with a middle ellipsis so a path's head and tail both stay
+     * readable. Re-evaluated whenever the row width changes (rotation-proof —
+     * replaces the old one-shot displayWidth/2 cap) and whenever the label
+     * text changes (Choice picks, Action refresh on window focus).
+     */
+    private void bindValueLabel(View row, TextView label) {
+        label.setTextColor(Chrome.color(this, R.color.text_primary));
+        label.setTextSize(TypedValue.COMPLEX_UNIT_PX,
+                Chrome.dimen(this, R.dimen.text_row_value));
+        label.setSingleLine(true);
+        // Parked here until the first layout gives us a width to place by;
+        // both slots stay gone, so the first frame never squeezes the title.
+        ((FrameLayout) row.findViewById(R.id.setting_value_inline)).addView(label);
+        row.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l != or - ol) placeValueLabel(row, label);
+        });
+        label.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                placeValueLabel(row, label);
+            }
+        });
+    }
+
+    private void placeValueLabel(View row, TextView label) {
+        FrameLayout inlineSlot = row.findViewById(R.id.setting_value_inline);
+        FrameLayout belowSlot = row.findViewById(R.id.setting_value_below);
+        int rowWidth = row.getWidth() - row.getPaddingStart() - row.getPaddingEnd();
+        CharSequence value = label.getText();
+        if (rowWidth <= 0 || value.length() == 0) {
+            inlineSlot.setVisibility(View.GONE);
+            belowSlot.setVisibility(View.GONE);
+            return;
+        }
+        TextView title = row.findViewById(R.id.setting_title);
+        View chevron = row.findViewById(R.id.setting_chevron);
+        int gap = Chrome.dp(this, R.dimen.space_4);
+        float titleWidth = title.getPaint().measureText(title.getText().toString());
+        float valueWidth = label.getPaint().measureText(value.toString());
+        int trailing = chevron.getVisibility() == View.VISIBLE
+                ? chevron.getWidth() + Chrome.dp(this, R.dimen.space_2) : 0;
+        boolean inline = titleWidth + gap + valueWidth + trailing <= rowWidth
+                && valueWidth <= rowWidth * 0.45f;
+
+        FrameLayout target = inline ? inlineSlot : belowSlot;
+        if (label.getParent() != target) {
+            ((ViewGroup) label.getParent()).removeView(label);
+            target.addView(label);
+        }
+        label.setLayoutParams(new FrameLayout.LayoutParams(
+                inline ? FrameLayout.LayoutParams.WRAP_CONTENT
+                       : FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT));
+        // The hard cap keeps a mid-frame text change from squeezing the title
+        // before the next placement pass runs.
+        label.setEllipsize(inline
+                ? TextUtils.TruncateAt.END : TextUtils.TruncateAt.MIDDLE);
+        label.setMaxWidth(inline ? Math.round(rowWidth * 0.45f) : Integer.MAX_VALUE);
+        label.setGravity(inline ? Gravity.END : Gravity.START);
+        inlineSlot.setVisibility(inline ? View.VISIBLE : View.GONE);
+        belowSlot.setVisibility(inline ? View.GONE : View.VISIBLE);
+    }
+
     /** A rendered row paired with its setting, so enabled state can be re-applied. */
-    private static final class Row {
+    private final class Row {
         final Setting setting;
         final View view;
         final View control;
@@ -410,141 +486,146 @@ public final class SettingsActivity extends Activity {
 
         void applyEnabled() {
             boolean on = setting.isEnabled();
+            boolean clickable = on && !(setting instanceof Setting.Slider);
             view.setEnabled(on);
-            view.setClickable(on);
-            view.setAlpha(on ? 1f : 0.4f);
-            if (control != null) control.setEnabled(on);
+            view.setClickable(clickable);
+            view.setFocusable(clickable);
+            // Token-colored disabled state instead of a whole-row alpha fade:
+            // the text drops to tertiary and only the control itself dims.
+            TextView title = view.findViewById(R.id.setting_title);
+            TextView summary = view.findViewById(R.id.setting_summary);
+            title.setTextColor(Chrome.color(SettingsActivity.this,
+                    on ? R.color.text_primary : R.color.text_tertiary));
+            summary.setTextColor(Chrome.color(SettingsActivity.this,
+                    on ? R.color.text_secondary : R.color.text_tertiary));
+            view.findViewById(R.id.setting_chevron).setAlpha(on ? 1f : 0.4f);
+            if (control != null) {
+                control.setEnabled(on);
+                control.setAlpha(on ? 1f : 0.4f);
+            }
         }
     }
 
     // --- Userland text settings (login shell, identity, home, working dir, locale, path) ---
 
     private void showLoginShellDialog() {
-        showTextSettingDialog(R.string.setting_userland_shell_title,
-                R.string.setting_userland_shell_hint, settings.userlandLoginShell(),
-                cmd -> {
-                    if (isValidShellCommand(cmd)) settings.setUserlandLoginShell(cmd);
-                });
+        Dialogs.prompt(this, R.string.setting_userland_shell_title,
+                settings.userlandLoginShell(),
+                getString(R.string.setting_userland_shell_hint), true,
+                this::validateShellCommand,
+                settings::setUserlandLoginShell,
+                () -> settings.setUserlandLoginShell(""));
     }
 
     private void showIdentityDialog() {
-        showTextSettingDialog(R.string.setting_userland_identity_title,
-                R.string.setting_userland_identity_hint, settings.userlandIdentity(),
-                id -> {
-                    settings.setUserlandIdentity(id);
-                    // Populate the home and login-shell settings from the
-                    // configured user's passwd entry (they track the identity).
-                    if (UserlandRootfs.isInstalled(this)) {
-                        File root = UserlandRootfs.dir(this);
-                        String home = UserlandIdentity.homeForIdentity(root, id);
-                        settings.setUserlandHome(home != null ? home : "/");
-                        String shell = UserlandRootfs.deriveLoginShell(root, id);
-                        settings.setUserlandLoginShell(
-                                shell != null ? shell : "/bin/bash -l");
-                    }
-                });
-    }
-
-    private void showHomeDialog() {
-        showTextSettingDialog(R.string.setting_userland_home_title,
-                R.string.setting_userland_home_hint, settings.userlandHome(),
-                home -> {
-                    if (isValidGuestDir(home)) settings.setUserlandHome(home);
-                });
-    }
-
-    private void showWorkDirDialog() {
-        showTextSettingDialog(R.string.setting_userland_workdir_title,
-                R.string.setting_userland_workdir_hint, settings.userlandWorkDir(),
-                dir -> {
-                    if (isValidGuestDir(dir)) settings.setUserlandWorkDir(dir);
-                });
-    }
-
-    private void showLocaleDialog() {
-        showTextSettingDialog(R.string.setting_userland_locale_title,
-                R.string.setting_userland_locale_hint, settings.userlandLocale(),
-                settings::setUserlandLocale);
-    }
-
-    private void showPathDialog() {
-        showTextSettingDialog(R.string.setting_userland_path_title,
-                R.string.setting_userland_path_hint, settings.userlandPath(),
-                settings::setUserlandPath);
-    }
-
-    /** Free-text editor shared by the userland string settings. */
-    private void showTextSettingDialog(int titleRes, int hintRes, String current,
-            Consumer<String> onAccept) {
-        EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        input.setSingleLine(true);
-        input.setHint(hintRes);
-        input.setText(current);
-
-        LinearLayout box = new LinearLayout(this);
-        int p = Chrome.dp(this, R.dimen.space_5);
-        box.setPadding(p, p / 2, p, 0);
-        box.addView(input, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT));
-
-        new AlertDialog.Builder(this)
-                .setTitle(titleRes)
-                .setView(box)
-                .setPositiveButton(android.R.string.ok, (d, w) ->
-                        onAccept.accept(input.getText().toString().trim()))
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+        Dialogs.prompt(this, R.string.setting_userland_identity_title,
+                settings.userlandIdentity(),
+                getString(R.string.setting_userland_identity_hint), false,
+                null,
+                this::applyIdentity,
+                () -> applyIdentity(""));
     }
 
     /**
-     * Accepts an empty value (means "derive at spawn") or an absolute path that,
-     * when the rootfs is installed, names an existing directory inside it.
-     * Rejects a relative or missing path with a Toast — the same rule
-     * {@code UserlandRootfs} enforces at spawn time.
+     * Persists the identity and re-populates the home and login-shell settings
+     * from the configured user's passwd entry (they track the identity).
      */
-    private boolean isValidGuestDir(String path) {
-        if (path.isEmpty()) return true;
+    private void applyIdentity(String id) {
+        settings.setUserlandIdentity(id);
+        if (UserlandRootfs.isInstalled(this)) {
+            File root = UserlandRootfs.dir(this);
+            String home = UserlandIdentity.homeForIdentity(root, id);
+            settings.setUserlandHome(home != null ? home : "/");
+            String shell = UserlandRootfs.deriveLoginShell(root, id);
+            settings.setUserlandLoginShell(shell != null ? shell : "/bin/bash -l");
+        }
+    }
+
+    private void showHomeDialog() {
+        Dialogs.prompt(this, R.string.setting_userland_home_title,
+                settings.userlandHome(),
+                getString(R.string.setting_userland_home_hint), true,
+                this::validateGuestDir,
+                settings::setUserlandHome,
+                () -> settings.setUserlandHome(""));
+    }
+
+    private void showWorkDirDialog() {
+        Dialogs.prompt(this, R.string.setting_userland_workdir_title,
+                settings.userlandWorkDir(),
+                getString(R.string.setting_userland_workdir_hint), true,
+                this::validateGuestDir,
+                settings::setUserlandWorkDir,
+                () -> settings.setUserlandWorkDir(""));
+    }
+
+    private void showLocaleDialog() {
+        Dialogs.prompt(this, R.string.setting_userland_locale_title,
+                settings.userlandLocale(),
+                getString(R.string.setting_userland_locale_hint), false,
+                null,
+                settings::setUserlandLocale,
+                () -> settings.setUserlandLocale(""));
+    }
+
+    private void showPathDialog() {
+        Dialogs.prompt(this, R.string.setting_userland_path_title,
+                settings.userlandPath(),
+                getString(R.string.setting_userland_path_hint), true,
+                this::validateSearchPath,
+                settings::setUserlandPath,
+                () -> settings.setUserlandPath(""));
+    }
+
+    /**
+     * Empty means "derive at spawn"; otherwise an absolute path that, when the
+     * rootfs is installed, names an existing directory inside it — the same
+     * rule {@code UserlandRootfs} enforces at spawn time. Returns the message
+     * to show inline in the dialog, or null when the value is acceptable.
+     */
+    private String validateGuestDir(String path) {
+        if (path.isEmpty()) return null;
         if (!path.startsWith("/")) {
-            Toast.makeText(this, R.string.setting_userland_path_not_absolute,
-                    Toast.LENGTH_LONG).show();
-            return false;
+            return getString(R.string.setting_userland_path_not_absolute);
         }
         if (UserlandRootfs.isInstalled(this)) {
             String rel = path.substring(1);
             File target = rel.isEmpty()
                     ? UserlandRootfs.dir(this) : new File(UserlandRootfs.dir(this), rel);
             if (!target.isDirectory()) {
-                Toast.makeText(this, R.string.setting_userland_path_missing,
-                        Toast.LENGTH_LONG).show();
-                return false;
+                return getString(R.string.setting_userland_path_missing);
             }
         }
-        return true;
+        return null;
     }
 
     /**
-     * Accepts an empty value (means "derive at spawn") or a command whose first
-     * whitespace-separated token is an absolute path that, when the rootfs is
-     * installed, exists inside it. Rejects a relative or missing shell with a
-     * Toast; arguments after the path are not checked.
+     * Empty means "derive at spawn"; otherwise the command's first
+     * whitespace-separated token must be an absolute path that, when the
+     * rootfs is installed, exists inside it. Arguments are not checked.
      */
-    private boolean isValidShellCommand(String cmd) {
-        if (cmd.isEmpty()) return true;
+    private String validateShellCommand(String cmd) {
+        if (cmd.isEmpty()) return null;
         String path = cmd.split("\\s+")[0];
         if (!path.startsWith("/")) {
-            Toast.makeText(this, R.string.setting_userland_path_not_absolute,
-                    Toast.LENGTH_LONG).show();
-            return false;
+            return getString(R.string.setting_userland_path_not_absolute);
         }
         if (UserlandRootfs.isInstalled(this)
                 && !new File(UserlandRootfs.dir(this), path.substring(1)).exists()) {
-            Toast.makeText(this, R.string.setting_userland_path_missing,
-                    Toast.LENGTH_LONG).show();
-            return false;
+            return getString(R.string.setting_userland_path_missing);
         }
-        return true;
+        return null;
+    }
+
+    /** Every colon-separated PATH entry must be absolute; empty means default. */
+    private String validateSearchPath(String path) {
+        if (path.isEmpty()) return null;
+        for (String entry : path.split(":", -1)) {
+            if (!entry.isEmpty() && !entry.startsWith("/")) {
+                return getString(R.string.setting_userland_path_not_absolute);
+            }
+        }
+        return null;
     }
 
     // --- Storage binding permission ---
