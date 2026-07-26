@@ -4,6 +4,7 @@
 package io.github.sylirre.terminal.ui;
 
 import android.animation.LayoutTransition;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
@@ -12,8 +13,10 @@ import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.view.animation.LinearInterpolator;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -32,8 +35,10 @@ import io.github.sylirre.terminal.term.TerminalSession;
 
 /**
  * Session tab bar: a scrolling row of rounded pills — every pill carries a
- * close (×) and the active one an accent underline — plus a pinned + button
- * that never scrolls out of reach.
+ * close (×), the active one an accent border ring — plus a pinned + button
+ * that never scrolls out of reach. OSC 9;4 progress renders as a small ring
+ * around the reporting tab's close glyph (browser-download style), so the
+ * two signals live on different geometry and can never collide.
  *
  * {@link #update} reconciles the existing pills in place (retitle, restyle,
  * add/remove at the tail) instead of rebuilding, so per-command OSC title
@@ -81,16 +86,16 @@ public class TabStripView extends LinearLayout {
         final LinearLayout pill;
         final TextView label;
         final TextView close;
-        final TabLines lines;
+        final TabRing ring;
         int index;
         boolean styledActive;
         int styledGen = -1;
 
-        Holder(LinearLayout pill, TextView label, TextView close, TabLines lines) {
+        Holder(LinearLayout pill, TextView label, TextView close, TabRing ring) {
             this.pill = pill;
             this.label = label;
             this.close = close;
-            this.lines = lines;
+            this.ring = ring;
         }
     }
 
@@ -153,6 +158,7 @@ public class TabStripView extends LinearLayout {
     public void update(List<String> titles, int activeIndex, List<TabProgress> progress) {
         while (holders.size() > titles.size()) {
             Holder h = holders.remove(holders.size() - 1);
+            h.ring.set(TerminalSession.PROGRESS_NONE, 0); // stop a live spinner
             row.removeView(h.pill);
         }
         while (holders.size() < titles.size()) {
@@ -171,8 +177,7 @@ public class TabStripView extends LinearLayout {
             if (h.styledActive != active || h.styledGen != paletteGen) {
                 style(h, active);
             }
-            h.lines.setActive(active);
-            h.lines.set(p.state, p.value);
+            h.ring.set(p.state, p.value);
             if (active) activeTab = h.pill;
         }
         // Arm add/remove animations only after the initial population, so a
@@ -201,7 +206,7 @@ public class TabStripView extends LinearLayout {
      */
     public void setProgress(int index, int state, int value) {
         if (index < 0 || index >= holders.size()) return;
-        holders.get(index).lines.set(state, value);
+        holders.get(index).ring.set(state, value);
     }
 
     /** Builds one pill (label + close + line overlay); bound/styled by update(). */
@@ -235,14 +240,13 @@ public class TabStripView extends LinearLayout {
                 dp(R.dimen.space_2), dp(R.dimen.space_2));
         pill.addView(close);
 
-        // Active underline + progress line ride as the pill's foreground:
-        // never part of layout or hit-testing, so the pill stays a clean
-        // stable-width tap target.
-        TabLines lines = new TabLines(padH,
-                dp(R.dimen.tab_indicator), dp(R.dimen.tab_progress));
-        pill.setForeground(lines);
+        // The OSC 9;4 progress ring wraps the close glyph as the view's
+        // foreground: never part of layout or hit-testing, so closing keeps
+        // working through it and the pill stays a stable-width tap target.
+        TabRing ring = new TabRing(dp(R.dimen.tab_indicator));
+        close.setForeground(ring);
 
-        Holder h = new Holder(pill, label, close, lines);
+        Holder h = new Holder(pill, label, close, ring);
         pill.setOnClickListener(v -> listener.onTabSelected(h.index));
         close.setOnClickListener(v -> listener.onTabClosed(h.index));
         row.addView(pill, tabLayout());
@@ -253,8 +257,13 @@ public class TabStripView extends LinearLayout {
         h.styledActive = active;
         h.styledGen = paletteGen;
         float r = Chrome.dimen(getContext(), R.dimen.radius_md);
-        h.pill.setBackground(palette.ripple(
-                active ? palette.surface3 : palette.surface2, r, palette.border));
+        // The active tab is marked by an accent border ring (tab_indicator
+        // thick); inactive pills keep the neutral hairline. Strokes draw
+        // inside the bounds, so pill widths stay stable across selection.
+        h.pill.setBackground(active
+                ? palette.ripple(palette.surface3, r, palette.accent,
+                        dp(R.dimen.tab_indicator))
+                : palette.ripple(palette.surface2, r, palette.border));
         h.label.setTextColor(active ? palette.textPrimary : palette.textSecondary);
         h.label.setTypeface(active
                 ? Typeface.create("sans-serif-medium", Typeface.NORMAL) : Typeface.DEFAULT);
@@ -269,78 +278,107 @@ public class TabStripView extends LinearLayout {
     }
 
     /**
-     * A pill's foreground overlay along the bottom edge. At rest the active
-     * tab draws its accent underline there. While the tab reports OSC 9;4
-     * progress, the progress bar owns that edge instead — a faint full-width
-     * track under a fill scaled to the percentage (accent for normal, danger
-     * for error, warning for paused, full for indeterminate). The two never
-     * stack: both are accent-colored, and drawing the fill on top of the
-     * underline read as a lumpy, broken bar.
+     * The OSC 9;4 progress ring drawn around a tab's close glyph: a faint
+     * full-circle track with an arc scaled to the percentage — accent for
+     * normal progress, danger for error, warning for paused, and a spinning
+     * arc for indeterminate (driven by a ValueAnimator, so the global
+     * animator scale — off on test devices — governs it). Draws nothing
+     * while the session reports no progress.
      */
-    private final class TabLines extends Drawable {
+    private final class TabRing extends Drawable {
+        private static final float INDETERMINATE_SWEEP = 100f;
+
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final int inset;
-        private final int indicatorPx;
-        private final int progressPx;
-        private boolean active;
+        private final RectF arc = new RectF();
+        private final int strokePx;
         private int state = TerminalSession.PROGRESS_NONE;
         private int value;
+        private float spin;
+        private ValueAnimator spinner;
 
-        TabLines(int inset, int indicatorPx, int progressPx) {
-            this.inset = inset;
-            this.indicatorPx = indicatorPx;
-            this.progressPx = progressPx;
-        }
-
-        void setActive(boolean a) {
-            if (active == a) return;
-            active = a;
-            invalidateSelf();
+        TabRing(int strokePx) {
+            this.strokePx = strokePx;
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(strokePx);
+            paint.setStrokeCap(Paint.Cap.ROUND);
         }
 
         void set(int state, int value) {
+            if (this.state == state && this.value == value) return;
             this.state = state;
             this.value = Math.max(0, Math.min(100, value));
+            if (state == TerminalSession.PROGRESS_INDETERMINATE) {
+                startSpin();
+            } else {
+                stopSpin();
+            }
             invalidateSelf();
+        }
+
+        private void startSpin() {
+            if (spinner != null) return;
+            spinner = ValueAnimator.ofFloat(0f, 360f);
+            spinner.setDuration(1000);
+            spinner.setRepeatCount(ValueAnimator.INFINITE);
+            spinner.setInterpolator(new LinearInterpolator());
+            spinner.addUpdateListener(a -> {
+                spin = (float) a.getAnimatedValue();
+                invalidateSelf();
+            });
+            spinner.start();
+        }
+
+        private void stopSpin() {
+            if (spinner == null) return;
+            spinner.cancel();
+            spinner = null;
+            spin = 0f;
+        }
+
+        @Override
+        public boolean setVisible(boolean visible, boolean restart) {
+            // Don't animate detached/hidden pills; resume if still reporting.
+            if (!visible) {
+                stopSpin();
+            } else if (state == TerminalSession.PROGRESS_INDETERMINATE) {
+                startSpin();
+            }
+            return super.setVisible(visible, restart);
         }
 
         @Override
         public void draw(Canvas canvas) {
+            if (state == TerminalSession.PROGRESS_NONE) return;
             Rect b = getBounds();
-            float left = b.left + inset;
-            float right = b.right - inset;
-            if (state == TerminalSession.PROGRESS_NONE) {
-                if (active) {
-                    paint.setColor(palette.accent);
-                    canvas.drawRect(left, b.bottom - indicatorPx, right, b.bottom, paint);
-                }
-                return;
-            }
+            float radius = Math.min(b.width(), b.height()) / 2f - strokePx;
+            if (radius <= 0) return;
+            float cx = b.exactCenterX();
+            float cy = b.exactCenterY();
+            arc.set(cx - radius, cy - radius, cx + radius, cy + radius);
             int color;
-            float frac;
+            float sweep;
             switch (state) {
                 case TerminalSession.PROGRESS_ERROR:
                     color = progressErrorColor;
-                    frac = value > 0 ? value / 100f : 1f;
+                    sweep = value > 0 ? value * 3.6f : 360f;
                     break;
                 case TerminalSession.PROGRESS_PAUSED:
                     color = progressPausedColor;
-                    frac = value > 0 ? value / 100f : 1f;
+                    sweep = value > 0 ? value * 3.6f : 360f;
                     break;
                 case TerminalSession.PROGRESS_INDETERMINATE:
                     color = palette.accent;
-                    frac = 1f;
+                    sweep = INDETERMINATE_SWEEP;
                     break;
                 default:
                     color = palette.accent;
-                    frac = value / 100f;
+                    sweep = value * 3.6f;
                     break;
             }
             paint.setColor(palette.border);
-            canvas.drawRect(left, b.bottom - progressPx, right, b.bottom, paint);
+            canvas.drawArc(arc, 0f, 360f, false, paint);
             paint.setColor(color);
-            canvas.drawRect(left, b.bottom - progressPx,
-                    left + (right - left) * frac, b.bottom, paint);
+            canvas.drawArc(arc, -90f + spin, sweep, false, paint);
         }
 
         @Override

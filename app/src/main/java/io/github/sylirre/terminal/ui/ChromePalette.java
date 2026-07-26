@@ -129,17 +129,27 @@ public final class ChromePalette {
 
     /** A rounded solid rectangle. {@code stroke == 0} draws no border. */
     public GradientDrawable rounded(int fill, float radiusPx, int stroke) {
+        return rounded(fill, radiusPx, stroke, hairlinePx);
+    }
+
+    /** As {@link #rounded(int, float, int)} with an explicit border width. */
+    public GradientDrawable rounded(int fill, float radiusPx, int stroke, int strokeWidthPx) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(fill);
         d.setCornerRadius(radiusPx);
-        if (stroke != 0) d.setStroke(hairlinePx, stroke);
+        if (stroke != 0) d.setStroke(strokeWidthPx, stroke);
         return d;
     }
 
     /** A rounded fill with an accent press ripple clipped to the corners. */
     public RippleDrawable ripple(int fill, float radiusPx, int stroke) {
+        return ripple(fill, radiusPx, stroke, hairlinePx);
+    }
+
+    /** As {@link #ripple(int, float, int)} with an explicit border width. */
+    public RippleDrawable ripple(int fill, float radiusPx, int stroke, int strokeWidthPx) {
         return new RippleDrawable(ColorStateList.valueOf(accentTranslucent),
-                rounded(fill, radiusPx, stroke), mask(radiusPx));
+                rounded(fill, radiusPx, stroke, strokeWidthPx), mask(radiusPx));
     }
 
     /** A background-less rounded ripple (ghost buttons). */

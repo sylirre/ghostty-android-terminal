@@ -37,11 +37,12 @@
     <dimen name="key_switch_width">40dp</dimen>
 
     <!-- Session tab metrics. Sized so two labeled pills (each with a close
-         button) plus the pinned + still fit the 320dp-wide floor device. -->
+         button) plus the pinned + still fit the 320dp-wide floor device.
+         tab_indicator is both the active pill's accent border width and the
+         progress ring's stroke. -->
     <dimen name="tab_pad_h">12dp</dimen>
     <dimen name="tab_pad_v">9dp</dimen>
     <dimen name="tab_indicator">2dp</dimen>
-    <dimen name="tab_progress">3dp</dimen>
     <dimen name="tab_max_width">132dp</dimen>
 
     <!-- Chrome text sizes. -->
