@@ -59,6 +59,7 @@ public final class AppSettings {
     private static final String KEY_USERLAND_PATH = "userland_path";
     private static final String KEY_USERLAND_JIT = "userland_jit";
     private static final String KEY_USERLAND_JIT_MB = "userland_jit_mb";
+    private static final String KEY_USERLAND_CHROOT_NG = "userland_chroot_ng";
     private static final String KEY_ONBOARDING_COMPLETED = "onboarding_completed";
     private static final String KEY_USERLAND_DISTRO_ASSET = "userland_distro_asset";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
@@ -453,6 +454,21 @@ public final class AppSettings {
 
     public void setUserlandJitEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_USERLAND_JIT, enabled).apply();
+    }
+
+    /**
+     * When true, userland sessions run under chroot-ng — native AArch64
+     * execution behind seccomp/SIGSYS path translation — instead of the
+     * arm64chroot emulator. Only honored when the native library carries the
+     * engine ({@link io.github.sylirre.terminal.term.TerminalNative#hasChrootNg};
+     * arm64-v8a builds only). Defaults to off.
+     */
+    public boolean userlandChrootNgEnabled() {
+        return prefs.getBoolean(KEY_USERLAND_CHROOT_NG, false);
+    }
+
+    public void setUserlandChrootNgEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_USERLAND_CHROOT_NG, enabled).apply();
     }
 
     /**

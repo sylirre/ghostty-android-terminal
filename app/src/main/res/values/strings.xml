@@ -99,6 +99,10 @@
     <string name="storage_permission_denied">Storage permission is required.</string>
     <string name="storage_permission_settings_unavailable">Storage permission settings are not available on this device.</string>
 
+    <!-- Settings: Userland engine -->
+    <string name="setting_userland_chroot_ng_title">Native engine (chroot-ng)</string>
+    <string name="setting_userland_chroot_ng_summary">Run the userland directly on the CPU behind seccomp path translation instead of the arm64chroot emulator. Experimental. Applies to new userland sessions.</string>
+
     <!-- Settings: Emulator JIT -->
     <string name="setting_userland_jit_title">Use emulator JIT</string>
     <string name="setting_userland_jit_summary">Translate hot guest code to native instructions for speed. Applicable only to userland sessions.</string>

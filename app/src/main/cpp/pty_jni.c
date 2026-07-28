@@ -7,12 +7,13 @@
  * covers what Java can't: openpt/fork/exec, TIOCSWINSZ, waitpid, kill.
  *
  * Two spawn flavors share the PTY/fork setup: execve() for Android shells,
- * and arm64chroot_main() for userland sessions. arm64chroot (an AArch64
- * user-space emulator) is linked into libterm.so and entered directly in the
+ * and an in-process userland engine for userland sessions — arm64chroot_main()
+ * (all ABIs) or chroot_ng_main() (arm64-v8a only), selected by argv[0].
+ * Both engines are linked into libterm.so and entered directly in the
  * fork()ed child: Android's W^X policy (targetSdk >= 29) forbids execve() of
- * anything under app data, and being a pure emulator it never execs a guest
- * binary either (guest execve is an in-process reload), so there is no loader
- * and nothing to exec (see native/arm64chroot).
+ * anything under app data, and neither engine ever execs a guest binary
+ * (guest execve is an in-process reload in both), so there is no loader and
+ * nothing to exec (see native/arm64chroot, native/chroot-ng).
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -30,6 +31,12 @@ extern char **environ;
 /* arm64chroot's main(), renamed under ANDROID_JNI (native/arm64chroot/
  * src/main.c). Returns the guest exit code. */
 extern int arm64chroot_main(int argc, char **argv);
+
+#ifdef HAVE_CHROOT_NG
+/* chroot-ng's embedded entry (chroot_ng_embed.c → native/chroot-ng), the
+ * native AArch64 engine. Returns the guest exit code. */
+extern int chroot_ng_main(int argc, char **argv);
+#endif
 
 static int throw_errno(JNIEnv *env, const char *what) {
     char msg[256];
@@ -100,22 +107,35 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
         if (cwd) chdir(cwd);
-        /* fork() copies the calling (ART) thread's signal mask and execve()
-         * does not reset it; both the shell and the emulator expect a clear
-         * one (arm64chroot installs its own signal handlers). */
+        /* fork() copies the calling (ART) thread's signal mask and signal
+         * dispositions. execve() resets handled dispositions (though not
+         * ignored ones), but the in-process engines keep the inherited ART
+         * handlers — harmless for arm64chroot (guest faults are detected in
+         * emulation, and it installs its own handlers), fatal for chroot-ng,
+         * whose guests fault natively: an inherited ART SIGSEGV/SIGQUIT
+         * handler would try to build a Java crash report in a process that
+         * no longer runs ART. Clear both mask and dispositions for every
+         * flavor (SIGKILL/SIGSTOP refusals are expected and ignored). */
         sigset_t mask;
         sigemptyset(&mask);
         sigprocmask(SIG_SETMASK, &mask, NULL);
+        for (int s = 1; s < NSIG; s++) signal(s, SIG_DFL);
         if (cmd) {
             execve(cmd, argv, envp);
         } else {
             int argc = 0;
             while (argv[argc] != NULL) argc++;
-            /* arm64chroot gives the guest a clean environment, inheriting only
+            /* Both engines give the guest a clean environment, inheriting only
              * TERM/COLORTERM from this host environ; the rest of the guest env
              * is set explicitly via -E flags in the argv (envp is just
-             * PATH=/system/bin). */
+             * PATH=/system/bin plus TMPDIR). Java picks the engine by argv[0];
+             * an argv[0] this build has no engine for falls through to
+             * arm64chroot, whose parser rejects the unknown flags loudly. */
             environ = envp;
+#ifdef HAVE_CHROOT_NG
+            if (argc > 0 && strcmp(argv[0], "chroot-ng") == 0)
+                _exit(chroot_ng_main(argc, argv)); /* guest exit code */
+#endif
             _exit(arm64chroot_main(argc, argv)); /* returns the guest exit code */
         }
         _exit(127);
@@ -208,4 +228,18 @@ Java_io_github_sylirre_terminal_term_TerminalNative_processKill(
     JNIEnv *env, jclass clazz, jint pid, jint sig) {
     (void)env; (void)clazz;
     kill((pid_t)pid, sig);
+}
+
+/* Whether this libterm.so carries the chroot-ng engine (arm64-v8a builds
+ * only). Java gates the engine setting and the argv[0] choice on this, so a
+ * persisted "chroot-ng" preference can never reach an x86_64 build's child. */
+JNIEXPORT jboolean JNICALL
+Java_io_github_sylirre_terminal_term_TerminalNative_hasChrootNg(
+    JNIEnv *env, jclass clazz) {
+    (void)env; (void)clazz;
+#ifdef HAVE_CHROOT_NG
+    return JNI_TRUE;
+#else
+    return JNI_FALSE;
+#endif
 }

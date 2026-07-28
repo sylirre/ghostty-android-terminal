@@ -29,8 +29,10 @@ import android.widget.Toast;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 import io.github.sylirre.terminal.R;
+import io.github.sylirre.terminal.term.TerminalNative;
 import io.github.sylirre.terminal.term.UserlandDistro;
 import io.github.sylirre.terminal.term.UserlandIdentity;
 import io.github.sylirre.terminal.term.UserlandOptions;
@@ -300,11 +302,26 @@ public final class SettingsActivity extends Activity {
                 getString(R.string.setting_bind_storage_summary),
                 settings::bindExternalStorage,
                 this::setBindExternalStorageRequested));
+        // Engine choice exists only where libterm.so carries chroot-ng
+        // (arm64-v8a builds); elsewhere the row is hidden and arm64chroot is
+        // simply what runs. The JIT rows belong to arm64chroot, so they gray
+        // out while chroot-ng is selected.
+        boolean hasChrootNg = TerminalNative.hasChrootNg();
+        if (hasChrootNg) {
+            userland.add(new Setting.Toggle(
+                    getString(R.string.setting_userland_chroot_ng_title),
+                    getString(R.string.setting_userland_chroot_ng_summary),
+                    settings::userlandChrootNgEnabled,
+                    settings::setUserlandChrootNgEnabled));
+        }
+        BooleanSupplier arm64chrootActive =
+                () -> !(hasChrootNg && settings.userlandChrootNgEnabled());
         userland.add(new Setting.Toggle(
                 getString(R.string.setting_userland_jit_title),
                 getString(R.string.setting_userland_jit_summary),
                 settings::userlandJitEnabled,
-                settings::setUserlandJitEnabled));
+                settings::setUserlandJitEnabled)
+                .enabledWhen(arm64chrootActive));
         userland.add(new Setting.Slider(
                 getString(R.string.setting_userland_jit_mb_title),
                 getString(R.string.setting_userland_jit_mb_summary),
@@ -312,7 +329,8 @@ public final class SettingsActivity extends Activity {
                 settings::userlandJitBufferMb,
                 settings::setUserlandJitBufferMb,
                 mb -> getString(R.string.setting_userland_jit_mb_value, mb))
-                .enabledWhen(settings::userlandJitEnabled));
+                .enabledWhen(() -> arm64chrootActive.getAsBoolean()
+                        && settings.userlandJitEnabled()));
         userland.add(new Setting.Action(
                 getString(R.string.setting_backup_title),
                 getString(R.string.setting_backup_summary),

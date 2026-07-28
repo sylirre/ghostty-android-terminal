@@ -344,9 +344,16 @@ public final class UserlandRootfs {
             throw new IOException("Userland rootfs is incomplete: no login shell "
                     + "(/bin/bash or /bin/sh) found (deleted outside the app?)");
         }
+        // Engine: arm64chroot (the AArch64 emulator; every ABI) by default, or
+        // chroot-ng (native AArch64 execution behind seccomp/SIGSYS path
+        // translation; carried only by arm64-v8a builds — hasChrootNg()
+        // re-checks here so a preference restored onto an x86_64 device falls
+        // back cleanly). chroot-ng's option surface deliberately mirrors
+        // arm64chroot's, so only argv[0] and the JIT flag differ below.
+        boolean chrootNg = opts.chrootNg && TerminalNative.hasChrootNg();
         List<String> argv = new ArrayList<>();
-        argv.add("arm64chroot");
-        if (opts.jit) {
+        argv.add(chrootNg ? "chroot-ng" : "arm64chroot");
+        if (!chrootNg && opts.jit) {
             argv.add("--jit");       // native basic-block translation (W^X-safe)
         }
         argv.add("--link2symlink");  // apps can't hard-link; dpkg needs ln to work
@@ -365,8 +372,8 @@ public final class UserlandRootfs {
         String workDir = resolveGuestDir(root, opts.workDir, opts.identity);
         argv.add("--work-dir");
         argv.add(workDir);
-        // arm64chroot synthesizes /proc and whitelists /dev itself; /sys is the
-        // one host tree it doesn't special-case, so bind it in like PRoot did.
+        // Both engines synthesize /proc and whitelist /dev themselves; /sys is
+        // the one host tree neither special-cases, so bind it in like PRoot did.
         if (new File("/sys").isDirectory()) {
             argv.add("--bind");
             argv.add("/sys:/sys");
@@ -409,7 +416,7 @@ public final class UserlandRootfs {
         List<String> env = new ArrayList<>();
         env.add("PATH=/system/bin");
         env.add("TMPDIR=" + ctx.getFilesDir().getAbsolutePath());
-        if (opts.jit) env.add("A64_JIT_MB=" + opts.jitBufferMb);
+        if (!chrootNg && opts.jit) env.add("A64_JIT_MB=" + opts.jitBufferMb);
         // Host cwd for the fork()ed child mirrors --work-dir inside the rootfs.
         String workRel = workDir.equals("/") ? "" : workDir.substring(1);
         String cwd = (workRel.isEmpty() ? root : new File(root, workRel))

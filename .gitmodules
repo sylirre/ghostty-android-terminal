@@ -1,3 +1,6 @@
 [submodule "native/arm64chroot"]
 	path = native/arm64chroot
 	url = https://github.com/sylirre/arm64emu-user
+[submodule "native/chroot-ng"]
+	path = native/chroot-ng
+	url = https://github.com/sylirre/fake-chroot-ng

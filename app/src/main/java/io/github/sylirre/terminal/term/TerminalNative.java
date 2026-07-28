@@ -148,6 +148,14 @@ public final class TerminalNative {
 
     public static native void processKill(int pid, int signal);
 
+    /**
+     * Whether this build's libterm.so carries the chroot-ng engine. True only
+     * on arm64-v8a — chroot-ng runs guest code directly on the CPU, so x86_64
+     * builds compile it out (HAVE_CHROOT_NG in CMakeLists). Gates the engine
+     * setting in the UI and the argv[0] choice in {@link UserlandRootfs}.
+     */
+    public static native boolean hasChrootNg();
+
     // --- Ghostty terminal ---
 
     /**

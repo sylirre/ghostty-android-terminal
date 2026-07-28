@@ -36,10 +36,18 @@ public final class UserlandOptions {
     public final boolean jit;
     /** JIT code-cache size (MiB), passed to arm64chroot as {@code A64_JIT_MB}; only used when {@link #jit} is true. */
     public final int jitBufferMb;
+    /**
+     * When true, the session runs under chroot-ng (native AArch64 execution
+     * behind seccomp/SIGSYS path translation) instead of the arm64chroot
+     * emulator. Only honored when the native library carries the engine
+     * ({@link TerminalNative#hasChrootNg}); {@link #jit}/{@link #jitBufferMb}
+     * do not apply to it.
+     */
+    public final boolean chrootNg;
 
     public UserlandOptions(String loginShell, boolean bindExternalStorage,
             String identity, String home, String workDir, String locale,
-            String path, boolean jit, int jitBufferMb) {
+            String path, boolean jit, int jitBufferMb, boolean chrootNg) {
         this.loginShell = loginShell;
         this.bindExternalStorage = bindExternalStorage;
         this.identity = identity;
@@ -49,6 +57,7 @@ public final class UserlandOptions {
         this.path = path;
         this.jit = jit;
         this.jitBufferMb = jitBufferMb;
+        this.chrootNg = chrootNg;
     }
 
     /**
@@ -61,6 +70,6 @@ public final class UserlandOptions {
      */
     public static UserlandOptions defaults(String loginShell) {
         return new UserlandOptions(loginShell, false, "0:0", "/root", "",
-                "C.UTF-8", DEFAULT_PATH, true, 32);
+                "C.UTF-8", DEFAULT_PATH, true, 32, false);
     }
 }
