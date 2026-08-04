@@ -156,6 +156,32 @@ public final class TerminalNative {
      */
     public static native boolean hasChrootNg();
 
+    // --- Full-system emulator (arm64emu) ---
+
+    /**
+     * Boots a guest machine under arm64emu, with one host channel per guest
+     * terminal.
+     *
+     * A VM is not a session: it is a machine that sessions attach to, so this
+     * returns channels rather than a single PTY. There is no PTY involved at
+     * all — the guest's own {@code ttyAMA0}/{@code hvcN} are the terminals,
+     * with their own line discipline and job control, so a host PTY in front of
+     * them would only add a second one. Each is a socketpair.
+     *
+     * {@code fdsOut} must hold {@code nHvc + 3} entries and receives, in order:
+     * the {@code ttyAMA0} channel, the {@code hvc0..hvc(nHvc-1)} channels, the
+     * control channel ({@link VmMachine} writes window sizes there, which a
+     * socketpair cannot report), and the read end of the emulator's
+     * diagnostics. The caller owns every one of them.
+     *
+     * {@code argv} is the emulator's command line without any of the channel
+     * bindings; the native side appends those, since it assigns the numbers.
+     *
+     * @return 0 on success; throws {@link java.io.IOException} otherwise.
+     */
+    public static native int vmStart(String[] argv, String[] env, String cwd,
+            int nHvc, int[] fdsOut, int[] pidOut) throws java.io.IOException;
+
     // --- Ghostty terminal ---
 
     /**

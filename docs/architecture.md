@@ -198,6 +198,8 @@ into the guest when it lies inside the rootfs, else `/`).
 | `RootfsBackup` | Streams the rootfs to/from a gzip-tar file (Settings backup/restore), reusing `UserlandRootfs`'s tar reader/publish |
 | `TerminalSession` | PTY fd + shell pid + reader thread; writes input; reports exit |
 | `SessionManager` | Process-wide session list; survives Activity recreation |
+| `VmOptions` | What to boot under arm64emu: firmware, image, RAM, terminal count, JIT |
+| `VmMachine` | The running guest machine (process singleton): its channels, control channel, diagnostics pump; tabs attach to its terminals |
 | `TerminalView` | Canvas grid renderer, IME connection, scroll + pinch-zoom gestures |
 | `ExtraKeysView` | ESC/CTRL/ALT/TAB/arrows… toolbar; CTRL/ALT are sticky modifiers |
 | `TabStripView` | Horizontal session tabs + new-tab button |

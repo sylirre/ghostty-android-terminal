@@ -118,6 +118,12 @@ public final class TerminalSession {
 
     private final String label;
     private final boolean userland;
+    // Set when this session is a view onto a guest machine's terminal rather
+    // than a process on a PTY. Then there is no child of ours to wait on or
+    // signal: the machine owns the process, and this session owns only a dup of
+    // one channel into it.
+    private final VmMachine vm;
+    private final int vmTerminal;
     // Set once the user actually sends something to the shell. Distinguishes a
     // session the user used from one that died before they could touch it.
     private volatile boolean userInteracted;
@@ -151,6 +157,8 @@ public final class TerminalSession {
         this.listener = listener;
         this.label = command.label;
         this.userland = command.userland;
+        this.vm = null;
+        this.vmTerminal = -1;
         this.terminateProcessesOnExit = terminateProcessesOnExit;
         this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
 
@@ -174,6 +182,40 @@ public final class TerminalSession {
         Thread waiter = new Thread(this::waitLoop, "pty-waiter-" + pid);
         waiter.setDaemon(true);
         waiter.start();
+    }
+
+    /**
+     * Attaches to one terminal of a running guest machine.
+     *
+     * Nothing is spawned: the guest's own {@code getty} is already sitting on
+     * that tty, and this session is a view onto the channel reaching it. So
+     * there is no child process to wait on, and closing the tab must not hang
+     * anything up — {@link VmMachine#attach} hands out a {@code dup}, so
+     * releasing it leaves the guest's shell exactly where it was.
+     */
+    public TerminalSession(int cols, int rows, int cellWidthPx, int cellHeightPx,
+            int scrollbackLines, VmMachine machine, int terminal,
+            Listener listener) throws IOException {
+        this.listener = listener;
+        this.label = machine.terminalName(terminal);
+        this.userland = false;
+        this.vm = machine;
+        this.vmTerminal = terminal;
+        this.terminateProcessesOnExit = false;
+        this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
+
+        this.pid = 0;                       // not ours; the machine owns it
+        this.masterFd = machine.attach(terminal);
+        this.toPty = new FileOutputStream(masterFd.getFileDescriptor());
+        lastCols = cols;
+        lastRows = rows;
+        machine.setWinsize(terminal, cols, rows);
+
+        Thread reader = new Thread(this::readLoop, "vm-reader-" + label);
+        reader.setDaemon(true);
+        reader.start();
+        // No waiter: the machine reports its own exit, and this session ends
+        // when its channel does.
     }
 
     private void readLoop() {
@@ -337,14 +379,37 @@ public final class TerminalSession {
         lastCols = cols;
         lastRows = rows;
         emulator.resize(cols, rows, cellWidthPx, cellHeightPx);
+        if (vm != null) {
+            // A socketpair carries no winsize, so the guest is told over the
+            // machine's control channel instead of by ioctl on this end.
+            vm.setWinsize(vmTerminal, cols, rows);
+            return;
+        }
         TerminalNative.ptySetSize(masterFd.getFd(), cols, rows, cellWidthPx,
                 cellHeightPx);
+    }
+
+    /** True for a session attached to a guest machine's terminal. */
+    public boolean isVm() {
+        return vm != null;
     }
 
     /** Hangs up or terminates the session and releases the PTY. Idempotent. */
     public void close() {
         if (closed) return;
         closed = true;
+        if (vm != null) {
+            // Detach only. The guest's getty and whatever it is running belong
+            // to the machine, not to this tab; closing our dup of the channel
+            // leaves the machine's own copy open, so the guest sees no hangup
+            // and a later tab finds the same shell. Local scrollback goes,
+            // because the Ghostty terminal behind this session goes with it.
+            try {
+                masterFd.close();           // unblocks the reader thread
+            } catch (IOException ignored) {
+            }
+            return;
+        }
         if (userland && terminateProcessesOnExit) {
             // arm64chroot has no tracee supervisor: every guest process is a
             // real host process in the emulator's session (the fork()ed child

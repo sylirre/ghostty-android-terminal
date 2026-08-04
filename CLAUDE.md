@@ -69,6 +69,8 @@ Java  app/src/main/java/io/github/sylirre/terminal/
          UserlandDistro (bundled rootfs asset discovery for the distro chooser)
          UserlandRootfs (rootfs asset → tar.xz install → arm64chroot command line)
          SessionManager (process singleton: sessions survive Activity recreation)
+         VmOptions/VmMachine (arm64emu guest machine: one per process, a
+         socketpair per guest terminal, tabs attach with a dup)
          ScreenSnapshot (flat viewport arrays for rendering)
   ui/    TerminalView (Canvas grid renderer + TYPE_NULL InputConnection)
          ExtraKeysView, TabStripView, MainActivity

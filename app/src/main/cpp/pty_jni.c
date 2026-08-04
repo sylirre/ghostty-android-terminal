@@ -19,9 +19,11 @@
 #include <fcntl.h>
 #include <jni.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -37,6 +39,15 @@ extern int arm64chroot_main(int argc, char **argv);
  * native AArch64 engine. Returns the guest exit code. */
 extern int chroot_ng_main(int argc, char **argv);
 #endif
+
+/* arm64emu's entry (native/arm64emu, built as its own libarm64emu.so — see
+ * CMakeLists.txt for why it is not linked into this library). Returns the
+ * guest machine's exit code. */
+extern int arm64emu_main(int argc, char **argv);
+
+/* Guest terminals a VM may have: ttyAMA0 plus hvc0..hvc(MAX-1). The emulator's
+ * own ceiling is 8 virtio-consoles; Linux stops at 16 hvc devices. */
+#define VM_MAX_HVC 8
 
 static int throw_errno(JNIEnv *env, const char *what) {
     char msg[256];
@@ -151,6 +162,139 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
     jint pid_out = (jint)pid;
     (*env)->SetIntArrayRegion(env, jpid, 0, 1, &pid_out);
     return master;
+}
+
+/*
+ * Spawns the full-system emulator with a channel per guest terminal.
+ *
+ * Unlike the two userland engines, one VM is not one session: it is a machine
+ * that several sessions attach to. So there is no PTY here at all — the guest's
+ * own ttyAMA0/hvcN *are* the terminals, complete with their own line discipline
+ * and job control, and a host PTY in front of them would only add a second one.
+ * Each gets a socketpair instead: one bidirectional byte channel, which is
+ * exactly what the emulator's --console-fd takes.
+ *
+ * fds_out receives 1 + n_hvc + 2 descriptors: [0] ttyAMA0, [1..n_hvc] hvc0.., then
+ * the control channel (window sizes, which a socketpair cannot report) and the
+ * read end of the emulator's diagnostics. The caller owns all of them.
+ */
+static jint vm_start(JNIEnv *env, jobjectArray jargs, jobjectArray jenv,
+                     jstring jcwd, jint n_hvc, jintArray jfds, jintArray jpid) {
+    if (n_hvc < 0 || n_hvc > VM_MAX_HVC) {
+        (*env)->ThrowNew(env, (*env)->FindClass(env, "java/io/IOException"),
+                         "vmStart: hvc count out of range");
+        return -1;
+    }
+    int n_term = 1 + (int)n_hvc;              /* ttyAMA0 + hvc0..hvc(n_hvc-1) */
+    int n_chan = n_term + 1;                  /* ... + the control channel */
+
+    /* near[] stay here, far[] go to the child. The child dup2()s its ends onto
+     * 3..3+n_term, and socketpair hands out exactly those low numbers, so park
+     * them well above first — otherwise the shuffle overwrites a descriptor it
+     * has not copied yet. */
+    int near[VM_MAX_HVC + 2], far[VM_MAX_HVC + 2];
+    for (int i = 0; i < n_chan; i++) { near[i] = far[i] = -1; }
+    for (int i = 0; i < n_chan; i++) {
+        int sv[2];
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) != 0) goto fail;
+        near[i] = sv[0];
+        far[i] = fcntl(sv[1], F_DUPFD, 32);
+        close(sv[1]);
+        if (far[i] < 0) goto fail;
+        fcntl(near[i], F_SETFD, FD_CLOEXEC);  /* never inherited by a shell spawn */
+    }
+    int logp[2];
+    if (pipe(logp) != 0) goto fail;
+    fcntl(logp[0], F_SETFD, FD_CLOEXEC);
+
+    /* The emulator's own args, then the bindings for the channels above. The
+     * descriptor numbers are this function's business, not the caller's. */
+    char **base = to_cstr_array(env, jargs);
+    int base_n = 0;
+    while (base[base_n]) base_n++;
+    char **argv = calloc((size_t)base_n + 2 * (size_t)n_term + 3, sizeof(char *));
+    int n = 0;
+    for (int i = 0; i < base_n; i++) argv[n++] = base[i];
+    for (int i = 0; i < n_term; i++) {
+        char b[48];
+        if (i == 0) snprintf(b, sizeof b, "ttyAMA0=%d", 3 + i);
+        else        snprintf(b, sizeof b, "hvc%d=%d", i - 1, 3 + i);
+        argv[n++] = strdup("--console-fd");
+        argv[n++] = strdup(b);
+    }
+    {
+        char b[24];
+        snprintf(b, sizeof b, "%d", 3 + n_term);
+        argv[n++] = strdup("--ctrl-fd");
+        argv[n++] = strdup(b);
+    }
+    argv[n] = NULL;
+    free(base);                                /* the strings moved into argv */
+
+    char **envp = to_cstr_array(env, jenv);
+    const char *cwd = jcwd ? (*env)->GetStringUTFChars(env, jcwd, NULL) : NULL;
+
+    pid_t pid = fork();
+    if (pid < 0) { close(logp[0]); close(logp[1]); goto fail; }
+
+    if (pid == 0) {
+        /* Its own session: no controlling terminal to inherit, and one process
+         * group the whole machine can be signalled through. */
+        setsid();
+        if (cwd) chdir(cwd);
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) dup2(devnull, STDIN_FILENO);
+        /* The emulator's diagnostics — device wiring, JIT fallbacks, warnings —
+         * would otherwise go nowhere in an app process. Standard output is
+         * merged in: with every console bound, nothing else writes there. */
+        dup2(logp[1], STDOUT_FILENO);
+        dup2(logp[1], STDERR_FILENO);
+        for (int i = 0; i < n_chan; i++) dup2(far[i], 3 + i);
+        /* Everything above the bindings belongs to the parent: our ends of every
+         * pair, the parked copies, and whatever else this process had open. No
+         * exec happens here, so FD_CLOEXEC cannot do it for us. */
+        for (int f = 3 + n_chan; f < 256; f++) close(f);
+        /* Same reasoning as the exec path below, and it matters more here: this
+         * child never execs, so nothing else would reset the ART signal
+         * dispositions it inherited. */
+        sigset_t mask;
+        sigemptyset(&mask);
+        sigprocmask(SIG_SETMASK, &mask, NULL);
+        for (int s = 1; s < NSIG; s++) signal(s, SIG_DFL);
+        environ = envp;
+        _exit(arm64emu_main(n, argv));
+    }
+
+    for (int i = 0; i < n_chan; i++) close(far[i]);
+    close(logp[1]);
+    for (char **p = argv; *p; p++) free(*p);
+    for (char **p = envp; *p; p++) free(*p);
+    free(argv);
+    free(envp);
+    if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
+
+    jint out[VM_MAX_HVC + 3];
+    for (int i = 0; i < n_chan; i++) out[i] = near[i];
+    out[n_chan] = logp[0];
+    (*env)->SetIntArrayRegion(env, jfds, 0, n_chan + 1, out);
+    jint pid_out = (jint)pid;
+    (*env)->SetIntArrayRegion(env, jpid, 0, 1, &pid_out);
+    return 0;
+
+fail:
+    for (int i = 0; i < n_chan; i++) {
+        if (near[i] >= 0) close(near[i]);
+        if (far[i] >= 0) close(far[i]);
+    }
+    return throw_errno(env, "vmStart");
+}
+
+JNIEXPORT jint JNICALL
+Java_io_github_sylirre_terminal_term_TerminalNative_vmStart(
+    JNIEnv *env, jclass clazz, jobjectArray jargs, jobjectArray jenv,
+    jstring jcwd, jint n_hvc, jintArray jfds, jintArray jpid) {
+    (void)clazz;
+    return vm_start(env, jargs, jenv, jcwd, n_hvc, jfds, jpid);
 }
 
 JNIEXPORT jint JNICALL
