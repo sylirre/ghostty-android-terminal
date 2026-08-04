@@ -10,3 +10,7 @@ captures/
 third_party/
 # Distribution rootfs tarballs (bundled as APK assets when present; never committed)
 UserlandRootfs/
+
+# Guest machine images for the VM session type (bundled as APK assets when
+# present; never committed — see scripts/fetch-vm-images.sh)
+VmImages/

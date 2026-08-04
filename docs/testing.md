@@ -13,6 +13,7 @@ native libraries and the real `/system/bin/sh`.
 | `ShellSessionTest` | End-to-end PTY: spawns `/system/bin/sh`, runs commands, asserts output reaches the screen; verifies `PATH=/system/bin`, working directory, resize delivery (`stty size`), exit reporting |
 | `UserlandSessionTest` | Debian-under-arm64chroot: installs the rootfs from the APK asset, spawns `arm64chroot_main()` + bash login, proves guest ELF binaries run emulated, `--fake-id` uid 0, `--link2symlink` hard links, dpkg/apt, exit propagation. **Skipped** (JUnit assumption) when no *Debian* rootfs asset is bundled, or when a different distro is already installed on the device |
 | `UserlandAlpineSessionTest` | Alpine-under-arm64chroot smoke — the suite that boots the userland in CI (the workflow bundles only the small Alpine asset there): install, BusyBox ash login, emulated `uname`/`id`, offline `apk info`. **Skipped** when no Alpine asset is bundled, when a Debian asset is bundled too and nothing is installed yet (local runs leave the shared rootfs dir to `UserlandSessionTest`), or when the installed rootfs is not Alpine |
+| `VmSessionTest` | The guest machine end to end: `arm64emu_main()` boots EDK2 and a real Linux kernel off the bundled ISO, its serial console reaches a tab through a socketpair, a `getty` on `hvc0` lands on that tab's channel and *not* on the console, a control-channel winsize reaches the guest (`stty size` → `30 100`), and closing a tab leaves the guest unhung-up. One machine per class — booting is minutes, not milliseconds. **Skipped** when no machine images are bundled, which is the normal build |
 | `TerminalUiTest` | Activity-level: typing via the view's `InputConnection`, extra-keys toolbar (ESC, CTRL+ combo), tab create/switch/close. Launches with `EXTRA_FORCE_SHELL` so it tests `/system/bin/sh` regardless of rootfs presence (and never sees onboarding) |
 | `OnboardingActivityTest` | First-run wizard flows that install nothing: welcome → chooser walk-through, bundled-distro cards, shell-only completion persisting `onboardingCompleted`, setup-only mode starting at the chooser. **Skipped** when a rootfs is already installed (the wizard then finishes immediately by design) |
 | `UserlandDistroTest` | Rootfs asset-name parsing (`<id>_<version>_aarch64_rootfs.tar.xz`) behind the distro chooser |
@@ -59,3 +60,12 @@ Notes:
   run pays the one-time rootfs extraction on the device (~15 s on an
   emulator); reruns reuse it until the app's data is cleared. Without the
   tarballs the tests are reported as skipped — this is how CI runs.
+- `VmSessionTest` needs the guest machine images in `VmImages/` at the repo
+  root **at build time** (gitignored — fetch them with
+  `scripts/fetch-vm-images.sh`, which takes the EDK2 firmware from the host's
+  `qemu-efi-aarch64` if installed and downloads the Alpine `virt` ISO). They
+  add ~95 MB to the APK, and the first run copies them out of it into app
+  storage, so leave them out of any build that does not need the VM. Booting a
+  whole machine is the slow part: on a KVM-accelerated x86_64 emulator the
+  class spends about a minute reaching a login prompt before its first
+  assertion, and the tests themselves then run in under a second each.

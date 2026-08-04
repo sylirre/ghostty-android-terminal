@@ -57,6 +57,39 @@ public final class SessionManager {
         return s;
     }
 
+    /**
+     * Attaches a tab to one terminal of the running guest machine.
+     *
+     * Nothing is spawned here — the machine booted its own gettys, and this
+     * only opens a view onto one of them, so unlike {@link #create} it cannot
+     * fail for want of a rootfs or a shell. {@code terminal} indexes the
+     * machine's terminals: 0 is the serial console the guest boots on.
+     */
+    public TerminalSession attachVm(VmMachine machine, int terminal, int cols,
+            int rows, int cellWidthPx, int cellHeightPx, int scrollbackLines,
+            TerminalSession.Listener listener) throws IOException {
+        TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
+                cellHeightPx, scrollbackLines, machine, terminal, listener);
+        synchronized (this) {
+            sessions.add(s);
+        }
+        return s;
+    }
+
+    /**
+     * The machine terminals a tab is currently open on, so a caller can pick
+     * one that is not. Detaching frees an index for reuse: the guest side is
+     * untouched by a tab closing, so reattaching lands back in the same shell.
+     */
+    public boolean isVmTerminalOpen(int terminal) {
+        synchronized (this) {
+            for (TerminalSession s : sessions) {
+                if (s.isVm() && s.vmTerminal() == terminal) return true;
+            }
+        }
+        return false;
+    }
+
     public List<TerminalSession> sessions() {
         synchronized (this) {
             return new ArrayList<>(sessions);
@@ -93,6 +126,10 @@ public final class SessionManager {
         for (TerminalSession s : copy) {
             s.close();
         }
+        // Closing a VM tab only detaches it, by design — so the machine would
+        // otherwise outlive the app that started it, with no tab left to reach
+        // it from and no way to stop it. "Exit" means exit.
+        VmMachine.stopIfRunning();
     }
 
     public boolean isEmpty() {

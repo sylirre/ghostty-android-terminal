@@ -557,9 +557,25 @@ alive. Sessions end when the process is killed (no foreground service —
 a deliberate scope cut, documented in the README). Closing the last tab
 finishes the activity.
 
-When a userland rootfs is installed, new tabs default to userland and
-long-pressing `+` opens an Android `/system/bin/sh` tab (and vice versa
-when it isn't). On first launch (no rootfs installed, onboarding never
+When a userland rootfs is installed, new tabs default to userland (and to an
+Android `/system/bin/sh` tab when it isn't). Long-pressing `+` no longer
+toggles between the two but opens a chooser over every session type this build
+can currently offer — the toggle stopped working once there were three, and the
+third is not a peer of the others anyway: a guest machine is started and
+stopped as a whole, and its tabs are terminals on the machine already running.
+So the list is built from what is possible right now: no "Linux" row without a
+usable rootfs, no machine row without images, and "start" and "stop" never
+offered together.
+
+A guest machine tab is a view onto one of `VmMachine`'s terminals rather than a
+process of its own, which changes three things. Its label is the guest's name
+for the tty (`ttyAMA0`, `hvc0`) with no tab position appended, because the
+machine already names them uniquely. Closing it only detaches — the machine
+keeps its own end of the channel open, so the guest's shell survives and a
+later tab finds it again; what does not survive is that tab's scrollback.
+And the machine outlives every tab, so it is stopped explicitly, from the
+chooser or by "Exit" (which is where `SessionManager.closeAll` stops it —
+otherwise it would outlive the app with nothing left to reach it from). On first launch (no rootfs installed, onboarding never
 completed) `MainActivity` holds the first spawn back and runs
 `OnboardingActivity`: an intro, a chooser over the bundled distro assets
 (`UserlandDistro.bundled`, Alpine preselected) plus an "Android shell only"

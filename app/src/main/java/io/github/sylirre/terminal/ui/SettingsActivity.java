@@ -37,6 +37,9 @@ import io.github.sylirre.terminal.term.UserlandDistro;
 import io.github.sylirre.terminal.term.UserlandIdentity;
 import io.github.sylirre.terminal.term.UserlandOptions;
 import io.github.sylirre.terminal.term.UserlandRootfs;
+import io.github.sylirre.terminal.term.VmImages;
+import io.github.sylirre.terminal.term.VmMachine;
+import io.github.sylirre.terminal.term.VmOptions;
 
 /**
  * Dedicated settings screen reached from the top-bar gear. Renders {@link
@@ -345,7 +348,82 @@ public final class SettingsActivity extends Activity {
                 () -> delegateAndFinish(ACTION_RESTORE))
                 .navigates());
         sections.add(new SettingsSection(getString(R.string.settings_group_userland), userland));
+
+        // Guest machine. Shown only where there is a machine to configure —
+        // the images are a large, optional build input, and a section about a
+        // session type this build cannot open would be noise. Memory and
+        // terminal count are fixed when a machine boots (the emulator sizes the
+        // guest's device tree and creates its consoles once), so both say they
+        // apply to the next boot rather than pretending to be live.
+        if (VmImages.assetsAvailable(this) || VmImages.isInstalled(this)) {
+            List<Setting> vm = new ArrayList<>();
+            vm.add(new Setting.Slider(
+                    getString(R.string.setting_vm_memory_title),
+                    getString(R.string.setting_vm_memory_summary),
+                    256, 2048, 128,
+                    settings::vmMemoryMb,
+                    settings::setVmMemoryMb,
+                    mb -> getString(R.string.setting_vm_memory_value, mb)));
+            vm.add(new Setting.Slider(
+                    getString(R.string.setting_vm_terminals_title),
+                    getString(R.string.setting_vm_terminals_summary),
+                    0, VmOptions.MAX_HVC, 1,
+                    settings::vmTerminals,
+                    settings::setVmTerminals,
+                    n -> Integer.toString(n + 1)));   // + the console itself
+            vm.add(new Setting.Toggle(
+                    getString(R.string.setting_vm_jit_title),
+                    getString(R.string.setting_vm_jit_summary),
+                    settings::vmJitEnabled,
+                    settings::setVmJitEnabled));
+            vm.add(new Setting.Action(
+                    getString(R.string.setting_vm_images_title),
+                    getString(R.string.setting_vm_images_summary),
+                    this::vmImagesStatus,
+                    this::confirmRemoveVmImages)
+                    .enabledWhen(() -> VmImages.isInstalled(this)));
+            sections.add(new SettingsSection(getString(R.string.settings_section_vm), vm));
+        }
         return sections;
+    }
+
+    /** One line describing where the machine images stand, for the row's value. */
+    private String vmImagesStatus() {
+        if (!VmImages.isInstalled(this)) {
+            return getString(VmImages.assetsAvailable(this)
+                    ? R.string.setting_vm_images_not_installed
+                    : R.string.setting_vm_images_absent);
+        }
+        return getString(R.string.setting_vm_images_installed, formatSize(
+                VmImages.installedSize(this)));
+    }
+
+    /**
+     * Deleting the unpacked images is safe but only while nothing is booted
+     * from them — the emulator holds them open, and an ISO guest reads from its
+     * image for as long as it runs.
+     */
+    private void confirmRemoveVmImages() {
+        if (VmMachine.isRunning()) {
+            Toast.makeText(this, R.string.toast_vm_images_busy, Toast.LENGTH_LONG).show();
+            return;
+        }
+        String size = formatSize(VmImages.installedSize(this));
+        Dialogs.confirmDanger(this, getString(R.string.vm_images_remove_confirm_title),
+                getString(R.string.vm_images_remove_confirm_message, size),
+                R.string.setting_vm_images_remove, () -> {
+                    VmImages.uninstall(this);
+                    Toast.makeText(this, R.string.toast_vm_images_removed,
+                            Toast.LENGTH_SHORT).show();
+                    recreate();      // the row's value and enabled state changed
+                });
+    }
+
+    private static String formatSize(long bytes) {
+        if (bytes >= 1024L * 1024 * 1024) {
+            return String.format(java.util.Locale.US, "%.1f GB", bytes / 1073741824.0);
+        }
+        return String.format(java.util.Locale.US, "%d MB", bytes / 1048576);
     }
 
     // --- Rendering ---

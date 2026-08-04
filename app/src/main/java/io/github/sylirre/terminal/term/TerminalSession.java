@@ -237,6 +237,18 @@ public final class TerminalSession {
         // Only this thread feeds the emulator, so freeing here is safe;
         // concurrent UI snapshots are fenced by the emulator lock.
         emulator.close();
+        // A VM session has no child to wait on, so nothing else would ever
+        // report its end: it ends when its channel does. Reaching here without
+        // close() having run means the machine went away underneath the tab,
+        // which the listener has to hear about — a user-closed tab is already
+        // being torn down and must not be reported twice.
+        if (vm != null && !closed) {
+            exitCode = 0;
+            mainHandler.post(() -> {
+                Listener l = listener;
+                if (l != null) l.onExited(this, 0);
+            });
+        }
     }
 
     public void setListener(Listener l) {
@@ -392,6 +404,15 @@ public final class TerminalSession {
     /** True for a session attached to a guest machine's terminal. */
     public boolean isVm() {
         return vm != null;
+    }
+
+    /**
+     * Which of the machine's terminals this session is attached to, or -1 when
+     * it is not a VM session. Lets the tab layer tell which terminals are
+     * already open without keeping a second list in step with this one.
+     */
+    public int vmTerminal() {
+        return vmTerminal;
     }
 
     /** Hangs up or terminates the session and releases the PTY. Idempotent. */

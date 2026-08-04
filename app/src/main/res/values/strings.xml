@@ -119,6 +119,47 @@
     <string name="setting_terminate_processes_title">Terminate session processes on exit</string>
     <string name="setting_terminate_processes_summary">Processes in session that is being closed will receive the kill signal.</string>
 
+    <!-- New-session chooser (long-press +) -->
+    <string name="session_type_title">New session</string>
+    <string name="session_type_userland">Linux</string>
+    <string name="session_type_install_linux">Install Linux…</string>
+    <string name="session_type_shell">Android shell</string>
+    <string name="session_type_vm_start">Start guest machine</string>
+    <string name="session_type_vm_terminal">Guest machine terminal (%1$s)</string>
+    <string name="session_type_vm_stop">Stop guest machine</string>
+
+    <!-- Guest machine (full-system emulation) -->
+    <string name="vm_extract_title">Preparing guest machine</string>
+    <string name="vm_extracting">Unpacking the machine images…</string>
+    <string name="vm_extracting_percent">Unpacking the machine images… %1$d%%</string>
+    <string name="vm_stop_confirm_title">Stop guest machine</string>
+    <string name="vm_stop_confirm_message">Every process in the guest ends immediately, and all of its tabs close. The guest runs from a read-only image, so nothing in it is saved.</string>
+    <string name="vm_stop_confirm_button">Stop</string>
+    <string name="toast_vm_no_images">This build has no guest machine images bundled.</string>
+    <string name="toast_vm_extract_failed">Could not unpack the machine images (%s).</string>
+    <string name="toast_vm_start_failed">Could not start the guest machine (%s).</string>
+    <string name="toast_vm_attach_failed">Could not open a guest machine terminal (%s).</string>
+
+    <!-- Settings: guest machine -->
+    <string name="settings_section_vm">Guest machine</string>
+    <string name="setting_vm_memory_title">Machine memory</string>
+    <string name="setting_vm_memory_summary">RAM given to the guest. This is real memory once the guest touches it, and it is never handed back, so treat it as the machine\'s cost for as long as it runs. Applies to the next boot.</string>
+    <string name="setting_vm_memory_value">%1$d MB</string>
+    <string name="setting_vm_terminals_title">Guest terminals</string>
+    <string name="setting_vm_terminals_summary">How many tabs the machine can have open past its console. Each is a virtual console created when the machine boots, so a change applies to the next boot.</string>
+    <string name="setting_vm_jit_title">Translate guest code</string>
+    <string name="setting_vm_jit_summary">Compile guest instructions to native code instead of interpreting them — roughly an order of magnitude faster, and the difference between a boot measured in seconds and one measured in minutes. Turn off only to diagnose an emulation bug.</string>
+    <string name="setting_vm_images_title">Machine images</string>
+    <string name="setting_vm_images_summary">The firmware and guest image a machine boots from, unpacked from the app into its storage. Tap to remove them.</string>
+    <string name="setting_vm_images_installed">Unpacked (%1$s). Removing them frees the space; they are unpacked again the next time a machine starts.</string>
+    <string name="setting_vm_images_not_installed">Not unpacked yet. They are unpacked the first time a guest machine starts.</string>
+    <string name="setting_vm_images_absent">This build bundles no guest machine images.</string>
+    <string name="setting_vm_images_remove">Remove</string>
+    <string name="vm_images_remove_confirm_title">Remove machine images</string>
+    <string name="vm_images_remove_confirm_message">Frees %1$s. The images are unpacked again from the app the next time a guest machine starts.</string>
+    <string name="toast_vm_images_removed">Machine images removed.</string>
+    <string name="toast_vm_images_busy">Stop the guest machine first.</string>
+
     <!-- Settings: Terminal bell -->
     <string name="setting_terminal_bell_title">Terminal bell</string>
     <string name="setting_terminal_bell_summary">Feedback when the active terminal session sends BEL.</string>

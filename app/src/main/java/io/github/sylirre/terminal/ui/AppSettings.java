@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 
 import io.github.sylirre.terminal.term.TerminalNative;
 import io.github.sylirre.terminal.term.UserlandOptions;
+import io.github.sylirre.terminal.term.VmOptions;
 
 /**
  * App-wide user settings, persisted in a named SharedPreferences file so
@@ -60,6 +61,9 @@ public final class AppSettings {
     private static final String KEY_USERLAND_JIT = "userland_jit";
     private static final String KEY_USERLAND_JIT_MB = "userland_jit_mb";
     private static final String KEY_USERLAND_CHROOT_NG = "userland_chroot_ng";
+    private static final String KEY_VM_MEMORY_MB = "vm_memory_mb";
+    private static final String KEY_VM_TERMINALS = "vm_terminals";
+    private static final String KEY_VM_JIT = "vm_jit";
     private static final String KEY_ONBOARDING_COMPLETED = "onboarding_completed";
     private static final String KEY_USERLAND_DISTRO_ASSET = "userland_distro_asset";
     private static final String KEY_TERMINAL_FONT_PATH = "terminal_font_path";
@@ -83,6 +87,14 @@ public final class AppSettings {
     private static final int USERLAND_JIT_MB_STEP = 4;
     /** Default cache size; matches arm64chroot's own A64_JIT_MB default. */
     private static final int DEFAULT_USERLAND_JIT_MB = 32;
+
+    /** Guest RAM bounds (MiB), matching the "Machine memory" slider. 256 is
+     * about the floor an Alpine ISO boots in; the ceiling is generous for a
+     * phone, since the guest never returns memory it has touched. */
+    private static final int VM_MEMORY_MB_MIN = 256;
+    private static final int VM_MEMORY_MB_MAX = 2048;
+    private static final int VM_MEMORY_MB_STEP = 128;
+    private static final int DEFAULT_VM_MEMORY_MB = VmOptions.DEFAULT_MEMORY_MB;
 
     public static final int BELL_OFF = 0;
     public static final int BELL_HAPTIC = 1;
@@ -488,6 +500,57 @@ public final class AppSettings {
     private static int clampJitMb(int mb) {
         int clamped = Math.max(USERLAND_JIT_MB_MIN, Math.min(USERLAND_JIT_MB_MAX, mb));
         return Math.round(clamped / (float) USERLAND_JIT_MB_STEP) * USERLAND_JIT_MB_STEP;
+    }
+
+    // --- guest machine (VM session type) ---
+
+    /**
+     * Guest RAM in MiB. This is real host memory the moment the guest touches
+     * it — an Alpine boot settles around 230 MB — and it is never handed back,
+     * since there is no balloon, so the value is a ceiling on what the machine
+     * costs the process for its whole life. The emulator sizes the guest's
+     * device tree to match.
+     */
+    public int vmMemoryMb() {
+        return clampVmMemory(prefs.getInt(KEY_VM_MEMORY_MB, DEFAULT_VM_MEMORY_MB));
+    }
+
+    public void setVmMemoryMb(int mb) {
+        prefs.edit().putInt(KEY_VM_MEMORY_MB, clampVmMemory(mb)).apply();
+    }
+
+    private static int clampVmMemory(int mb) {
+        int clamped = Math.max(VM_MEMORY_MB_MIN, Math.min(VM_MEMORY_MB_MAX, mb));
+        return Math.round(clamped / (float) VM_MEMORY_MB_STEP) * VM_MEMORY_MB_STEP;
+    }
+
+    /**
+     * Guest terminals beyond {@code ttyAMA0}, i.e. how many tabs the machine
+     * can have open at once past the first. Each is a virtio-console device
+     * created at boot with a getty on it, so this is fixed for a machine's
+     * lifetime and changing it takes effect on the next boot.
+     */
+    public int vmTerminals() {
+        return Math.max(0, Math.min(VmOptions.MAX_HVC,
+                prefs.getInt(KEY_VM_TERMINALS, VmOptions.DEFAULT_HVC)));
+    }
+
+    public void setVmTerminals(int n) {
+        prefs.edit().putInt(KEY_VM_TERMINALS, n).apply();
+    }
+
+    /**
+     * When true the guest machine translates guest code to native instead of
+     * interpreting it — worth roughly an order of magnitude, and the difference
+     * between a boot measured in minutes and one measured in seconds. Off is a
+     * diagnostic setting. Defaults to on.
+     */
+    public boolean vmJitEnabled() {
+        return prefs.getBoolean(KEY_VM_JIT, true);
+    }
+
+    public void setVmJitEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_VM_JIT, enabled).apply();
     }
 
     /**

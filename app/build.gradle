@@ -39,8 +39,11 @@ android {
     }
 
     androidResources {
-        // The rootfs assets are already xz; don't deflate them again.
-        noCompress 'xz'
+        // The rootfs assets are already xz; don't deflate them again. The VM
+        // images are stored undeflated too: the ISO is already compressed, and
+        // both are copied out by length, which openFd only reports truthfully
+        // for a stored entry.
+        noCompress 'xz', 'iso', 'fd'
     }
 
     applicationVariants.configureEach { variant ->
@@ -57,6 +60,16 @@ android {
 def userlandRootfs = rootProject.file("UserlandRootfs")
 if (userlandRootfs.isDirectory()) {
     android.sourceSets.main.assets.srcDirs += userlandRootfs
+}
+
+// Guest machine images for the VM session type (EDK2 firmware + a bootable
+// aarch64 ISO, fetched by scripts/fetch-vm-images.sh) are bundled the same way
+// and on the same terms: never committed, and absent they only disable that
+// session type. They are large — the ISO alone is ~90 MB — so a build without
+// them is the normal one for anyone not working on the VM.
+def vmImages = rootProject.file("VmImages")
+if (vmImages.isDirectory()) {
+    android.sourceSets.main.assets.srcDirs += vmImages
 }
 
 dependencies {

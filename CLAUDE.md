@@ -13,7 +13,11 @@ optional, gitignored APK assets from `UserlandRootfs/` — one per distro,
 named `<id>_<version>_aarch64_rootfs.tar.xz` (built by
 `scripts/build-alpine-rootfs.sh` / `scripts/build-debian-rootfs.sh`; aarch64
 only, always); a first-run onboarding wizard (`OnboardingActivity`) explains
-the app and installs the chosen distro. Also `/system/bin/sh` with
+the app and installs the chosen distro. A third session type runs a whole
+**guest machine** under `arm64emu` (full-system emulation: real kernel, real
+init, real root) from optional, gitignored `VmImages/` assets — an EDK2
+firmware and a bootable aarch64 ISO fetched by `scripts/fetch-vm-images.sh`;
+its tabs are guest terminals, not processes. Also `/system/bin/sh` with
 `PATH=/system/bin`; session tabs; extra-keys toolbar above the soft keyboard.
 minSdk 29, targetSdk 36, ABIs arm64-v8a + x86_64.
 
@@ -171,7 +175,11 @@ thread → `TerminalView` pulls a fresh `ScreenSnapshot` in `onDraw`.
 - Suites: `EmulatorVtTest` (deterministic VT/encoder through JNI, no
   shell), `ShellSessionTest` (real `sh` over a PTY), `UserlandSessionTest`
   (bash under arm64chroot; skips itself when no Debian rootfs asset is
-  bundled or another distro is installed), `TerminalUiTest`
+  bundled or another distro is installed), `VmSessionTest` (a whole guest
+  machine under arm64emu — boot to a login on the serial console, a second
+  guest terminal on its own channel, control-channel resize, detach; one
+  machine per class, and skips itself when no `VmImages/` are bundled),
+  `TerminalUiTest`
   (ActivityScenario + Espresso; launches with
   `MainActivity.EXTRA_FORCE_SHELL` so it always tests plain sh and never
   sees onboarding), `OnboardingActivityTest` (wizard flows that install

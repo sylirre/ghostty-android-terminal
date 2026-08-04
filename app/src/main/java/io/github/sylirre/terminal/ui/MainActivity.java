@@ -61,6 +61,9 @@ import io.github.sylirre.terminal.term.SessionManager;
 import io.github.sylirre.terminal.term.SessionService;
 import io.github.sylirre.terminal.term.TerminalSession;
 import io.github.sylirre.terminal.term.UserlandOptions;
+import io.github.sylirre.terminal.term.VmImages;
+import io.github.sylirre.terminal.term.VmMachine;
+import io.github.sylirre.terminal.term.VmOptions;
 
 /**
  * Hosts the tab strip, terminal view, and extra-keys toolbar.
@@ -239,16 +242,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
             @Override
             public void onNewTabLongPress() {
-                // Only ever offer setup when nothing is installed yet; an
-                // installed but broken rootfs is left alone (createSession
-                // falls back to a shell) rather than wiped and rebuilt behind
-                // the user's back.
-                if (!UserlandRootfs.isInstalled(MainActivity.this)
-                        && UserlandRootfs.assetAvailable(MainActivity.this)) {
-                    startOnboardingSetup();
-                } else {
-                    createSession(!userlandByDefault());
-                }
+                showSessionTypeChooser();
             }
         });
 
@@ -500,6 +494,185 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                         e.getMessage()), Toast.LENGTH_LONG).show();
                 if (sessions.isEmpty()) finishAndRemoveTask();
             }
+        }
+    }
+
+    // --- new-tab chooser ----------------------------------------------------
+
+    /**
+     * Long-pressing {@code +} offers every session type this build can open,
+     * rather than toggling between two.
+     *
+     * With three of them a toggle no longer works, and the third is not a peer
+     * of the other two anyway: a guest machine is started and stopped as a
+     * whole, and its tabs are terminals on the machine that is already running.
+     * So the list is built from what is actually possible right now — no
+     * "Linux" row without a usable rootfs, no machine row without images, and
+     * "start" and "stop" never offered at once.
+     */
+    private void showSessionTypeChooser() {
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+
+        if (userlandByDefault()) {
+            labels.add(getString(R.string.session_type_userland));
+            actions.add(() -> createSession(true));
+        } else if (!UserlandRootfs.isInstalled(this) && UserlandRootfs.assetAvailable(this)) {
+            // Nothing installed yet, but we ship a rootfs: offer setup. An
+            // installed-but-broken rootfs is deliberately never offered here —
+            // it holds the user's data and is not wiped behind their back.
+            labels.add(getString(R.string.session_type_install_linux));
+            actions.add(this::startOnboardingSetup);
+        }
+
+        labels.add(getString(R.string.session_type_shell));
+        actions.add(() -> createSession(false));
+
+        VmMachine vm = VmMachine.get();
+        if (VmMachine.isRunning() && vm != null) {
+            int free = freeVmTerminal(vm);
+            if (free >= 0) {
+                labels.add(getString(R.string.session_type_vm_terminal,
+                        vm.terminalName(free)));
+                actions.add(() -> openVmTab(vm, free));
+            }
+            labels.add(getString(R.string.session_type_vm_stop));
+            actions.add(this::confirmStopVm);
+        } else if (VmImages.isInstalled(this) || VmImages.assetsAvailable(this)) {
+            labels.add(getString(R.string.session_type_vm_start));
+            actions.add(this::startVm);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.session_type_title)
+                .setItems(labels.toArray(new String[0]),
+                        (d, which) -> actions.get(which).run())
+                .setNegativeButton(R.string.action_cancel, null)
+                .show();
+    }
+
+    // --- guest machine ------------------------------------------------------
+
+    /** Lowest machine terminal no tab is on, or -1 when they are all open. */
+    private int freeVmTerminal(VmMachine vm) {
+        for (int i = 0; i < vm.terminalCount(); i++) {
+            if (!sessions.isVmTerminalOpen(i)) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * Boots a guest machine and opens its console as a tab.
+     *
+     * The images have to be real files first — the emulator opens them by path,
+     * and an APK asset is an offset inside a zip — so a first run copies them
+     * out, which is on the order of a hundred megabytes and belongs on a
+     * background thread behind a progress dialog. After that the boot itself
+     * needs no spinner: the console tab shows the firmware and kernel coming up
+     * live, which is both the honest progress indicator and the thing to look
+     * at when a boot goes wrong.
+     */
+    private void startVm() {
+        if (VmImages.isInstalled(this)) {
+            bootVm();
+            return;
+        }
+        if (!VmImages.assetsAvailable(this)) {
+            Toast.makeText(this, R.string.toast_vm_no_images, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        TextView message = new TextView(this);
+        int pad = Chrome.dp(this, R.dimen.space_5);
+        message.setPaddingRelative(pad, pad, pad, pad);
+        message.setText(R.string.vm_extracting);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.vm_extract_title)
+                .setView(message)
+                .setCancelable(false)
+                .show();
+
+        new Thread(() -> {
+            IOException failure = null;
+            try {
+                VmImages.install(this, (copied, total) -> {
+                    if (total <= 0) return;
+                    int percent = (int) (copied * 100 / total);
+                    runOnUiThread(() -> message.setText(
+                            getString(R.string.vm_extracting_percent, percent)));
+                });
+            } catch (IOException e) {
+                failure = e;
+            }
+            IOException error = failure;
+            runOnUiThread(() -> {
+                dialog.dismiss();
+                if (error != null) {
+                    Toast.makeText(this, getString(R.string.toast_vm_extract_failed,
+                            error.getMessage()), Toast.LENGTH_LONG).show();
+                    return;
+                }
+                bootVm();
+            });
+        }, "vm-images").start();
+    }
+
+    private void bootVm() {
+        java.io.File firmware = VmImages.firmware(this);
+        java.io.File image = VmImages.image(this);
+        if (image == null || !firmware.isFile()) {
+            Toast.makeText(this, R.string.toast_vm_no_images, Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            VmMachine vm = VmMachine.start(new VmOptions(firmware, image,
+                    settings.vmMemoryMb(), settings.vmTerminals(),
+                    settings.vmJitEnabled()));
+            vm.setListener(code -> runOnUiThread(() -> onVmExited(code)));
+            openVmTab(vm, 0);
+        } catch (IOException e) {
+            Toast.makeText(this, getString(R.string.toast_vm_start_failed,
+                    e.getMessage()), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** {@code index} names the machine's terminal, not this activity's view. */
+    private void openVmTab(VmMachine vm, int index) {
+        try {
+            TerminalSession s = sessions.attachVm(vm, index,
+                    terminal.gridCols(), terminal.gridRows(),
+                    terminal.cellWidthPx(), terminal.cellHeightPx(),
+                    settings.scrollbackLines(), this);
+            switchTo(s);
+            applyTheme();       // color the new tab before any output arrives
+            if (settings.touchKeyboard()) showKeyboard();
+            SessionService.refresh(this);
+        } catch (IOException e) {
+            Toast.makeText(this, getString(R.string.toast_vm_attach_failed,
+                    e.getMessage()), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * Stopping the machine kills every guest process at once, so it asks first
+     * — and says so, because an ISO guest is diskless and nothing in it
+     * survives.
+     */
+    private void confirmStopVm() {
+        Dialogs.confirmDanger(this, getString(R.string.vm_stop_confirm_title),
+                getString(R.string.vm_stop_confirm_message),
+                R.string.vm_stop_confirm_button, VmMachine::stopIfRunning);
+    }
+
+    /**
+     * The machine went away — stopped from the chooser, or died. Its tabs are
+     * views onto terminals that no longer exist, so they go with it; each
+     * session's channel has already hit EOF and reported itself, but a tab the
+     * user was not looking at may not have been torn down yet.
+     */
+    private void onVmExited(int exitCode) {
+        for (TerminalSession s : sessions.sessions()) {
+            if (s.isVm()) closeTab(s);
         }
     }
 
@@ -1019,7 +1192,11 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     /** A session's tab label: its OSC title, or "label:position" while unnamed. */
     private static String tabTitle(TerminalSession s, int index) {
         String t = s.title();
-        return t == null || t.isEmpty() ? s.label() + ":" + (index + 1) : t;
+        if (t != null && !t.isEmpty()) return t;
+        // A guest terminal is already named uniquely by the machine ("hvc1"),
+        // so it needs no tab position to tell it from its siblings the way a
+        // row of identical shells does.
+        return s.isVm() ? s.label() : s.label() + ":" + (index + 1);
     }
 
     private void updateTabs() {
@@ -1149,7 +1326,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         // it would finish() the app — so the whole app vanishes on launch.
         // Instead, drop to a plain shell so the user keeps a working terminal.
         boolean lastTab = sessions.sessions().size() == 1;
-        boolean startupFailure = session.isUserland() && !session.userInteracted();
+        // Same reasoning for a guest machine as for a userland session: one that
+        // ends before the user ever typed into it never came up — the images are
+        // unusable, or the machine died during boot — and letting that close the
+        // last tab would make the app vanish instead of showing anything.
+        boolean startupFailure = (session.isUserland() || session.isVm())
+                && !session.userInteracted();
         if (lastTab && startupFailure) {
             sessions.close(session);
             Toast.makeText(this, R.string.toast_userland_session_failed,
