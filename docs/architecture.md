@@ -24,6 +24,9 @@ a special-key toolbar above the touch keyboard.
 ├─────────────────────────────────────────────────────────┤
 │ libghostty-vt.a (Zig, prebuilt per ABI)                 │
 │  VT parser, screen state, render state, key encoder     │
+├─────────────────────────────────────────────────────────┤
+│ libarm64emu.so (C, its own DSO — see below)             │
+│  full-system AArch64 emulator; exports arm64emu_main    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -70,6 +73,33 @@ committed per ABI so app builds need only the Android SDK/NDK, not Zig.
 Threading: libghostty-vt is not thread-safe. Java serializes all native
 calls per session with a single lock (`TerminalEmulator` monitor); the PTY
 reader thread feeds bytes, the UI thread takes snapshots.
+
+### Full-system emulation under arm64emu
+
+`arm64emu` (`native/arm64emu`, the sibling of arm64chroot) is a different
+proposition from the userland engines: it emulates a whole **QEMU 'virt'
+machine** — GICv2, generic timer, PL011 UART, PL031 RTC, PSCI, fw_cfg, CFI NOR
+flash and virtio-mmio — so a real Linux kernel boots on it with its own init,
+its own root, and real privilege inside the guest. It has the same JIT story
+(arm64→arm64 and arm64→x86-64, W^X-aware code cache) and the same no-exec
+property, so it is entered in a `fork()`ed child exactly like the others.
+
+It is the one native component **not** linked into `libterm.so`. The two
+emulators grew from a common core and still define about sixty of the same
+global names (`cpu_step`, `exec_a64`, `mem_read`, `g_jit`, …). Linked into a
+single object those collide at link time; split across two objects with default
+visibility they resolve by dynamic lookup order instead, so one engine's calls
+would silently execute the other's code — and the two model different machines.
+So it builds as its own `libarm64emu.so` with `-fvisibility=hidden`, exporting
+the single symbol `arm64emu_main`; `libterm.so` carries a `DT_NEEDED` on it and
+Gradle packages both.
+
+Guest terminals are virtio-consoles. The emulator creates N of them
+(`--console pl011,count=N` → `hvc0`…`hvcN-1`, each a separate guest tty) and
+binds each to a host descriptor of its own (`--console-fd hvcN=<fd>`), with
+`--ctrl-fd` carrying window sizes, since a socketpair has no `TIOCGWINSZ`. The
+guest console itself stays on `ttyAMA0`, which the stock Alpine ISO already
+respawns a getty on, so it boots unmodified.
 
 ### Linux userland under arm64chroot
 

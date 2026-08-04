@@ -82,6 +82,12 @@ JNI   app/src/main/cpp/   → libterm.so (CMake, NDK)
 C     native/arm64chroot/ → arm64chroot (AArch64 user-space emulator) linked
                             into libterm.so; vendored from a sibling project,
                             `main` renamed under ANDROID_JNI. No loader.
+C     native/arm64emu/    → arm64emu (AArch64 *full-system* emulator: a QEMU
+                            'virt' machine, real kernel on emulated hardware).
+                            Its own libarm64emu.so, -fvisibility=hidden,
+                            exporting only `arm64emu_main` — it shares ~60
+                            global names with arm64chroot, which in one object
+                            collide and across two would cross-bind.
 Zig   native/ghostty-vt/  → libghostty-vt.a prebuilt per ABI + vendored headers
 ```
 

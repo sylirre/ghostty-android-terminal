@@ -92,6 +92,39 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
         -fno-asynchronous-unwind-tables -mno-outline-atomics -w)
 endif()
 
+# --- arm64emu: the full-system AArch64 emulator (a QEMU 'virt' machine), which
+# backs the VM session type — a real kernel booting on emulated hardware, as
+# opposed to the two userland engines above.
+#
+# Unlike them it is NOT linked into libterm.so. It and arm64chroot grew from one
+# core and still share about sixty global names (cpu_step, exec_a64, mem_read,
+# g_jit, ...). In a single object those collide outright at link time; across
+# two objects, left visible, they resolve by dynamic lookup order instead, and
+# one engine's calls would quietly land in the other's code — which models a
+# different machine. So it is its own shared object built -fvisibility=hidden,
+# and arm64emu_main (the one symbol its source marks visible) is the whole
+# interface. libterm.so links it for that symbol; Gradle packages both.
+#
+# Sources are globbed rather than parsed out of the submodule's Makefile the way
+# arm64chroot's are: that Makefile builds with $(wildcard), so there is no SRCS
+# list to read and a glob is what it compiles.
+
+set(A64EMU_DIR ${NATIVE_DIR}/arm64emu)
+file(GLOB_RECURSE _emu_srcs CONFIGURE_DEPENDS ${A64EMU_DIR}/src/*.c)
+if(NOT _emu_srcs)
+    message(FATAL_ERROR "arm64emu: no sources under ${A64EMU_DIR}/src")
+endif()
+
+add_library(arm64emu SHARED ${_emu_srcs})
+target_include_directories(arm64emu PRIVATE ${A64EMU_DIR}/src)
+target_compile_definitions(arm64emu PRIVATE
+    ANDROID_JNI _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+# -w: vendored third-party code compiles clear of libterm.so's -Wall -Werror.
+# -fno-math-errno lets the FP paths inline to hardware ops, as its own build does.
+target_compile_options(arm64emu PRIVATE -O2 -std=c11 -fno-math-errno -w)
+set_target_properties(arm64emu PROPERTIES C_VISIBILITY_PRESET hidden)
+target_link_libraries(arm64emu m)
+
 # --- PNG decoder (vendored stb_image) for Kitty graphics ---
 # Its own target so the third-party header compiles warnings-off, clear of
 # libterm.so's -Wall -Werror.
@@ -120,6 +153,7 @@ target_compile_options(term PRIVATE -Wall -Werror)
 target_link_libraries(term
     ghostty-vt
     -Wl,--whole-archive arm64chroot -Wl,--no-whole-archive
+    arm64emu
     pngdec log m atomic)
 
 # chroot-ng needs no whole-archive treatment: it has no weak cross-module
