@@ -87,9 +87,21 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
         strncmp=cng_embed_strncmp
         strchr=cng_embed_strchr
         strrchr=cng_embed_strrchr)
+    # -mgeneral-regs-only is load-bearing, not hygiene: on chroot-ng's rewrite
+    # (-R) tier the trampoline calls straight into this C code on the guest's
+    # own register file, and the kernel preserves the FP registers across a
+    # syscall, so any v/d register the compiler spends here is taken from the
+    # guest (measured upstream: a popcount `cnt v0.8b` and an `fmov d1, x0`
+    # spill cost a guest d0/d1/d16 across an openat). Its Makefile sets this
+    # deliberately unprobed for that reason, so keep the two in step. The .S
+    # sources take the flag too — clang, unlike gcc, turns it into a target
+    # feature for its integrated assembler — which is why tramp.S brackets its
+    # one FP function (cng_rwtest_fn, the self-test that must name d0/d8/FPCR)
+    # in .arch_extension fp/nofp.
     target_compile_options(chroot-ng PRIVATE
         -O2 -std=gnu11 -ffreestanding -fno-builtin -fno-stack-protector
-        -fno-asynchronous-unwind-tables -mno-outline-atomics -w)
+        -fno-asynchronous-unwind-tables -mno-outline-atomics
+        -mgeneral-regs-only -w)
 endif()
 
 # --- arm64emu: the full-system AArch64 emulator (a QEMU 'virt' machine), which
