@@ -57,6 +57,7 @@ public class VmSessionTest {
     // added coverage: every test here works on an already-booted machine.
     private static VmMachine machine;
     private static TerminalSession console;
+    private static boolean imagesBundled;
 
     private static final TerminalSession.Listener LISTENER = new TerminalSession.Listener() {
         @Override public void onUpdate(TerminalSession s) {}
@@ -68,8 +69,13 @@ public class VmSessionTest {
     @BeforeClass
     public static void bootMachine() throws IOException {
         Context ctx = ApplicationProvider.getApplicationContext();
-        assumeTrue("no guest machine images bundled in this build",
-                VmImages.assetsAvailable(ctx));
+        // Skipping here (an assumption in @BeforeClass) would abandon the whole
+        // class: the runner reports one class-level skip and never a result for
+        // the four tests, which the Gradle side counts as "expected 154 tests,
+        // received 150" and fails the build. Record the verdict instead and let
+        // each test skip itself in @Before, where JUnit reports it per test.
+        imagesBundled = VmImages.assetsAvailable(ctx);
+        if (!imagesBundled) return;
         VmImages.install(ctx, null);
 
         machine = VmMachine.start(new VmOptions(VmImages.firmware(ctx),
@@ -103,6 +109,7 @@ public class VmSessionTest {
      */
     @Before
     public void clearConsole() {
+        assumeTrue("no guest machine images bundled in this build", imagesBundled);
         String mark = "READY" + (++marker);
         console.write("clear; echo " + mark + "\n");
         expect(console, mark);

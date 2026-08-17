@@ -134,8 +134,12 @@ public class ShellSessionTest {
         session.close();
         assertTrue("onExited after close", exited.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
         int code = exitCode.get();
+        // close() SIGHUPs the shell's process group. Whether mksh dies from the
+        // signal (waitpid reports -SIGHUP) or catches it and exits 128+SIGHUP
+        // under its own power is a timing detail of where it was when the
+        // signal landed; both are the hangup this test is about.
         assertTrue("close reports shell exit or SIGHUP, got " + code,
-                code == 0 || code == -1);
+                code == 0 || code == -1 || code == 128 + 1);
         assertEquals(Integer.valueOf(code), session.exitCode());
     }
 
