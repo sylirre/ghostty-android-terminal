@@ -11,6 +11,7 @@ import static androidx.test.espresso.action.ViewActions.scrollTo;
 import static androidx.test.espresso.action.ViewActions.typeText;
 import static androidx.test.espresso.assertion.ViewAssertions.doesNotExist;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static androidx.test.espresso.matcher.RootMatchers.isPlatformPopup;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withContentDescription;
@@ -193,6 +194,29 @@ public class TerminalUiTest {
                             .getString(contentDescriptionRes));
             assertTrue("tab control click handled", button != null && button.performClick());
         });
+    }
+
+    /**
+     * Clicks a button of an AlertDialog. The dialog is its own window, and
+     * Espresso's default root only reaches a dialog that holds window focus:
+     * where focus lags the window — a loaded emulator, an IME still tearing
+     * down — the match goes to the activity's window instead and reports the
+     * button as missing. Name the dialog window explicitly, as the popup-menu
+     * assertions here already do, and wait for it rather than assume it is up
+     * the instant the click that opens it returns.
+     */
+    private void clickDialogButton(int textRes) {
+        String label = ApplicationProvider.getApplicationContext().getString(textRes);
+        waitFor("dialog button \"" + label + "\"", TIMEOUT_MS, () -> {
+            try {
+                onView(withText(textRes)).inRoot(isDialog())
+                        .check(matches(isDisplayed()));
+                return true;
+            } catch (RuntimeException notUpYet) {
+                return false;
+            }
+        }, this::diagnose);
+        onView(withText(textRes)).inRoot(isDialog()).perform(click());
     }
 
     private View findViewWithContentDescription(View view, CharSequence contentDescription) {
@@ -675,7 +699,7 @@ public class TerminalUiTest {
                 this::diagnose);
         clickTabControl(R.string.tab_close_description);
         // Closing asks first (the default close guard); confirm it.
-        onView(withText(R.string.session_close_confirm_button)).perform(click());
+        clickDialogButton(R.string.session_close_confirm_button);
         waitFor("one session", TIMEOUT_MS,
                 () -> SessionManager.get().sessions().size() == 1,
                 this::diagnose);
