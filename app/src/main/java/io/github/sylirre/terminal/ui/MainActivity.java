@@ -221,7 +221,11 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                         > insets.getStableInsetBottom();
             }
             extraKeys.setKeyboardVisible(imeVisible);
-            return WindowInsets.CONSUMED;
+            // WindowInsets.CONSUMED is API 30; on 29 (our minSdk) touching it
+            // throws NoSuchFieldError, so consume the old way there.
+            return Build.VERSION.SDK_INT >= 30
+                    ? WindowInsets.CONSUMED
+                    : insets.consumeSystemWindowInsets();
         });
 
         tabs.setListener(new TabStripView.Listener() {
