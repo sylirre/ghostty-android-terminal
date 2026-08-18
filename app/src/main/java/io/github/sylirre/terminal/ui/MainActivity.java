@@ -743,6 +743,10 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         Glyphs.applyTo(searchButton);
     }
 
+    // Deliberately kept: this is the path on releases that do not route back
+    // through OnBackInvokedDispatcher; those that do run the same handler via
+    // the callback BackGesture registers.
+    @android.annotation.SuppressLint("GestureBackNavigation")
     @Override
     public void onBackPressed() {
         if (handleBack()) return;

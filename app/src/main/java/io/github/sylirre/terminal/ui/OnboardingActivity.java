@@ -234,6 +234,8 @@ public final class OnboardingActivity extends Activity {
         }
     }
 
+    // Kept for releases that still deliver back here; see BackGesture.
+    @android.annotation.SuppressLint("GestureBackNavigation")
     @Override
     public void onBackPressed() {
         if (backConsumed()) return;

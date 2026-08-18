@@ -152,6 +152,8 @@ public final class ThemeActivity extends Activity {
         }
     }
 
+    // Kept for releases that still deliver back here; see BackGesture.
+    @android.annotation.SuppressLint("GestureBackNavigation")
     @Override
     public void onBackPressed() {
         confirmIfDirty(ThemeActivity.super::onBackPressed);

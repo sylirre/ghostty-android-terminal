@@ -60,6 +60,7 @@ final class BackGesture {
     }
 
     /** The API 33+ calls, in their own class so nothing loads them below 33. */
+    @android.annotation.TargetApi(33)
     private static final class Api33 {
         static Object register(Activity activity, Runnable action) {
             OnBackInvokedCallback cb = action::run;
