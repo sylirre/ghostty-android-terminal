@@ -163,13 +163,21 @@ public final class TerminalSession {
         this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
 
         int[] pidOut = new int[1];
-        int fd = command.cmd != null
-                ? TerminalNative.ptyCreate(command.cmd, command.argv,
-                        command.env, command.cwd, cols, rows, cellWidthPx,
-                        cellHeightPx, pidOut)
-                : TerminalNative.ptyCreateEmulator(command.argv, command.env,
-                        command.cwd, cols, rows, cellWidthPx, cellHeightPx,
-                        pidOut);
+        int fd;
+        try {
+            fd = command.cmd != null
+                    ? TerminalNative.ptyCreate(command.cmd, command.argv,
+                            command.env, command.cwd, cols, rows, cellWidthPx,
+                            cellHeightPx, pidOut)
+                    : TerminalNative.ptyCreateEmulator(command.argv, command.env,
+                            command.cwd, cols, rows, cellWidthPx, cellHeightPx,
+                            pidOut);
+        } catch (IOException | RuntimeException e) {
+            // The native terminal is already allocated and no reader thread
+            // exists yet to free it, so this is the only chance to.
+            emulator.close();
+            throw e;
+        }
         lastCols = cols;
         lastRows = rows;
         this.pid = pidOut[0];
@@ -205,7 +213,14 @@ public final class TerminalSession {
         this.emulator = new TerminalEmulator(cols, rows, scrollbackLines);
 
         this.pid = 0;                       // not ours; the machine owns it
-        this.masterFd = machine.attach(terminal);
+        ParcelFileDescriptor channel;
+        try {
+            channel = machine.attach(terminal);
+        } catch (IOException | RuntimeException e) {
+            emulator.close();               // as above: nothing else would
+            throw e;
+        }
+        this.masterFd = channel;
         this.toPty = new FileOutputStream(masterFd.getFileDescriptor());
         lastCols = cols;
         lastRows = rows;
