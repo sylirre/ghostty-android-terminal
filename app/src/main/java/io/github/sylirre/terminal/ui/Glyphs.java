@@ -83,7 +83,7 @@ final class Glyphs {
                     d = d.mutate();
                     d.setTint(color);
                     d.setBounds(0, 0, size, size);
-                    if (out == null) out = new SpannableStringBuilder(label);
+                    if (out == null) out = startFrom(label);
                     out.setSpan(new CenteredIconSpan(d),
                             i, i + len, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 }
@@ -91,6 +91,22 @@ final class Glyphs {
             i += len;
         }
         return out != null ? out : label;
+    }
+
+    /**
+     * A builder over {@code label} with any icons from an earlier {@link #apply}
+     * dropped. The builder copies the spans of the text it is handed, and every
+     * re-span (a theme change, a button restyle, a search-button state flip)
+     * runs over the previous result — so without this each pass would layer one
+     * more icon span, and its mutated drawable, onto the same characters for as
+     * long as the view lives.
+     */
+    private static SpannableStringBuilder startFrom(CharSequence label) {
+        SpannableStringBuilder out = new SpannableStringBuilder(label);
+        for (CenteredIconSpan stale : out.getSpans(0, out.length(), CenteredIconSpan.class)) {
+            out.removeSpan(stale);
+        }
+        return out;
     }
 
     /** Re-spans a {@link TextView}'s current text using its own size and color. */
