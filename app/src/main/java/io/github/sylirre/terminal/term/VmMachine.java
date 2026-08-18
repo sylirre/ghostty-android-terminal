@@ -79,6 +79,8 @@ public final class VmMachine {
     private final OutputStream toControl;
     private final int pid;
     private volatile boolean running = true;
+    /** Whether the host ends of the channels have been closed. Guarded by this. */
+    private boolean released;
     private volatile Integer exitCode;
     private volatile Listener listener;
 
@@ -213,9 +215,24 @@ public final class VmMachine {
      * to flush and no reason to ask the guest to shut down politely first.
      */
     public synchronized void stop() {
-        if (!running) return;
-        running = false;
-        TerminalNative.processKill(-pid, SIGKILL);
+        if (running) {
+            running = false;
+            TerminalNative.processKill(-pid, SIGKILL);
+        }
+        release();
+    }
+
+    /**
+     * Closes the host end of every channel, the control channel and the
+     * diagnostics pipe. Idempotent, and safe to call for a machine that is
+     * already gone — which is the point: a guest that exits on its own is
+     * never stopped, so this is also what {@link #waitLoop} runs once the
+     * emulator is reaped. Sessions are unaffected: each tab holds a
+     * {@code dup} of its own.
+     */
+    private synchronized void release() {
+        if (released) return;
+        released = true;
         for (ParcelFileDescriptor c : channels) closeQuietly(c);
         closeQuietly(control);
         closeQuietly(diagnostics);
@@ -259,6 +276,11 @@ public final class VmMachine {
         int code = TerminalNative.processWaitFor(pid);
         exitCode = code;
         running = false;
+        // The emulator is reaped, so every channel now leads nowhere. Release
+        // them here rather than waiting for a stop() that may never come: a
+        // machine the user never stopped is simply dropped from the singleton,
+        // and its descriptors would sit open until the collector got to them.
+        release();
         Listener l = listener;
         if (l != null) l.onVmExited(code);
     }
