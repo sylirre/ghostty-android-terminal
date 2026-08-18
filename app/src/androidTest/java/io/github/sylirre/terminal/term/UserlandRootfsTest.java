@@ -4,6 +4,7 @@
 package io.github.sylirre.terminal.term;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -86,6 +87,36 @@ public class UserlandRootfsTest {
                 new File(bin, "bash").getAbsolutePath());
 
         assertNull(UserlandRootfs.deriveLoginShell(root, "0:0"));
+    }
+
+    /**
+     * The guest-aware existence checks the settings validators use: a value the
+     * installer itself derives ({@code /bin/ash} on Alpine) must not be
+     * rejected, and neither must a directory reached through an absolute link.
+     */
+    @Test
+    public void guestPathChecksResolveInsideTheRootfs() throws Exception {
+        File bin = new File(root, "bin");
+        assertTrue(bin.mkdirs());
+        writeFile(new File(bin, "busybox"), "stub");
+        Os.symlink("/bin/busybox", new File(bin, "ash").getAbsolutePath());
+        File run = new File(root, "run");
+        assertTrue(run.mkdirs());
+        File var = new File(root, "var");
+        assertTrue(var.mkdirs());
+        Os.symlink("/run", new File(var, "run").getAbsolutePath());
+
+        assertTrue(UserlandRootfs.guestPathExists(root, "/bin/ash"));
+        assertTrue(UserlandRootfs.guestPathExists(root, "/bin/busybox"));
+        assertFalse(UserlandRootfs.guestPathExists(root, "/bin/zsh"));
+
+        assertTrue(UserlandRootfs.guestDirExists(root, "/"));
+        assertTrue(UserlandRootfs.guestDirExists(root, "/var/run"));
+        assertFalse(UserlandRootfs.guestDirExists(root, "/bin/ash")); // a file
+        assertFalse(UserlandRootfs.guestDirExists(root, "/nope"));
+        // A path that climbs out of the rootfs never counts, even when the
+        // host path it would land on exists.
+        assertFalse(UserlandRootfs.guestPathExists(root, "/../../system/bin/sh"));
     }
 
     private static void writeFile(File file, String content) throws IOException {

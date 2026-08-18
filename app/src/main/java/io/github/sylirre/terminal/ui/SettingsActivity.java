@@ -689,13 +689,12 @@ public final class SettingsActivity extends Activity {
         if (!path.startsWith("/")) {
             return getString(R.string.setting_userland_path_not_absolute);
         }
-        if (UserlandRootfs.isInstalled(this)) {
-            String rel = path.substring(1);
-            File target = rel.isEmpty()
-                    ? UserlandRootfs.dir(this) : new File(UserlandRootfs.dir(this), rel);
-            if (!target.isDirectory()) {
-                return getString(R.string.setting_userland_path_missing);
-            }
+        // Resolved inside the guest, like the emulator does it: a host-side
+        // File check chases an absolute link target (/var/run -> /run) against
+        // the host root and rejects a perfectly good directory.
+        if (UserlandRootfs.isInstalled(this)
+                && !UserlandRootfs.guestDirExists(UserlandRootfs.dir(this), path)) {
+            return getString(R.string.setting_userland_path_missing);
         }
         return null;
     }
@@ -711,8 +710,11 @@ public final class SettingsActivity extends Activity {
         if (!path.startsWith("/")) {
             return getString(R.string.setting_userland_path_not_absolute);
         }
+        // Guest-side resolution, as above — Alpine's shells are all absolute
+        // links to /bin/busybox, so a host-side File.exists() rejects every
+        // one of them, including the value the installer itself derived.
         if (UserlandRootfs.isInstalled(this)
-                && !new File(UserlandRootfs.dir(this), path.substring(1)).exists()) {
+                && !UserlandRootfs.guestPathExists(UserlandRootfs.dir(this), path)) {
             return getString(R.string.setting_userland_path_missing);
         }
         return null;

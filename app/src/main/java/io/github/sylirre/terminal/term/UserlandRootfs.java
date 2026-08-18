@@ -157,6 +157,25 @@ public final class UserlandRootfs {
         }
     }
 
+    /**
+     * True when the guest-absolute {@code path} names something that exists
+     * inside the rootfs, with symlinks resolved <em>the way the emulator will
+     * resolve them</em> (see {@link #resolveInGuest}). Callers that validate a
+     * user-entered guest path must use this rather than
+     * {@code new File(root, path).exists()}: an absolute link target — Alpine's
+     * {@code /bin/sh -> /bin/busybox} — is re-rooted at the rootfs here, while
+     * {@code File} chases it against the host {@code /} and misses.
+     */
+    public static boolean guestPathExists(File root, String path) {
+        return resolveInGuest(root, path, 0) != null;
+    }
+
+    /** As {@link #guestPathExists}, but the target must also be a directory. */
+    public static boolean guestDirExists(File root, String path) {
+        File target = resolveInGuest(root, path, 0);
+        return target != null && target.isDirectory();
+    }
+
     /** The symlink target of {@code file}, or null when it is not a symlink. */
     private static String readlinkOrNull(File file) {
         try {
@@ -453,9 +472,7 @@ public final class UserlandRootfs {
         if (path == null) return null;
         String p = path.trim();
         if (p.isEmpty() || !p.startsWith("/")) return null;
-        File target = resolveInGuest(root, p, 0); // null on escape or absence
-        if (target == null || !target.isDirectory()) return null;
-        return p;
+        return guestDirExists(root, p) ? p : null; // null on escape or absence
     }
 
     /**
@@ -489,7 +506,7 @@ public final class UserlandRootfs {
 
     /** True when {@code path} is an absolute path that exists inside the rootfs. */
     private static boolean shellExists(File root, String path) {
-        return resolveInGuest(root, path, 0) != null;
+        return guestPathExists(root, path);
     }
 
     // --- tar extraction ---
