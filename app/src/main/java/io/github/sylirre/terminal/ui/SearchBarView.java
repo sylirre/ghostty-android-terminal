@@ -220,9 +220,14 @@ public class SearchBarView extends LinearLayout implements TerminalView.SearchLi
 
     /** Hides the bar and clears the query. Keyboard management is the caller's responsibility. */
     public void hide() {
-        pendingQuery = false;
+        // Order matters: clearing the field is itself a text change, so the
+        // watcher re-arms the debounce. Cancel and clear the flag *after* it,
+        // or the bar closes claiming a query is queued when none is — and the
+        // next Enter on the reopened bar re-runs the (empty) query instead of
+        // advancing to the next match.
         field.setText("");
         removeCallbacks(runQuery);
+        pendingQuery = false;
         if (!shown) return;
         shown = false;
         animate().cancel();
