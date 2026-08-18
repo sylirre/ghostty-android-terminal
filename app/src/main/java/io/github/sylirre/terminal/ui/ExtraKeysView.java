@@ -341,6 +341,11 @@ public class ExtraKeysView extends LinearLayout {
         final float[] downY = {0f};
         final Runnable[] longPressRun = {null};
         final Runnable[] repeatRun = {null};
+        // The touch listener below consumes every event, so onTouchEvent — and
+        // with it performClick() — never runs for a tap. That leaves a screen
+        // reader's "activate", and a D-pad/Enter press, with nothing to call:
+        // this is that path, and it cannot double-emit with the tap above.
+        view.setOnClickListener(v -> emit.run());
         view.setOnTouchListener((v, event) -> {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
