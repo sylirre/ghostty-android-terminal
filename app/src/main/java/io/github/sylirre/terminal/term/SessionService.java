@@ -31,25 +31,54 @@ import io.github.sylirre.terminal.R;
  * The Activity drives the lifecycle: {@link #refresh} on every session
  * count change, {@link #stop} when the last tab closes. "Exit" fires
  * {@link #ACTION_EXIT}, which can run with no Activity alive, so the
- * service itself tears the sessions down and broadcasts {@link #ACTION_EXITED}
- * for any live Activity to finish on.
+ * service itself tears the sessions down and then calls the Activity's
+ * {@linkplain #setExitListener exit listener}, if one is registered, to
+ * finish it.
  */
 public final class SessionService extends Service {
 
     /** Bring the service to (or keep it in) the foreground; refresh the notification. */
     private static final String ACTION_START = "io.github.sylirre.terminal.service.START";
-    /** Kill every shell and stop; user tapped "Exit". */
-    private static final String ACTION_EXIT = "io.github.sylirre.terminal.service.EXIT";
+    /**
+     * Kill every shell and stop; user tapped "Exit". Package-private rather
+     * than private so the instrumented test can fire the same intent the
+     * notification action carries.
+     */
+    static final String ACTION_EXIT = "io.github.sylirre.terminal.service.EXIT";
     /** Flip the CPU wake lock. */
     private static final String ACTION_TOGGLE_WAKELOCK = "io.github.sylirre.terminal.service.TOGGLE_WAKELOCK";
-
-    /** In-process broadcast telling a live Activity to finish after "Exit". */
-    public static final String ACTION_EXITED = "io.github.sylirre.terminal.service.EXITED";
 
     private static final int NOTIFICATION_ID = 1;
     private static final String CHANNEL_ID = "sessions";
 
     private PowerManager.WakeLock wakeLock;
+
+    /**
+     * Run on the main thread once "Exit" has torn the sessions down, so a live
+     * Activity can drop its UI.
+     *
+     * A plain callback rather than a broadcast: this service declares no
+     * {@code android:process}, so it always runs in the Activity's process —
+     * the same reason it can reach {@link SessionManager} directly. Sent as a
+     * broadcast it needed a context-registered receiver on the Activity side,
+     * and below API 33 there is no {@code RECEIVER_NOT_EXPORTED} to register
+     * it with: any installed app could fire the action and make the terminal
+     * window disappear.
+     */
+    private static volatile Runnable exitListener;
+
+    /**
+     * Registers the Activity's teardown. Pass the same instance to
+     * {@link #clearExitListener} when the Activity goes away.
+     */
+    public static void setExitListener(Runnable listener) {
+        exitListener = listener;
+    }
+
+    /** Drops {@code listener}, unless a newer Activity has already replaced it. */
+    public static void clearExitListener(Runnable listener) {
+        if (exitListener == listener) exitListener = null;
+    }
 
     /** Ensures the service is running and its notification reflects the current state. */
     public static void refresh(Context context) {
@@ -73,7 +102,8 @@ public final class SessionService extends Service {
         if (ACTION_EXIT.equals(action)) {
             SessionManager.get().closeAll();
             // Tell a live Activity (if any) to finish and drop its task.
-            sendBroadcast(new Intent(ACTION_EXITED).setPackage(getPackageName()));
+            Runnable onExited = exitListener;
+            if (onExited != null) onExited.run();
             releaseWakeLock();
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();

@@ -7,12 +7,9 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
-import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -120,13 +117,10 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private boolean awaitingOnboarding;
     private long lastBellUptime;
 
-    /** Fired by {@link SessionService} when the user taps "Exit" in the notification. */
-    private final BroadcastReceiver exitReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            // Sessions are already torn down by the service; just drop the UI.
-            finishAndRemoveTask();
-        }
+    /** Run by {@link SessionService} when the user taps "Exit" in the notification. */
+    private final Runnable onServiceExit = () -> {
+        // Sessions are already torn down by the service; just drop the UI.
+        finishAndRemoveTask();
     };
 
     @Override
@@ -278,12 +272,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             switchTo(sessions.sessions().get(0));
         }
 
-        IntentFilter filter = new IntentFilter(SessionService.ACTION_EXITED);
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(exitReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(exitReceiver, filter);
-        }
+        SessionService.setExitListener(onServiceExit);
         // Deferred while onboarding runs — the system dialog must not land on
         // top of the wizard's first impression; re-requested when it returns.
         if (!awaitingOnboarding) maybeRequestNotificationsPermission();
@@ -342,7 +331,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(exitReceiver);
+        SessionService.clearExitListener(onServiceExit);
     }
 
     /**
