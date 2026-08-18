@@ -350,7 +350,10 @@ public final class OnboardingActivity extends Activity {
             case "alpine": return getString(R.string.onb_distro_alpine);
             case "debian": return getString(R.string.onb_distro_debian);
             default:
-                return d.id.substring(0, 1).toUpperCase() + d.id.substring(1);
+                // Locale.ROOT: the id is an ASCII asset-name token, and the
+                // device's locale must not rewrite it (Turkish i -> Ä°).
+                return d.id.substring(0, 1).toUpperCase(java.util.Locale.ROOT)
+                        + d.id.substring(1);
         }
     }
 
