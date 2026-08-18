@@ -57,6 +57,8 @@ public final class OnboardingActivity extends Activity {
     private static final int STEP_INSTALL = 2;
 
     private AppSettings settings;
+    /** Back interception for the steps that handle it (predictive back). */
+    private BackGesture backGesture;
     private boolean setupOnly;
     private List<UserlandDistro> distros;
 
@@ -107,6 +109,7 @@ public final class OnboardingActivity extends Activity {
         }
 
         setContentView(R.layout.activity_onboarding);
+        backGesture = BackGesture.install(this, this::handleBack);
         setupOnly = getIntent().getBooleanExtra(EXTRA_SETUP_ONLY, false);
         distros = UserlandDistro.bundled(this);
 
@@ -233,7 +236,30 @@ public final class OnboardingActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (installing) return; // extraction is not cancellable; ignore back
+        if (backConsumed()) return;
+        setResult(RESULT_CANCELED);
+        super.onBackPressed();
+    }
+
+    /**
+     * Back handling for the predictive-back callback, which replaces
+     * {@code onBackPressed} on releases that route the gesture through the
+     * dispatcher. Registered only for the steps that consume back (see
+     * {@link #updateChrome}).
+     */
+    private void handleBack() {
+        if (backConsumed()) return;
+        setResult(RESULT_CANCELED);
+        finish();
+    }
+
+    /**
+     * Step navigation for a back press: swallowed while extracting (which is
+     * not cancellable), otherwise a step backwards. False when back means
+     * "leave the wizard".
+     */
+    private boolean backConsumed() {
+        if (installing) return true;
         if (step == STEP_INSTALL) {
             if (installDone) {
                 setResult(RESULT_OK);
@@ -241,18 +267,24 @@ public final class OnboardingActivity extends Activity {
             } else {
                 showStep(STEP_CHOOSE);
             }
-            return;
+            return true;
         }
         if (step == STEP_CHOOSE && !setupOnly) {
             showStep(STEP_WELCOME);
-            return;
+            return true;
         }
-        setResult(RESULT_CANCELED);
-        super.onBackPressed();
+        return false;
+    }
+
+    /** Whether the current step handles back itself; mirrors {@link #backConsumed}. */
+    private boolean backIsCustom() {
+        return installing || step == STEP_INSTALL
+                || (step == STEP_CHOOSE && !setupOnly);
     }
 
     /** Re-renders the step dots and the two shared buttons for the current state. */
     private void updateChrome() {
+        backGesture.setEnabled(backIsCustom());
         int count = setupOnly ? 2 : 3;
         int active = step - (setupOnly ? 1 : 0);
         int dot = Chrome.dp(this, R.dimen.space_2);

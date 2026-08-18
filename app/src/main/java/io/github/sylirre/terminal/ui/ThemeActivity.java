@@ -66,6 +66,8 @@ public final class ThemeActivity extends Activity {
 
     private ThemeStore store;
     private AppSettings settings;
+    /** Back interception while there are unsaved edits (predictive back). */
+    private BackGesture backGesture;
 
     // Working copy of the colors being edited.
     private int fg, bg, cursor;
@@ -119,6 +121,7 @@ public final class ThemeActivity extends Activity {
 
         store = new ThemeStore(this);
         settings = new AppSettings(this);
+        backGesture = BackGesture.install(this, this::handleBack);
         preview = findViewById(R.id.theme_preview);
         themeName = findViewById(R.id.theme_name);
         btnSave = findViewById(R.id.theme_save);
@@ -152,6 +155,16 @@ public final class ThemeActivity extends Activity {
     @Override
     public void onBackPressed() {
         confirmIfDirty(ThemeActivity.super::onBackPressed);
+    }
+
+    /**
+     * Back handling for the predictive-back callback, which replaces
+     * {@code onBackPressed} on releases that route the gesture through the
+     * dispatcher. Registered only while dirty (see {@link #refresh}), so
+     * leaving a clean editor keeps the system's own back animation.
+     */
+    private void handleBack() {
+        confirmIfDirty(this::finish);
     }
 
     // --- Working-copy state ---
@@ -208,6 +221,8 @@ public final class ThemeActivity extends Activity {
         setActionEnabled(btnRevert, dirty);
         setActionEnabled(btnRename, userTheme);
         setActionEnabled(btnDelete, userTheme);
+        // Only an unsaved draft has anything to confirm on the way out.
+        backGesture.setEnabled(dirty);
     }
 
     private static void setActionEnabled(View v, boolean on) {

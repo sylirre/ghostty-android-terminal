@@ -114,6 +114,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private ThemeStore themeStore;
     private ExtraKeysConfig extraKeysConfig;
     private boolean forceShell;
+    /** Back interception while the find bar is open (predictive back). */
+    private BackGesture backGesture;
     /** First-session spawn is held back while the onboarding wizard runs. */
     private boolean awaitingOnboarding;
     private long lastBellUptime;
@@ -182,6 +184,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             @Override public void onClose() { hideSearch(); }
         });
         terminal.setSearchListener(searchBar);
+        backGesture = BackGesture.install(this, this::handleBack);
         searchButton = findViewById(R.id.search_button);
         searchButton.setOnClickListener(v -> {
             if (searchBar.isOpen()) hideSearch();
@@ -708,6 +711,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private void showSearch() {
         searchBar.show();
         setSearchButtonActive(true);
+        backGesture.setEnabled(true); // back closes the bar, not the app
     }
 
     /** Collapses the find bar and clears its match highlight. */
@@ -715,6 +719,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
         boolean wasOpen = searchBar.isOpen();
         searchBar.hide();
         setSearchButtonActive(false);
+        backGesture.setEnabled(false);
         terminal.searchClose();
         // Always restore the keyboard when search was actually open; search
         // requires it and the user expects it back when dismissing the bar.
@@ -740,11 +745,19 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
 
     @Override
     public void onBackPressed() {
-        if (searchBar != null && searchBar.isOpen()) {
-            hideSearch();
-            return;
-        }
+        if (handleBack()) return;
         super.onBackPressed();
+    }
+
+    /**
+     * Back handling shared by {@code onBackPressed} and the predictive-back
+     * callback: an open find bar closes first. Returns true when back was
+     * consumed here rather than leaving the app.
+     */
+    private boolean handleBack() {
+        if (searchBar == null || !searchBar.isOpen()) return false;
+        hideSearch();
+        return true;
     }
 
     /**
