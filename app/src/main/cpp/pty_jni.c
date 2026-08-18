@@ -70,6 +70,13 @@ static char **to_cstr_array(JNIEnv *env, jobjectArray arr) {
     return out;
 }
 
+/* Frees an array built by to_cstr_array, strings included. */
+static void free_cstr_array(char **a) {
+    if (!a) return;
+    for (char **p = a; *p; p++) free(*p);
+    free(a);
+}
+
 /*
  * Opens a PTY and forks a child on it. If cmd is non-NULL the child
  * execve()s it; otherwise the child enters arm64chroot_main(argv) in-process.
@@ -105,7 +112,13 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
 
     pid_t pid = fork();
     if (pid < 0) {
+        int err = errno; /* the cleanup below may clobber it */
         close(master);
+        free_cstr_array(argv);
+        free_cstr_array(envp);
+        if (cmd) (*env)->ReleaseStringUTFChars(env, jcmd, cmd);
+        if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
+        errno = err;
         return throw_errno(env, "fork");
     }
 
@@ -152,10 +165,8 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
         _exit(127);
     }
 
-    for (char **p = argv; *p; p++) free(*p);
-    for (char **p = envp; *p; p++) free(*p);
-    free(argv);
-    free(envp);
+    free_cstr_array(argv);
+    free_cstr_array(envp);
     if (cmd) (*env)->ReleaseStringUTFChars(env, jcmd, cmd);
     if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
 
@@ -235,7 +246,16 @@ static jint vm_start(JNIEnv *env, jobjectArray jargs, jobjectArray jenv,
     const char *cwd = jcwd ? (*env)->GetStringUTFChars(env, jcwd, NULL) : NULL;
 
     pid_t pid = fork();
-    if (pid < 0) { close(logp[0]); close(logp[1]); goto fail; }
+    if (pid < 0) {
+        int err = errno; /* the cleanup below may clobber it */
+        close(logp[0]);
+        close(logp[1]);
+        free_cstr_array(argv);
+        free_cstr_array(envp);
+        if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
+        errno = err;
+        goto fail;
+    }
 
     if (pid == 0) {
         /* Its own session: no controlling terminal to inherit, and one process
@@ -267,10 +287,8 @@ static jint vm_start(JNIEnv *env, jobjectArray jargs, jobjectArray jenv,
 
     for (int i = 0; i < n_chan; i++) close(far[i]);
     close(logp[1]);
-    for (char **p = argv; *p; p++) free(*p);
-    for (char **p = envp; *p; p++) free(*p);
-    free(argv);
-    free(envp);
+    free_cstr_array(argv);
+    free_cstr_array(envp);
     if (cwd) (*env)->ReleaseStringUTFChars(env, jcwd, cwd);
 
     jint out[VM_MAX_HVC + 3];
