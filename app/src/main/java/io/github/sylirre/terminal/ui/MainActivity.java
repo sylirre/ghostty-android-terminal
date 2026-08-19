@@ -976,9 +976,12 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     private void runRestore(Uri uri) {
         // Tear down every session before the rootfs is swapped: a live emulator
         // process must not hold the tree we are about to delete and replace.
+        // Sessions only — a guest machine boots from its own images and has
+        // nothing in the rootfs, so a restore is no reason to kill it (and an
+        // ISO guest is diskless: stopping it would throw away everything in it).
         terminal.attachSession(null);
         current = null;
-        sessions.closeAll();
+        sessions.closeSessions();
         updateTabs();
         SessionService.refresh(this);
 

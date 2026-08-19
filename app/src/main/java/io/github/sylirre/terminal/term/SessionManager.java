@@ -112,12 +112,13 @@ public final class SessionManager {
     }
 
     /**
-     * Kills every shell and empties the list. Used by the "Exit" action in
-     * the foreground-service notification, which can fire while no Activity
-     * is alive — so it must leave no dead sessions behind for a later
-     * relaunch to re-attach to.
+     * Closes every session and empties the list, leaving a running guest
+     * machine alone: a VM tab only detaches, so the machine keeps running and
+     * a later tab finds its shells where they were. For callers that need the
+     * tabs gone but have no business with the machine — replacing the userland
+     * rootfs, which the machine does not touch.
      */
-    public void closeAll() {
+    public void closeSessions() {
         List<TerminalSession> copy;
         synchronized (this) {
             copy = new ArrayList<>(sessions);
@@ -126,6 +127,16 @@ public final class SessionManager {
         for (TerminalSession s : copy) {
             s.close();
         }
+    }
+
+    /**
+     * Kills every shell and empties the list. Used by the "Exit" action in
+     * the foreground-service notification, which can fire while no Activity
+     * is alive — so it must leave no dead sessions behind for a later
+     * relaunch to re-attach to.
+     */
+    public void closeAll() {
+        closeSessions();
         // Closing a VM tab only detaches it, by design — so the machine would
         // otherwise outlive the app that started it, with no tab left to reach
         // it from and no way to stop it. "Exit" means exit.
