@@ -899,6 +899,21 @@ public class TerminalView extends View {
         invalidate();
     }
 
+    /**
+     * True while a wallpaper bitmap is held. It is dropped (and recycled) on
+     * detach, so a caller that caches the decode has to ask rather than assume.
+     */
+    public boolean hasBackgroundImage() {
+        return backgroundImage != null;
+    }
+
+    /** Changes only the wallpaper's draw opacity, keeping the current bitmap. */
+    public void setBackgroundImageAlpha(int alpha) {
+        if (backgroundImageAlpha == alpha) return;
+        backgroundImageAlpha = alpha;
+        invalidate();
+    }
+
     /** Binds a session; pass null to detach. Resizes it to fit this view. */
     public void attachSession(TerminalSession s) {
         if (s != session) {

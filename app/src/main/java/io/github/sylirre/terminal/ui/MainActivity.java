@@ -116,6 +116,9 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     /** First-session spawn is held back while the onboarding wizard runs. */
     private boolean awaitingOnboarding;
     private long lastBellUptime;
+    /** Wallpaper the view currently holds, so a resume needn't re-decode it. */
+    private String appliedBackgroundPath;
+    private int appliedBackgroundBlur = -1;
 
     /** Run by {@link SessionService} when the user taps "Exit" in the notification. */
     private final Runnable onServiceExit = () -> {
@@ -403,17 +406,30 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
      * Decoded downsampled to the screen so a large photo stays cheap; a path
      * that no longer decodes is forgotten. The view takes ownership of the
      * bitmap and recycles it when replaced.
+     *
+     * The decode (and any blur, which runs several passes over the pixels) is
+     * main-thread work, and {@code onResume} calls this on every return to the
+     * app — so it is skipped while the view still holds the bitmap for the
+     * configured path and blur, and only the opacity is pushed through.
      */
     private void applyBackgroundImage() {
         String path = settings.backgroundImagePath();
+        int blur = settings.backgroundImageBlur();
+        int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);
+        if (terminal.hasBackgroundImage() && blur == appliedBackgroundBlur
+                && java.util.Objects.equals(path, appliedBackgroundPath)) {
+            terminal.setBackgroundImageAlpha(alpha);
+            return;
+        }
         Bitmap bmp = null;
         if (path != null) {
             DisplayMetrics dm = getResources().getDisplayMetrics();
             bmp = BackgroundImageStore.decode(path, dm.widthPixels, dm.heightPixels,
-                    settings.backgroundImageBlur());
+                    blur);
             if (bmp == null) settings.setBackgroundImagePath(null); // stale/corrupt
         }
-        int alpha = Math.round(settings.backgroundImageOpacity() * 2.55f);
+        appliedBackgroundPath = bmp != null ? path : null;
+        appliedBackgroundBlur = blur;
         terminal.setBackgroundImage(bmp, alpha);
     }
 
