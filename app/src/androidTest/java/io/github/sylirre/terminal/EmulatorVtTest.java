@@ -204,6 +204,26 @@ public class EmulatorVtTest {
         assertEquals(TerminalNative.UNDERLINE_SINGLE, underlineStyle(snapshot(), 0));
     }
 
+    @Test
+    public void sgrBlinkAndUnderlineStyleAreDisjoint() {
+        // Blink and the underline-shape field share the attrs int, so they must
+        // occupy different bits. They overlapped once (the field started on
+        // ATTR_BLINK's bit), which made every underlined cell blink and every
+        // blinking cell draw an underline.
+        feed("\u001b[4ma\u001b[m\u001b[5mb\u001b[m\u001b[4;5mc");
+        ScreenSnapshot s = snapshot();
+        // 'a' is underlined and does not blink.
+        assertEquals(TerminalNative.UNDERLINE_SINGLE, underlineStyle(s, 0));
+        assertFalse((s.attrs[cell(0, 0)] & TerminalNative.ATTR_BLINK) != 0);
+        // 'b' blinks and carries no underline.
+        assertTrue((s.attrs[cell(1, 0)] & TerminalNative.ATTR_BLINK) != 0);
+        assertEquals(TerminalNative.UNDERLINE_NONE, underlineStyle(s, 1));
+        assertFalse((s.attrs[cell(1, 0)] & TerminalNative.ATTR_UNDERLINE) != 0);
+        // 'c' carries both, and each reads back intact.
+        assertTrue((s.attrs[cell(2, 0)] & TerminalNative.ATTR_BLINK) != 0);
+        assertEquals(TerminalNative.UNDERLINE_SINGLE, underlineStyle(s, 2));
+    }
+
     private int underlineStyle(ScreenSnapshot s, int x) {
         return (s.attrs[cell(x, 0)] & TerminalNative.ATTR_UL_MASK)
                 >> TerminalNative.ATTR_UL_SHIFT;

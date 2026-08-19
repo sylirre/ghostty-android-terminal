@@ -509,7 +509,9 @@ static jint pack_rgb(GhosttyColorRgb c) {
                   (uint32_t)c.b);
 }
 
-/* Attribute bits in the attrs[] snapshot array (jintArray), mirrored in ScreenSnapshot. */
+/* Attribute bits in the attrs[] snapshot array (jintArray), mirrored in
+   ScreenSnapshot. Layout: bits 0-5 the flags below, bits 6-8 the
+   underline-shape field, bit 9 the hyperlink flag. */
 #define ATTR_BOLD 1
 #define ATTR_ITALIC 2
 #define ATTR_UNDERLINE 4
@@ -517,14 +519,15 @@ static jint pack_rgb(GhosttyColorRgb c) {
 #define ATTR_WIDE 16
 #define ATTR_BLINK 32
 /* Underline shape: a 3-bit field (the GhosttySgrUnderline value, 0..5) packed
-   into bits 5-7. ATTR_UNDERLINE flags presence; this field names the style
-   (single/double/curly/dotted/dashed). */
-#define ATTR_UL_SHIFT 5
+   into bits 6-8, immediately above the flags. ATTR_UNDERLINE flags presence;
+   this field names the style (single/double/curly/dotted/dashed). It must stay
+   clear of ATTR_BLINK: it used to start at bit 5, so every underlined cell also
+   read as blinking (and every blinking cell as underlined). */
+#define ATTR_UL_SHIFT 6
 #define ATTR_UL_MASK (7 << ATTR_UL_SHIFT)
-/* OSC 8 hyperlink presence. Bits 0-7 are taken by the flags above and the
-   underline-shape field, so this lands at bit 8. The renderer underlines
-   these cells as a tap-to-open affordance. */
-#define ATTR_HYPERLINK 256
+/* OSC 8 hyperlink presence, at bit 9 just above the underline-shape field.
+   The renderer underlines these cells as a tap-to-open affordance. */
+#define ATTR_HYPERLINK 512
 
 /* Selection flag bits in meta[9], mirrored in ScreenSnapshot. */
 #define SEL_ACTIVE 1

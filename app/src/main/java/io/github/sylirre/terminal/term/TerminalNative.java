@@ -22,7 +22,11 @@ public final class TerminalNative {
     public static final int EVENT_BELL = 1;
     public static final int EVENT_TITLE = 2;
 
-    /** Attribute bits in the snapshot attrs array (int[] per cell). */
+    /**
+     * Attribute bits in the snapshot attrs array (int[] per cell). Layout:
+     * bits 0-5 the flags below, bits 6-8 the underline-shape field, bit 9 the
+     * hyperlink flag. Mirrored in terminal_jni.c.
+     */
     public static final int ATTR_BOLD = 1;
     public static final int ATTR_ITALIC = 2;
     public static final int ATTR_UNDERLINE = 4;
@@ -30,19 +34,20 @@ public final class TerminalNative {
     public static final int ATTR_WIDE = 16;
     public static final int ATTR_BLINK = 32;
     /**
-     * The cell belongs to an OSC 8 hyperlink. Bit 8, clear of the
-     * underline-shape field in bits 5-7; the renderer underlines these cells
-     * as a tap-to-open affordance and {@link #terminalHyperlinkAt} resolves
-     * the URI.
+     * The cell belongs to an OSC 8 hyperlink. Bit 9, just above the
+     * underline-shape field; the renderer underlines these cells as a
+     * tap-to-open affordance and {@link #terminalHyperlinkAt} resolves the URI.
      */
-    public static final int ATTR_HYPERLINK = 256;
+    public static final int ATTR_HYPERLINK = 512;
 
     /**
-     * Underline shape: a 3-bit field in the attrs int (bits 5-7) holding one
+     * Underline shape: a 3-bit field in the attrs int (bits 6-8) holding one
      * of the {@code UNDERLINE_*} values. {@link #ATTR_UNDERLINE} is set
-     * whenever this field is non-zero.
+     * whenever this field is non-zero. It sits above {@link #ATTR_BLINK}
+     * rather than overlapping it: while the field started at bit 5, an
+     * underlined cell also read as blinking and vice versa.
      */
-    public static final int ATTR_UL_SHIFT = 5;
+    public static final int ATTR_UL_SHIFT = 6;
     public static final int ATTR_UL_MASK = 7 << ATTR_UL_SHIFT;
     public static final int UNDERLINE_NONE = 0;
     public static final int UNDERLINE_SINGLE = 1;
