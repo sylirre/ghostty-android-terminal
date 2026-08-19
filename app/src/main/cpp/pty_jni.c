@@ -130,6 +130,11 @@ static jint spawn_on_pty(JNIEnv *env, jstring jcmd, jobjectArray jargs,
         dup2(slave, STDOUT_FILENO);
         dup2(slave, STDERR_FILENO);
         if (slave > STDERR_FILENO) close(slave);
+        /* The master belongs to the parent. O_CLOEXEC would drop it on the
+         * execve path, but the in-process engines never exec: without this the
+         * emulator carries a writable descriptor for its own tty for the whole
+         * session, and the pair only half-closes when the parent hangs up. */
+        close(master);
         if (cwd) chdir(cwd);
         /* fork() copies the calling (ART) thread's signal mask and signal
          * dispositions. execve() resets handled dispositions (though not
