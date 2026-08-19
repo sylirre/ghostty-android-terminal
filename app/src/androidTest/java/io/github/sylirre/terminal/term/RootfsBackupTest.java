@@ -357,6 +357,54 @@ public class RootfsBackupTest {
         Os.symlink(data, new File(src, "usr/bin/tool").getAbsolutePath());
     }
 
+    /**
+     * A PAX extended header's record lengths count bytes, not characters. An
+     * archive whose overriding path holds non-ASCII — the very thing PAX
+     * headers exist to carry — must still extract under that name, and the
+     * records after it must still parse.
+     */
+    @Test
+    public void restoreHonorsPaxPathWithNonAscii() throws Exception {
+        String name = "usr/share/dokumentaci\u00f3n/na\u00efve.txt";
+        byte[] pax = paxBlock("path=" + name, "comment=trailing-record");
+
+        ByteArrayOutputStream tar = new ByteArrayOutputStream();
+        RootfsBackup.writeHeader(tar, "PaxHeaders/0", 0644, 0, pax.length, 'x', "");
+        tar.write(pax);
+        tar.write(new byte[(512 - pax.length % 512) % 512]);
+        // The ustar header the PAX block overrides carries a placeholder name.
+        tarFile(tar, "placeholder", "HELLO\n");
+        tar.write(new byte[512]);
+        tar.write(new byte[512]);
+
+        assertTrue(dst.mkdirs());
+        UserlandRootfs.extractTar(new ByteArrayInputStream(tar.toByteArray()), dst,
+                null, null);
+
+        assertArrayEquals("HELLO\n".getBytes(StandardCharsets.UTF_8),
+                readFile(new File(dst, name)));
+        assertFalse("the PAX path override was ignored",
+                new File(dst, "placeholder").exists());
+    }
+
+    /**
+     * Assembles PAX records as {@code "<len> <key>=<value>\n"}, where
+     * {@code len} counts the whole record including its own digits.
+     */
+    private static byte[] paxBlock(String... records) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        for (String record : records) {
+            byte[] body = (" " + record + "\n").getBytes(StandardCharsets.UTF_8);
+            int len = body.length + 1;
+            while (Integer.toString(len).length() + body.length != len) {
+                len = Integer.toString(len).length() + body.length;
+            }
+            out.write(Integer.toString(len).getBytes(StandardCharsets.US_ASCII));
+            out.write(body);
+        }
+        return out.toByteArray();
+    }
+
     /** Writes a directory entry (name should end with '/') into a raw tar. */
     private static void tarDir(OutputStream out, String name) throws IOException {
         RootfsBackup.writeHeader(out, name, 0755, 0, 0, '5', "");

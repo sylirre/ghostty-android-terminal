@@ -605,7 +605,7 @@ public final class UserlandRootfs {
                     longLink = readString(in, size);
                     continue;
                 case 'x': { // PAX per-file records
-                    String[] overrides = parsePax(readString(in, size));
+                    String[] overrides = parsePax(readEntry(in, size));
                     paxPath = overrides[0];
                     paxLink = overrides[1];
                     continue;
@@ -871,7 +871,8 @@ public final class UserlandRootfs {
         return (size + BLOCK - 1) / BLOCK * BLOCK;
     }
 
-    private static String readString(InputStream in, long size) throws IOException {
+    /** Reads a meta entry's payload (GNU L/K name, PAX block) and its padding. */
+    private static byte[] readEntry(InputStream in, long size) throws IOException {
         if (size > (1 << 20)) throw new IOException("oversized tar meta entry");
         byte[] data = new byte[(int) size];
         int off = 0;
@@ -881,37 +882,59 @@ public final class UserlandRootfs {
             off += n;
         }
         skip(in, padded(size) - size);
+        return data;
+    }
+
+    private static String readString(InputStream in, long size) throws IOException {
+        byte[] data = readEntry(in, size);
         int end = data.length;
         while (end > 0 && data[end - 1] == 0) end--;
         return new String(data, 0, end, StandardCharsets.UTF_8);
     }
 
-    /** PAX "len key=value\n" records; returns {path, linkpath} (nullable). */
-    private static String[] parsePax(String data) {
+    /**
+     * PAX {@code "len key=value\n"} records; returns {path, linkpath} (nullable).
+     * Parsed over the raw bytes, not a decoded string: {@code len} counts
+     * <em>bytes</em>, so a record holding non-ASCII (exactly what a PAX header
+     * is usually there for) would desynchronize a char-indexed walk and lose
+     * every override after it.
+     */
+    private static String[] parsePax(byte[] data) {
         String path = null;
         String link = null;
         int pos = 0;
-        while (pos < data.length()) {
-            int sp = data.indexOf(' ', pos);
+        while (pos < data.length) {
+            int sp = indexOf(data, (byte) ' ', pos);
             if (sp < 0) break;
             int len;
             try {
-                len = Integer.parseInt(data.substring(pos, sp));
+                len = Integer.parseInt(
+                        new String(data, pos, sp - pos, StandardCharsets.US_ASCII));
             } catch (NumberFormatException e) {
                 break;
             }
-            if (len <= 0 || pos + len > data.length()) break;
-            String record = data.substring(sp + 1, pos + len - 1); // strip \n
-            int eq = record.indexOf('=');
-            if (eq > 0) {
-                String key = record.substring(0, eq);
-                String value = record.substring(eq + 1);
+            if (len <= 0 || pos + len > data.length) break;
+            int end = pos + len - 1;             // the record's trailing \n
+            int eq = indexOf(data, (byte) '=', sp + 1);
+            if (eq > sp + 1 && eq < end) {
+                String key = new String(data, sp + 1, eq - sp - 1,
+                        StandardCharsets.UTF_8);
+                String value = new String(data, eq + 1, end - eq - 1,
+                        StandardCharsets.UTF_8);
                 if (key.equals("path")) path = value;
                 else if (key.equals("linkpath")) link = value;
             }
             pos += len;
         }
         return new String[] {path, link};
+    }
+
+    /** First index of {@code b} at or after {@code from}, or -1. */
+    private static int indexOf(byte[] data, byte b, int from) {
+        for (int i = from; i < data.length; i++) {
+            if (data[i] == b) return i;
+        }
+        return -1;
     }
 
     private static void skip(InputStream in, long count) throws IOException {
