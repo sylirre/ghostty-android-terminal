@@ -11,6 +11,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * One running guest machine under arm64emu, and the host channels into it.
@@ -126,14 +128,22 @@ public final class VmMachine {
      * bootloader.
      */
     private static String[] argv(VmOptions o) {
-        return new String[] {
-                "arm64emu",
-                o.jit ? "--jit" : "--no-pd",
-                "--bios", o.firmware.getAbsolutePath(),
-                "--drive", o.image.getAbsolutePath() + ",ro",
-                "--memory", Integer.toString(o.memoryMb),
-                "--console", "pl011,count=" + o.hvcCount,
-        };
+        List<String> argv = new ArrayList<>();
+        argv.add("arm64emu");
+        // Only --jit is ours to ask for. With it off the emulator picks its own
+        // default engine, which is the predecoded interpreter tier — there is
+        // no flag to add, and the one that turns *that* off (--no-pd) drops to
+        // the plain interpreter at roughly half the speed for nothing.
+        if (o.jit) argv.add("--jit");
+        argv.add("--bios");
+        argv.add(o.firmware.getAbsolutePath());
+        argv.add("--drive");
+        argv.add(o.image.getAbsolutePath() + ",ro");
+        argv.add("--memory");
+        argv.add(Integer.toString(o.memoryMb));
+        argv.add("--console");
+        argv.add("pl011,count=" + o.hvcCount);
+        return argv.toArray(new String[0]);
     }
 
     private static String[] env() {

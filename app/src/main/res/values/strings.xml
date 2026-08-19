@@ -148,7 +148,7 @@
     <string name="setting_vm_terminals_title">Guest terminals</string>
     <string name="setting_vm_terminals_summary">How many tabs the machine can have open past its console. Each is a virtual console created when the machine boots, so a change applies to the next boot.</string>
     <string name="setting_vm_jit_title">Translate guest code</string>
-    <string name="setting_vm_jit_summary">Compile guest instructions to native code instead of interpreting them — roughly an order of magnitude faster, and the difference between a boot measured in seconds and one measured in minutes. Turn off only to diagnose an emulation bug.</string>
+    <string name="setting_vm_jit_summary">Compile guest instructions to native code instead of interpreting them — several times faster, and the difference between a boot measured in seconds and one measured in minutes. Turn off only to diagnose an emulation bug.</string>
     <string name="setting_vm_images_title">Machine images</string>
     <string name="setting_vm_images_summary">The firmware and guest image a machine boots from, unpacked from the app into its storage. Tap to remove them.</string>
     <string name="setting_vm_images_installed">Unpacked (%1$s). Removing them frees the space; they are unpacked again the next time a machine starts.</string>

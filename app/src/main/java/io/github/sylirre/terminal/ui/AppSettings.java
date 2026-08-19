@@ -541,8 +541,9 @@ public final class AppSettings {
 
     /**
      * When true the guest machine translates guest code to native instead of
-     * interpreting it — worth roughly an order of magnitude, and the difference
-     * between a boot measured in minutes and one measured in seconds. Off is a
+     * interpreting it — worth about four times the speed, and the difference
+     * between a boot measured in minutes and one measured in seconds. Off
+     * leaves the emulator on the interpreter it picks by default, and is a
      * diagnostic setting. Defaults to on.
      */
     public boolean vmJitEnabled() {
