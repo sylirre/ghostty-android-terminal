@@ -2057,6 +2057,18 @@ public class TerminalView extends View {
         }
     }
 
+    /**
+     * Flat index of viewport cell (x, y) in the current snapshot's cell arrays,
+     * or -1 when the coordinates fall outside the grid. The arrays are exactly
+     * {@code cols * rows} long, so an unchecked {@code y * cols + x} silently
+     * addresses the next row when x is past the last column, and runs off the
+     * end on the last row.
+     */
+    private int cellIndexOf(int x, int y) {
+        if (x < 0 || y < 0 || x >= snapshot.cols || y >= snapshot.rows) return -1;
+        return y * snapshot.cols + x;
+    }
+
     private void drawCursor(Canvas canvas) {
         if (!snapshot.cursorInViewport() || !snapshot.cursorVisible()) return;
         // On the blink "off" phase, skip drawing. For the block cursor this
@@ -2065,9 +2077,15 @@ public class TerminalView extends View {
         if (snapshot.cursorBlinking() && !cursorBlinkOn) return;
         float left = textMarginLeft + snapshot.cursorX() * cellWidth;
         float top = snapshot.cursorY() * cellHeight;
-        boolean wide = snapshot.cursorX() < snapshot.cols
-                && (snapshot.attrs[snapshot.cursorY() * snapshot.cols + snapshot.cursorX()]
-                        & TerminalNative.ATTR_WIDE) != 0;
+        // The cell under the cursor, or -1 when the reported position is not
+        // one. Both readers below index the flat cell arrays, which only hold
+        // cols*rows entries, so the position is bounds-checked once here rather
+        // than half-checked at each use: a stale or out-of-grid cursor would
+        // otherwise invert (and blank) a cell on the following row, or run off
+        // the end of the arrays on the last one.
+        int cellIndex = cellIndexOf(snapshot.cursorX(), snapshot.cursorY());
+        boolean wide = cellIndex >= 0
+                && (snapshot.attrs[cellIndex] & TerminalNative.ATTR_WIDE) != 0;
         float right = left + cellWidth * (wide ? 2 : 1);
         int cursorColor = snapshot.cursorColor();
         bgPaint.setColor(cursorColor != 0 ? cursorColor : snapshot.defaultFg());
@@ -2089,17 +2107,17 @@ public class TerminalView extends View {
             }
             default: { // block: invert the cell
                 canvas.drawRect(left, top, right, top + cellHeight, bgPaint);
-                int i = snapshot.cursorY() * snapshot.cols + snapshot.cursorX();
-                int cp = snapshot.codepoints[i];
-                String cluster = snapshot.graphemeAt(i);
+                if (cellIndex < 0) break; // no cell to invert; the fill is enough
+                int cp = snapshot.codepoints[cellIndex];
+                String cluster = snapshot.graphemeAt(cellIndex);
                 if (cp != 0) {
-                    applyStyle(snapshot.bg[i], snapshot.attrs[i]);
+                    applyStyle(snapshot.bg[cellIndex], snapshot.attrs[cellIndex]);
                     canvas.drawText(cluster != null ? cluster
                                     : new String(Character.toChars(cp)),
                             left, top + baseline, textPaint);
                 }
                 // Glyph is drawn here in inverse; null it so the text pass skips it.
-                snapshot.codepoints[i] = 0;
+                snapshot.codepoints[cellIndex] = 0;
                 break;
             }
         }
