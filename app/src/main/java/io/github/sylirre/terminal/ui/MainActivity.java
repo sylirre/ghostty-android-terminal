@@ -116,6 +116,8 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     /** First-session spawn is held back while the onboarding wizard runs. */
     private boolean awaitingOnboarding;
     private long lastBellUptime;
+    /** Built on the first sound bell, released in {@code onDestroy}. */
+    private ToneGenerator bellTone;
     /** Wallpaper the view currently holds, so a resume needn't re-decode it. */
     private String appliedBackgroundPath;
     private int appliedBackgroundBlur = -1;
@@ -335,6 +337,10 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
     protected void onDestroy() {
         super.onDestroy();
         SessionService.clearExitListener(onServiceExit);
+        if (bellTone != null) {
+            bellTone.release(); // frees the native audio track it holds
+            bellTone = null;
+        }
     }
 
     /**
@@ -1336,13 +1342,30 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
                 BELL_VIBRATION_MS, VibrationEffect.DEFAULT_AMPLITUDE));
     }
 
+    /**
+     * Rings the bell through one lazily built {@link ToneGenerator} kept for the
+     * Activity's lifetime and released in {@code onDestroy}.
+     *
+     * A per-bell generator released from a posted runnable is not safe here:
+     * {@code View.postDelayed} on a <em>detached</em> view only queues the
+     * runnable until the view is attached again, and a session outlives the
+     * Activity that showed it — so a bell arriving after teardown would leave
+     * its native audio track allocated forever. {@code startTone} with a
+     * duration ends by itself, so reusing one generator needs no callback at
+     * all, and rapid bells stop building and tearing one down apiece.
+     */
     private void playBellSound() {
+        // A surviving session can still ring after teardown; nothing to ring on.
+        if (isDestroyed()) return;
         try {
-            ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
-            tone.startTone(ToneGenerator.TONE_PROP_BEEP, 150);
-            terminal.postDelayed(tone::release, 250);
+            if (bellTone == null) {
+                bellTone = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100);
+            }
+            bellTone.startTone(ToneGenerator.TONE_PROP_BEEP, 150);
         } catch (RuntimeException ignored) {
-            // Audio service unavailable; drop the bell rather than surfacing a UI error.
+            // Audio service unavailable; drop the bell rather than surfacing a
+            // UI error. A generator that was built before the failure stays put
+            // for onDestroy to release.
         }
     }
 
