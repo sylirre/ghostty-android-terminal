@@ -14,6 +14,7 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilterInputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -130,11 +131,39 @@ public final class RootfsBackup {
             long total = measure(root);
             UserlandRootfs.ProgressListener tick = progress == null ? null
                     : archived -> progress.onProgress(archived, total);
-            GZIPOutputStream gz = new GZIPOutputStream(
-                    new BufferedOutputStream(out, 1 << 16));
-            writeArchive(root, gz, tick, cancelled);
-            gz.finish(); // write the gzip trailer without closing the caller's stream
-            gz.flush();
+            // Closed, not just finished: the gzip layer owns a Deflater whose
+            // native zlib state only close() frees. The caller owns `out`, so a
+            // shield sits directly on top of it and swallows the close, leaving
+            // every stream this method created to be closed properly. The
+            // try-with-resources also covers the cancel and failure paths,
+            // where the old finish()/flush() pair was simply skipped.
+            try (OutputStream gz = new GZIPOutputStream(new BufferedOutputStream(
+                    new NonClosingOutputStream(out), 1 << 16))) {
+                writeArchive(root, gz, tick, cancelled);
+            }
+        }
+    }
+
+    /**
+     * Passes writes straight through and turns {@code close()} into a flush, so
+     * a stream stack built on top of a caller-owned {@link OutputStream} can be
+     * closed without closing that stream. {@link FilterOutputStream} would
+     * forward bulk writes one byte at a time, so the array overload is
+     * delegated explicitly.
+     */
+    private static final class NonClosingOutputStream extends FilterOutputStream {
+        NonClosingOutputStream(OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            out.write(b, off, len);
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush();
         }
     }
 

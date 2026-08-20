@@ -7,6 +7,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeFalse;
 
 import android.content.Context;
 import android.system.ErrnoException;
@@ -32,6 +33,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.zip.GZIPInputStream;
 
 /**
  * Round-trips {@link RootfsBackup}'s tar writer through {@link UserlandRootfs}'s
@@ -403,6 +405,67 @@ public class RootfsBackupTest {
             out.write(body);
         }
         return out.toByteArray();
+    }
+
+    /**
+     * The public entry point end to end, over the stream stack it actually
+     * builds. Two things it must get right and a test can see: the caller's
+     * stream is left open (the caller owns it), and the gzip layer is carried
+     * all the way to a complete stream — decompressing to EOF checks the
+     * trailer's CRC and length, which only a finished stream has.
+     */
+    @Test
+    public void backupLeavesTheCallerStreamOpenAndWritesAWholeGzip() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        // This has to write a rootfs to back up, so never run where one is
+        // installed — that tree is the user's data, not the test's.
+        assumeFalse("a userland rootfs is installed; leaving it alone",
+                UserlandRootfs.isInstalled(ctx));
+        File rootfs = UserlandRootfs.dir(ctx);
+        try {
+            mkdir(rootfs, 0755);
+            mkdir(new File(rootfs, "etc"), 0755);
+            writeFile(new File(rootfs, "etc/hostname"), "guest\n", 0644);
+
+            CloseRecordingStream sink = new CloseRecordingStream();
+            RootfsBackup.backup(ctx, sink, null, null);
+            assertFalse("backup closed the caller's stream", sink.closed);
+
+            byte[] archive = sink.toByteArray();
+            assertTrue("not a gzip stream", archive.length > 2
+                    && (archive[0] & 0xFF) == 0x1F && (archive[1] & 0xFF) == 0x8B);
+
+            // Drain the whole thing rather than stopping at the tar's
+            // end-of-archive marker: the trailer sits past it, so only a full
+            // read reaches the CRC check.
+            byte[] tar;
+            try (InputStream gz = new GZIPInputStream(
+                    new ByteArrayInputStream(archive))) {
+                ByteArrayOutputStream raw = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = gz.read(buf)) > 0) raw.write(buf, 0, n);
+                tar = raw.toByteArray();
+            }
+
+            assertTrue(dst.mkdirs());
+            UserlandRootfs.extractTar(new ByteArrayInputStream(tar), dst, null, null);
+            assertArrayEquals("guest\n".getBytes(StandardCharsets.UTF_8),
+                    readFile(new File(dst, "etc/hostname")));
+        } finally {
+            deleteRecursively(rootfs);
+        }
+    }
+
+    /** A sink that records whether anything closed it. */
+    private static final class CloseRecordingStream extends ByteArrayOutputStream {
+        boolean closed;
+
+        @Override
+        public void close() throws IOException {
+            closed = true;
+            super.close();
+        }
     }
 
     /** Writes a directory entry (name should end with '/') into a raw tar. */
