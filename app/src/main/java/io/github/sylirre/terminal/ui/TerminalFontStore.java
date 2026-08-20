@@ -57,26 +57,34 @@ final class TerminalFontStore {
     static String importFrom(Context context, Uri src, int kind) throws IOException {
         File dst = file(context, kind);
         File tmp = new File(context.getFilesDir(), dst.getName() + ".tmp");
-        try (InputStream in = context.getContentResolver().openInputStream(src)) {
-            if (in == null) return null;
-            try (OutputStream out = new FileOutputStream(tmp)) {
-                byte[] buf = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        boolean stored = false;
+        try {
+            try (InputStream in = context.getContentResolver().openInputStream(src)) {
+                if (in == null) return null;
+                try (OutputStream out = new FileOutputStream(tmp)) {
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                }
             }
-        }
 
-        if (!canLoad(tmp.getPath())) {
+            if (!canLoad(tmp.getPath())) return null;
             // noinspection ResultOfMethodCallIgnored
-            tmp.delete();
-            return null;
+            dst.delete();
+            if (!tmp.renameTo(dst)) {
+                throw new IOException("Could not store font");
+            }
+            stored = true;
+            return dst.getPath();
+        } finally {
+            // Anything short of the rename leaves the staged copy behind: a
+            // read or write that failed mid-copy, a file no Typeface will load,
+            // or a rename that didn't take. Nothing else ever sweeps filesDir,
+            // so a rejected import used to strand a font-sized file there for
+            // good. Only the rename hands `tmp` over; every other exit deletes it.
+            // noinspection ResultOfMethodCallIgnored
+            if (!stored) tmp.delete();
         }
-        // noinspection ResultOfMethodCallIgnored
-        dst.delete();
-        if (!tmp.renameTo(dst)) {
-            throw new IOException("Could not store font");
-        }
-        return dst.getPath();
     }
 
     static Typeface load(String path) {
