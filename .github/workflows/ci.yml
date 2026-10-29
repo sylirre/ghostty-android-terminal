@@ -26,7 +26,7 @@ jobs:
       - name: Setup mmdebstrap
         run: |
           sudo apt update
-          sudo apt install -yq curl binfmt-support qemu-user-static
+          sudo apt install -yq curl binfmt-support qemu-user-binfmt
 
           curl -L -o /tmp/mmdebstrap.deb http://ftp.us.debian.org/debian/pool/main/m/mmdebstrap/mmdebstrap_1.5.7-3_all.deb
           curl -L -o /tmp/keyring.deb http://ftp.us.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb
