@@ -55,8 +55,11 @@ target_compile_options(arm64chroot PRIVATE -O2 -std=gnu11 -w)
 # handler runs with the guest's TPIDR_EL0, so it must never call Bionic) minus
 # the standalone-only -static/-no-pie/linker-script — the NDK's default -fPIC
 # replaces them, and ASLR already keeps libterm.so clear of the fixed load
-# addresses the linker script existed to dodge. src/rt/start.S (the standalone
-# _start) is excluded; the embed shim reconstructs its contract.
+# addresses the linker script existed to dodge. The script's other job,
+# bracketing the image with __cng_image_start/__cng_image_end, falls to
+# chroot_ng_image.h, force-included into every source: it maps them onto lld's
+# own bounds of libterm.so. src/rt/start.S (the standalone _start) is excluded;
+# the embed shim reconstructs its contract.
 #
 # rt.c defines mem/str helpers under their libc names so compiler-emitted
 # calls resolve in a -nostdlib link. Inside libterm.so those definitions would
@@ -101,7 +104,8 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(chroot-ng PRIVATE
         -O2 -std=gnu11 -ffreestanding -fno-builtin -fno-stack-protector
         -fno-asynchronous-unwind-tables -mno-outline-atomics
-        -mgeneral-regs-only -w)
+        -mgeneral-regs-only -w
+        "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/chroot_ng_image.h")
 endif()
 
 # --- arm64emu: the full-system AArch64 emulator (a QEMU 'virt' machine), which
