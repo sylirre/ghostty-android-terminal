@@ -35,7 +35,7 @@ public final class SessionCommand {
      *
      * @param homeDir HOME and initial working directory (app files dir —
      *                the only generally writable place).
-     * @param tmpDir  TMPDIR (app cache dir).
+     * @param tmpDir  TMPDIR (the app's {@code files/tmp}, see {@link TmpDir}).
      */
     public static SessionCommand androidShell(String homeDir, String tmpDir) {
         String[] env = {

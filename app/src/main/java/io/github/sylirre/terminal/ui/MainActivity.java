@@ -643,7 +643,7 @@ public class MainActivity extends Activity implements TerminalSession.Listener {
             return;
         }
         try {
-            VmMachine vm = VmMachine.start(new VmOptions(firmware, image,
+            VmMachine vm = VmMachine.start(this, new VmOptions(firmware, image,
                     settings.vmMemoryMb(), settings.vmTerminals(),
                     settings.vmJitEnabled()));
             vm.setListener(code -> runOnUiThread(() -> onVmExited(code)));

@@ -428,13 +428,15 @@ public final class UserlandRootfs {
         for (String tok : shellTokens) argv.add(tok);
         // Host env for the fork()ed child — this becomes arm64chroot's process
         // environ (what getenv sees), NOT the guest env, which rides in the -E
-        // flags above. TMPDIR gives arm64chroot a writable backing dir for
-        // shared memory images when memfd_create fails. A64_JIT_MB sizes the
-        // JIT code cache and is read via getenv, so it only matters with --jit
-        // and is emitted only then.
+        // flags above. TMPDIR is where both engines keep host-side state: the
+        // --shared-proc registry, emulated tmpfs mounts and shm files
+        // (arm64chroot), the guest's /dev/shm stand-in (chroot-ng, which
+        // needs it mode 0700 — see TmpDir). A64_JIT_MB sizes the JIT code
+        // cache and is read via getenv, so it only matters with --jit and is
+        // emitted only then.
         List<String> env = new ArrayList<>();
         env.add("PATH=/system/bin");
-        env.add("TMPDIR=" + ctx.getFilesDir().getAbsolutePath());
+        env.add("TMPDIR=" + TmpDir.ensure(ctx));
         if (!chrootNg && opts.jit) env.add("A64_JIT_MB=" + opts.jitBufferMb);
         // Host cwd for the fork()ed child mirrors --work-dir inside the rootfs.
         String workRel = workDir.equals("/") ? "" : workDir.substring(1);

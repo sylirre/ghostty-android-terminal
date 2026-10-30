@@ -47,7 +47,7 @@ public final class SessionManager {
                 ? UserlandRootfs.command(context, userlandOptions)
                 : SessionCommand.androidShell(
                         context.getFilesDir().getAbsolutePath(),
-                        context.getCacheDir().getAbsolutePath());
+                        TmpDir.ensure(context));
         TerminalSession s = new TerminalSession(cols, rows, cellWidthPx,
                 cellHeightPx, scrollbackLines, command, terminateProcessesOnExit,
                 listener);

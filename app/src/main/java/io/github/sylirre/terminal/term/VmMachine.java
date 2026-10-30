@@ -3,6 +3,7 @@
 
 package io.github.sylirre.terminal.term;
 
+import android.content.Context;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
@@ -59,11 +60,12 @@ public final class VmMachine {
      * machine would be indistinguishable from the first's, and two full-system
      * emulators is more than a phone should be asked for.
      */
-    public static synchronized VmMachine start(VmOptions options) throws IOException {
+    public static synchronized VmMachine start(Context ctx, VmOptions options)
+            throws IOException {
         if (instance != null && instance.running) {
             throw new IOException("a guest machine is already running");
         }
-        instance = new VmMachine(options);
+        instance = new VmMachine(options, TmpDir.ensure(ctx));
         return instance;
     }
 
@@ -91,14 +93,14 @@ public final class VmMachine {
         void onVmExited(int exitCode);
     }
 
-    private VmMachine(VmOptions options) throws IOException {
+    private VmMachine(VmOptions options, String tmpDir) throws IOException {
         this.options = options;
 
         int nTerminals = 1 + options.hvcCount;
         int[] fds = new int[nTerminals + 2];
         int[] pidOut = new int[1];
-        TerminalNative.vmStart(argv(options), env(), null, options.hvcCount, fds,
-                pidOut);
+        TerminalNative.vmStart(argv(options), env(tmpDir), null, options.hvcCount,
+                fds, pidOut);
 
         this.pid = pidOut[0];
         this.channels = new ParcelFileDescriptor[nTerminals];
@@ -146,10 +148,11 @@ public final class VmMachine {
         return argv.toArray(new String[0]);
     }
 
-    private static String[] env() {
+    private static String[] env(String tmpDir) {
         // The emulator reads only its own AE* variables, none of which are set
-        // here; TMPDIR is passed so anything falling back to it stays in the app.
-        return new String[] { "TMPDIR=/data/local/tmp" };
+        // here; TMPDIR (TmpDir) is passed so anything falling back to it stays
+        // in the app.
+        return new String[] { "TMPDIR=" + tmpDir };
     }
 
     /** Guest terminals, including {@code ttyAMA0}. Always at least one. */

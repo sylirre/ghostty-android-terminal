@@ -78,7 +78,7 @@ public class VmSessionTest {
         if (!imagesBundled) return;
         VmImages.install(ctx, null);
 
-        machine = VmMachine.start(new VmOptions(VmImages.firmware(ctx),
+        machine = VmMachine.start(ctx, new VmOptions(VmImages.firmware(ctx),
                 VmImages.image(ctx), 512, HVC_COUNT, true));
         console = new TerminalSession(80, 24, 8, 16, 10_000, machine, 0, LISTENER);
 
