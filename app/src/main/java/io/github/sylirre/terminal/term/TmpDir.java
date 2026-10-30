@@ -19,7 +19,7 @@ import java.io.File;
  *
  * Mode 0700 is the point. Android creates {@code files/} group-writable (0771),
  * and chroot-ng will not keep private state in a directory anyone but its owner
- * can write to without the sticky bit ({@code shm_parent_safe} in
+ * can write to without the sticky bit ({@code tmp_parent_unsafe} in
  * native/chroot-ng/src/path/path.c). With {@code files/} itself as TMPDIR, its
  * guest got no {@code /dev/shm} stand-in, so {@code shm_open}/{@code sem_open}
  * had nowhere to go.
