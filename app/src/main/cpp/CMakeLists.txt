@@ -61,6 +61,11 @@ target_compile_options(arm64chroot PRIVATE -O2 -std=gnu11 -w)
 # own bounds of libterm.so. src/rt/start.S (the standalone _start) is excluded;
 # the embed shim reconstructs its contract.
 #
+# Two NDK defaults stay on top of the Makefile's flags, both harmless:
+# -funwind-tables, which -fno-asynchronous-unwind-tables does not cancel, so
+# the objects carry .eh_frame (and crash reports can unwind through chroot-ng
+# frames), and --gc-sections, which the NDK passes in Release links only.
+#
 # rt.c defines mem/str helpers under their libc names so compiler-emitted
 # calls resolve in a -nostdlib link. Inside libterm.so those definitions would
 # win intra-.so binding for ghostty-vt and the JNI code (byte-at-a-time loops)
@@ -104,8 +109,15 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     target_compile_options(chroot-ng PRIVATE
         -O2 -std=gnu11 -ffreestanding -fno-builtin -fno-stack-protector
         -fno-asynchronous-unwind-tables -mno-outline-atomics
-        -mgeneral-regs-only -w
+        -mgeneral-regs-only -Wall -Wextra -Wno-unused-parameter
         "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/chroot_ng_image.h")
+    # The Makefile's one -Werror unit. unistd_check.c includes chroot-ng's
+    # syscall table and <asm/unistd.h> together, so a number the two spell
+    # differently is a "macro redefined" warning; -Werror makes it stop the
+    # build. Never put -w back on this target: clang's -w silences even a
+    # warning promoted with -Werror=, and the check passes on anything.
+    set_source_files_properties(${CNG_DIR}/src/rt/unistd_check.c
+        PROPERTIES COMPILE_OPTIONS -Werror)
 endif()
 
 # --- arm64emu: the full-system AArch64 emulator (a QEMU 'virt' machine), which
